@@ -1,0 +1,21 @@
+Source file paths leaked by assert messages in the SPORE executables.
+These name the libraries the game was linked against.
+Distinct paths: 17
+
+..\..\..\..\Core\Audio\Audio\source\AudioAllocator.cpp
+..\..\UTFKernel\MemoryMan\source\CoreAllocatorGeneral.cpp
+..\..\UTFKernel\PPMalloc\source\cmn\EAAllocationRecorder.cpp
+..\..\UTFNetwork\UTFSSL\source\SSLManager.cpp
+..\hkbase/memory/impl/hkStackTracerWin32.cxx
+.\collide\mopp\machine\hkMoppLongRayVirtualMachine.cpp
+.\collide\mopp\machine\hkMoppObbVirtualMachine.cpp
+.\collide\mopp\machine\hkMoppSphereVirtualMachine.cpp
+.\error\hkError.cpp
+.\util\hkStructureLayout.cpp
+.h
+4.\collide\mopp\machine\hkMoppAabbCastVirtualMachine.cpp
+A.\world\hkWorld.cpp
+\Spore\SporeEP1ML\Core\RenderWare\platform\src\graphics\core\device\target\dx9\rwgdrvgraph.cpp
+hkbase/config/hkConfigMemoryStats.h
+png.h
+spore\CMBuild\SporeEP1\Core\UTFKernel\EASTL\include\EASTL/allocator.h

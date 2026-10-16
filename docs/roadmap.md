@@ -100,6 +100,21 @@ stands between each and being readable:
 Deliverable: a `spore-formats` crate with a decoder per type, each with a round-trip test
 against a real resource.
 
+Two of these are now much better specified than they were, see
+`docs/engine-architecture.md`:
+
+- **RW4 (`0x2F4E681B`)** is not a mystery container. The binaries name RenderWare's own
+  object type constants (`RWGOBJECTTYPE_SHADER`, `RWCOBJECTTYPE_CLUSTEREDMESH` and so on),
+  so the decoding strategy is to locate the RW object type id in the payload and dispatch
+  on it, rather than guessing at a byte layout.
+- **Animation (`0xEE17C6AD`)** is bound to Cal3D, a third-party character animation
+  library, evidenced by the `Cal3DBoneName` and `Cal3DOrigin` script parameters. That
+  turns an open-ended problem into a known format with public documentation.
+
+`[MEASURED]` Note also that `Spore_Content.package` carries two adjacent RW4 type ids,
+`0x2F4E681B` (1,131 resources) and `0x2F4E681C` (2,954). The pair needs explaining before
+either decoder is written.
+
 ### Phase 2: asset browser in Bevy
 
 A Bevy app that opens a package, walks the index, decodes textures and meshes, and renders

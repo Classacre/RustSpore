@@ -1,0 +1,40 @@
+{
+ "union_count": 2,
+ "per_binary": {
+  "base": 2,
+  "ep1": 2
+ },
+ "by_kind": {
+  "class": 2
+ },
+ "root_namespaces": {
+  "EA": 1,
+  "type_info": 1
+ },
+ "names": [
+  {
+   "mangled": ".?AVcError@ArgScript@EA@@",
+   "demangled": "EA::ArgScript::cError",
+   "kind": "class",
+   "binaries": [
+    "base",
+    "ep1"
+   ],
+   "sections": [
+    ".data"
+   ]
+  },
+  {
+   "mangled": ".?AVtype_info@@",
+   "demangled": "type_info",
+   "kind": "class",
+   "binaries": [
+    "base",
+    "ep1"
+   ],
+   "sections": [
+    ".data"
+   ]
+  }
+ ]
+}

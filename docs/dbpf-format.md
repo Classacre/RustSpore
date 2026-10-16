@@ -193,6 +193,35 @@ real data, not plausible-looking noise. Type `0x2F7D0004` decompressed to bytes 
 `89 50 4E 47 0D 0A 1A 0A`, which is the PNG signature. Public sources independently name
 `0x2F7D0004` as PNG, so the measurement and the documentation agree on that ID.
 
+### 5.3 End-to-end pipeline validation
+
+`[MEASURED]` The strongest available test of the whole format is to decode every PNG in
+the install and verify its internal checksums. A PNG carries a CRC32 over each chunk's
+type and data, so any error anywhere in the chain, in the header parse, the index
+location, the record field order, the raw-versus-coded rule or the decompressor, produces
+a failing CRC.
+
+`tools/dbpf_extract.py --validate-png` was run against three packages:
+
+| Package | PNG resources | Valid PNGs | Bytes decoded |
+|---|---|---|---|
+| `Data/Spore_Graphics.package` | 8,360 | **8,360 (100.0%)** | 107,582,886 |
+| `Data/Spore_Content.package` | 1,642 | **1,642 (100.0%)** | 44,445,374 |
+| `DataEP1/Spore_EP1_Data.package` | 3,172 | **3,172 (100.0%)** | 62,025,611 |
+| **Total** | **13,174** | **13,174 (100.0%)** | **214,053,871** |
+
+Every chunk of every image passed. Zero CRC failures across 13,174 resources and about
+214 MB of decoded output.
+
+`[INFERRED]` This is a much stronger result than the length checks in section 5.2, because
+a length match can be satisfied by a decompressor that produces the right number of wrong
+bytes. A CRC match cannot. The container format and the codec are therefore validated
+byte-exactly, not merely plausibly.
+
+`[INFERRED]` It also settles the field-order question in section 4.1 independently of the
+cardinality argument: if `offset` and `size` were swapped, or if `decompressed_size` were
+misplaced, no PNG would decode correctly.
+
 ## 6. Packages where the index was not located
 
 `[MEASURED]` Three of the 13 packages do not yield an index under the 28-byte record
