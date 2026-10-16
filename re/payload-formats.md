@@ -16,7 +16,7 @@ mostly still open. It is deliberately blunt about that.
 | `0x2F4E681B` | RW4 | **header decoded.** Magic signature found, two subtypes (0x01 and 0x04), footer invariant measured. Object dispatch not yet implemented. See below. |
 | `0x2F4E681C` | RASTER | **decoded and validated.** DXT1, DXT5, and raw RGBA sub-formats. Extracted to PNG with zero errors. See below. |
 | `0x01C135DA` | gmsh mesh | **header and attribute sections decoded.** Index section version 1 fully decoded (100% parse). Version 2+ partially decoded. See below. |
-| `0xEE17C6AD` | anim | **header decoded.** ANIM magic, file path string, frame duration, duration. Track data format not yet solved. See below. |
+| `0xEE17C6AD` | anim | **mostly decoded.** Header, CHAN sections, INFO/POS/ROT sub-headers, keyframe structure. Morph bones have channel types 3/4. See below. |
 | `0x5CAA5E28` | blockdata | **header partially decoded.** Starts with bounding box floats. Full structure not yet solved. |
 | `0xDFAD9F51` | string table | **decoded.** Fixed 796-byte records: 4-byte hash + UTF-16LE string + null padding. |
 
@@ -405,26 +405,63 @@ Field at +24 is always duration - 1.
 
 ### Track data
 
-`[UNKNOWN]` The track data format after the 40-byte header is not yet decoded.
-Cal3D-style parsing (bone_id + keyframe_count + 32-byte keyframes) does not
-match. The data after the header contains non-zero values at offsets +44
-through +67, followed by long runs of zeros. The actual keyframe data may be
-at a variable offset indicated by one of the header fields.
+`[MEASURED]` The track data is organized as per-bone "CHAN" sections. An offset
+table at file offset 512 contains u32 values, each pointing to a bone's CHAN
+section. The table is followed by the "CHAN" magic (0x4348414E).
 
-`[MEASURED]` Non-zero values observed after the 40-byte header (Sample 1):
+**Offset table** (at file offset 512):
 ```
-+44: LE u32 = 1
-+48: LE u32 = 21744
-+52: LE u32 = 10
-+56: LE u32 = 512
-+60: LE u32 = 43
-+64: LE u32 = 21572
+N u32 values (file offsets to each bone's CHAN section)
+"CHAN" magic (4 bytes)
 ```
 
-These values vary per animation and do not form an obvious pattern. The
-values 21744 and 21572 are close to the file size, suggesting they may be
-offsets from the start of the file rather than from the start of the
-animation data.
+**Per-bone CHAN section**:
+```
++0:   "CHAN" (4 bytes magic)
++4:   LE u32 = 0
++8:   bone name (null-terminated ASCII, e.g. "root", "head", "MouthMorphs")
++232: "INFO" header: magic(4) + LE u32(0) + LE u32(kf_count) + LE u32(0)
++264: "POS\0" header: magic(4) + LE u32(20) + LE u32(kf_count) + LE u32(1)
++296: "ROT\0" header: magic(4) + LE u32(100) + LE u32(kf_count) + LE u32(2)
++312: keyframe data
+```
+
+`[MEASURED]` The v2 field in INFO/POS/ROT headers is the keyframe count (e.g. 200,
+280, 240). The v3 field is the channel type: 0=INFO, 1=POS, 2=ROT. The v1 field
+varies: 0 for INFO, 20 for POS, 100 for ROT (possibly data stride or offset).
+
+`[MEASURED]` ROT keyframes are 20 bytes each: LE float time + 4 LE floats
+(x, y, z, w quaternion). POS keyframes are likely 16 bytes: time + 3 floats.
+
+`[MEASURED]` Morph bones ("MouthMorphs", "eyes", "ears") have no POS/ROT headers.
+Instead, the INFO section contains sub-entries with channel types 3 and 4:
+```
+LE u32 = 19 (0x13, constant across morph entries)
+LE u32 = hash
+LE u32 = data size (20 or 60)
+LE u32 = keyframe count
+LE u32 = channel type (3 or 4)
+```
+
+`[MEASURED]` Bone names observed: root, head, MouthMorphs, eyes, ears, R hand,
+R hand rel, L hand, R foot, L foot. The "rel" suffix indicates relative
+transforms.
+
+### Trailer
+
+`[MEASURED]` The file ends with:
+```
+LE u32 = 0x60 (96, constant)
+LE u32 = 2 (repeated several times)
+LE u32 = 0 (padding)
+4 bytes: hash (varies)
+LE u32: file size related value
+ASCII animation name (null-terminated, e.g. "vidle_get_angry03")
+```
+
+`[MEASURED]` Animation names are ASCII (not UTF-16LE like the path in the header).
+Examples: "vidle_get_angry03", "vidle_herbi_rollindust", "vwalk_neutral",
+"footstep".
 
 ## blockdata, type `0x5CAA5E28`
 
