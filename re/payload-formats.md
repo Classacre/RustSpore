@@ -13,7 +13,8 @@ mostly still open. It is deliberately blunt about that.
 |---|---|---|
 | `0x2F7D0004` | PNG | **decoded.** Standard PNG. 13,174 extracted, all CRCs valid. |
 | `0x00B1B104` | prop | **decoded.** 11,640 of 11,953 (97.38%) parse exactly. Zero overruns. Remaining 2.6% are clustered in groups `0x0001FFFF` and `0x00010000`, likely variant layouts. |
-| `0x2F4E681B` | RW4 | not decoded. Dispatch strategy identified, see `docs/engine-architecture.md` section 3. |
+| `0x2F4E681B` | RW4 | **magic identified.** PNG-style signature `89 52 57 34 77 33 32 00 0d 0a 1a 0a` ("RW4w32"), trailer `0xCAFED00D`. Container for RenderWare 4 objects. See below. |
+| `0x2F4E681C` | RASTER | **magic identified.** Header starts `01 00 00 00`; sub-formats include DXT5 and raw pixels. Not the same format as RW4. See below. |
 | `0x01C135DA` | gmsh mesh | not decoded. |
 | `0xEE17C6AD` | anim | not decoded. Bound to Cal3D, so the format is public. |
 | `0x5CAA5E28` | blockdata | not decoded. |
@@ -119,6 +120,61 @@ at the time and is still not the real rule. Fitting one case is not confirmation
 They are probably a variant prop format used by specific subsystems (effects, particles,
 or animation). The exact-consumption rate inside those groups is near zero, while outside
 them it is effectively 100%.
+
+## RW4, type `0x2F4E681B`
+
+`[MEASURED]` Every resource of this type, across all packages where it appears
+(`Spore_Graphics`, `Spore_Content`), begins with the same 12-byte signature:
+
+```
+89 52 57 34 77 33 32 00 0d 0a 1a 0a
+```
+
+In ASCII: `0x89` (non-printable, same as PNG), `"RW4w32"`, `0x00`, then `0x0D 0x0A 0x1A 0x0A`.
+The trailing four bytes are **identical** to the PNG signature trailer. This is a deliberate
+magic number, not coincidence.
+
+`[MEASURED]` Bytes 28-31 of the header are `0d d0 fe ca`, which is `0xCAFED00D` in
+little-endian. That is a second magic value confirming the header.
+
+`[MEASURED]` Header fields following the signature:
+
+```
+offset 12: 00 20 04 00   (u32, purpose unknown)
+offset 16: "454\0"       (platform code?)
+offset 20: "000\0"       (version?)
+offset 24: 00 00 00 00   (padding?)
+offset 28: 0xCAFED00D    (magic trailer)
+```
+
+`[MEASURED]` The resources appear in `Spore_Graphics.package` (9,368) and
+`Spore_Content.package` (1,131). `Spore_Game.package` carries none.
+
+`[INFERRED]` This is a **container format** for RenderWare 4 objects, not a single asset
+type. The payload after the header is expected to carry an object type id that selects the
+decoder (shader, mesh, etc.). The string literals `RWGOBJECTTYPE_*` and `RWCOBJECTTYPE_*`
+extracted from the binary are the dispatch table. See `docs/engine-architecture.md`.
+
+## RASTER, type `0x2F4E681C`
+
+`[MEASURED]` This type appears **only** in `Spore_Content.package` (2,954 resources). It
+never appears alongside `0x2F4E681B` in the same package. The two types are **different
+formats**, not variants of the same container.
+
+`[MEASURED]` The first u32 (big-endian) is `0x00000001` in every sample. It may be a count
+or a version.
+
+`[MEASURED]` At least two sub-formats exist:
+
+1. **DXT5 compressed**: offset 24 carries the four bytes `44 58 54 35` = `"DXT5"`. The
+   payload after the header is a DXT5 compressed texture.
+2. **Raw pixels**: offset 24 carries pixel data directly (sample shows repeating
+   `ff 80 80 00`, a pinkish colour).
+
+`[INFERRED]` This is a texture/image raster format, separate from the RW4 object
+container. It was previously listed as an unexplained "adjacent type" to RW4; the
+explanation is that they are unrelated formats that happen to have adjacent type ids in
+the DBPF index.
 
 ## Note on method
 

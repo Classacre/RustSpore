@@ -121,9 +121,15 @@ Two of these are now much better specified than they were, see
   library, evidenced by the `Cal3DBoneName` and `Cal3DOrigin` script parameters. That
   turns an open-ended problem into a known format with public documentation.
 
-`[MEASURED]` Note also that `Spore_Content.package` carries two adjacent RW4 type ids,
-`0x2F4E681B` (1,131 resources) and `0x2F4E681C` (2,954). The pair needs explaining before
-either decoder is written.
+`[MEASURED]` **RW4 (`0x2F4E681B`) and RASTER (`0x2F4E681C`) are now distinguished.**
+`0x2F4E681B` carries a PNG-style magic signature (`89 52 57 34 77 33 32 00 0d 0a 1a 0a`,
+"RW4w32") and a `0xCAFED00D` header trailer. It is a RenderWare 4 object container. It
+dominates `Spore_Graphics.package` (9,368 resources) and appears in `Spore_Content` (1,131).
+
+`0x2F4E681C` is a **different format**: a raster image with DXT5 and raw-pixel sub-formats.
+It appears only in `Spore_Content.package` (2,954). The two types are not variants of the
+same container; they are independent formats with adjacent type ids. Details in
+`re/payload-formats.md`.
 
 `[MEASURED]` **prop (`0x00B1B104`) is decoded.** It is the most common type in
 `Spore_Game.package` (7,030 of 11,529). **11,640 of 11,953 resources across three
