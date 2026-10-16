@@ -18,6 +18,7 @@ mostly still open. It is deliberately blunt about that.
 | `0x01C135DA` | gmsh mesh | **header and attribute sections decoded.** Index section version 1 fully decoded (100% parse). Version 2+ partially decoded. See below. |
 | `0xEE17C6AD` | anim | **header decoded.** ANIM magic, file path string, frame duration, duration. Track data format not yet solved. See below. |
 | `0x5CAA5E28` | blockdata | **header partially decoded.** Starts with bounding box floats. Full structure not yet solved. |
+| `0xDFAD9F51` | string table | **decoded.** Fixed 796-byte records: 4-byte hash + UTF-16LE string + null padding. |
 
 ## prop, type 0x00B1B104
 
@@ -462,6 +463,25 @@ Example: min = (-0.1, -0.1, -0.1), max = (0.1, 0.1, 0.1), then 3 zeros.
 
 `[UNKNOWN]` The full structure after the flags is not yet decoded. The variable
 data may contain block properties, collision data, or terrain information.
+
+## string table, type `0xDFAD9F51`
+
+`[MEASURED]` All 446 samples are exactly 796 bytes. Structure:
+
+```
+offset  0: LE u32 (hash/ID, varies per string)
+offset  4: UTF-16LE string (null-terminated)
+offset X: null padding to 796 bytes
+```
+
+`[MEASURED]` The string is encoded as UTF-16LE (little-endian 16-bit characters).
+Maximum string length: (796 - 4) / 2 = 396 characters. Observed strings include
+"PLACEHOLDER_Maa", "PLACEHOLDER_Jawhead", "PLACEHOLDER_Ducky". Many samples
+have empty strings (all zeros after the hash).
+
+`[INFERRED]` The 4-byte hash at offset 0 is likely a lookup key for the string.
+The fixed 796-byte size suggests this is a pre-allocated string buffer, possibly
+for locale text or creature part names.
 
 ## Note on method
 
