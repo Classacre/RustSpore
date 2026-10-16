@@ -7,6 +7,7 @@
 
 use std::fmt;
 
+pub mod anim;
 pub mod gmsh;
 
 /// One of the five stages of SPORE, in progression order.
