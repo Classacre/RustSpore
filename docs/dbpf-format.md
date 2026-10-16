@@ -222,40 +222,102 @@ byte-exactly, not merely plausibly.
 cardinality argument: if `offset` and `size` were swapped, or if `decompressed_size` were
 misplaced, no PNG would decode correctly.
 
-## 6. Packages where the index was not located
+## 6. Index layout variants, and the rule that unifies them
 
-`[MEASURED]` Three of the 13 packages do not yield an index under the 28-byte record
-shape. The structural search in `tools/dbpf_find_index.py` was run against all three and
-**found no valid index run in any of them**:
+Earlier in this project three packages were recorded as unsolved: `Spore_Audio1.package`,
+`Spore_EP1_Locale_01.package` and `Spore_EP1_Locale_02.package` did not yield an index
+under the 28-byte record shape. **That gap is now closed.**
 
-| Package | Entries at 0x24 | Index size at 0x2C | Index at 0x40 | Result of the search |
+### 6.1 Every package fits exactly
+
+`[MEASURED]` `tools/dbpf_variants.py` searches for a `(prefix P, record size R)` pair that
+consumes the index block exactly: `P + N*R == index_size`. **All 13 of 13 packages have
+such a pair.** There is no package left without an exact fit.
+
+| Package group | P | R | Trailer T | P + R + T |
 |---|---|---|---|---|
-| `Spore_Audio1.package` | 17,651 | 423,636 | 1,018,588,194 | no run found for any tested layout |
-| `Spore_EP1_Locale_01.package` | 17 | 356 | 3,794,024 | best run 66 records, 3.88x the claimed count, 1,528,200 bytes short of EOF: spurious |
-| `Spore_EP1_Locale_02.package` | 4 | 96 | 838,193 | best run 2 records, 0.5x the claimed count: spurious |
+| 10 packages (`Spore_Game`, `Spore_Graphics`, `PatchData`, `Spore_Audio2`, both EP1 content, EP1 data, `BoosterPack_01`, `Spore_Content`, `Spore_Pack_03`) | 4 | 28 | 4 | **36** |
+| `Spore_Audio1.package` | 12 | 24 | 0 | **36** |
+| `Spore_EP1_Locale_01.package`, `Spore_EP1_Locale_02.package` | 16 | 20 | 0 | **36** |
 
-Header fields 0x2C and 0x40 stay consistent in all three:
-`1018588194 + 423636 = 1019011830`, `3794024 + 356 = 3794380`, `838193 + 96 = 838289`,
-each equal to the file size. So the header reading holds; it is the record shape inside
-the block that differs.
+`[MEASURED]` The invariant `P + R + T = 36` holds for every one of the 13. Equivalently,
+`index_size = 36 + (N-1)*R`.
 
-`[INFERRED, NOT CONFIRMED]` Dividing the block size by the entry count suggests a smaller
-record for these three: about 24.0 bytes for `Spore_Audio1.package`, about 22.0 for
-`Spore_EP1_Locale_02.package`, about 20.5 for `Spore_EP1_Locale_01.package`. These numbers
-are suggestive, but the structural search did not confirm any of them, so they are
-recorded as an unverified hypothesis rather than a finding. That the 20-byte layout scored
-best on `Spore_EP1_Locale_02.package` (a spurious 2-record run) is a hint in that
-direction and nothing more.
+`[INFERRED, UNCONFIRMED]` That the total is always 36 suggests the block begins with a
+fixed 36-byte region which happens to contain the first record plus its surrounding
+metadata. This is a plausible reading of the arithmetic, not an established fact. The
+number 36 has no confirmed meaning.
 
-`[UNKNOWN]` The index layout for these three packages. A reader should fail loudly on them
-rather than silently mis-parse. All gameplay content parses cleanly; the affected files
-are the two expansion locale packages and the first audio archive.
+### 6.2 How each variant was confirmed
 
-`[MEASURED]` For contrast, `Spore_Audio2.package` (12,111 entries) **does** fit the
-28-byte model exactly: `4 + 12111*28 + 4 = 339116`, equal to its index size. So the
-variation is per-file, not per-content-kind. Two audio archives in the same install use
-different record shapes, which is worth remembering before assuming one global record
-size.
+Arithmetic alone is not sufficient, and this is worth stating because it produced a false
+positive. For `Spore_EP1_Locale_02.package`, both `(P=16, R=20)` and `(P=32, R=16)` satisfy
+the exact-fit equation. So exact fit narrows the candidates but does not pick between them.
+
+`[MEASURED]` The arbiter is storage contiguity. When records are sorted by offset, each
+resource should end exactly where the next begins, because the payloads are packed. The
+test is `offset_i + size_i == offset_{i+1}`.
+
+| Package | Layout tested | Exact chains | Gaps |
+|---|---|---|---|
+| `Spore_EP1_Locale_01.package` | P=16, R=20 | **16 / 16** | 0 |
+| `Spore_EP1_Locale_02.package` | P=16, R=20 | **3 / 3** | 0 |
+| `Spore_Audio1.package` | P=12, R=24 | **17,650 / 17,650** | 0 |
+| `Spore_Pack_03.package` (control, known layout) | P=4, R=28 | 259 / 265 | 6 |
+
+`Spore_Audio1.package` is the decisive case: 17,650 of 17,650 consecutive pairs are exactly
+contiguous, with zero gaps. No wrong layout produces that. The next best candidate for the
+same package scored 15,730 chains with 1,920 gaps.
+
+The control row is included on purpose. `Spore_Pack_03.package` is a package whose layout
+was already established independently, and the method rediscovers it, with the small
+residual gaps expected from payload alignment padding.
+
+### 6.3 Record fields per variant
+
+`[MEASURED]` Field roles were separated by cardinality and confirmed by contiguity, as in
+section 4.1.
+
+**28-byte records** (10 packages), offset at byte 16, size at byte 20:
+`group, type, instance_hi, instance_lo, offset, stored_size, decompressed_size`
+
+**24-byte records** (`Spore_Audio1.package`), offset at byte 8, size at byte 12:
+
+| Byte | Field | Evidence |
+|---|---|---|
+| 0 | type_id | 12 distinct values across 17,651 records; `0x01A527DB` alone covers 17,538 |
+| 4 | instance_id | 17,634 distinct, with visibly consecutive runs such as `0x2B50C7CA`, `0x2B50C7CB` |
+| 8 | offset | all 17,651 distinct, and the contiguity test passes |
+| 12 | stored_size, bit 31 set | 14,137 distinct |
+| 16 | decompressed_size | greater than or equal to the stored size |
+| 20 | group_id | only 2 distinct values, `0x00010000` (15,730) and `0x0001FFFF` (1,921) |
+
+Note that this variant orders the fields differently from the 28-byte record: `group_id`
+comes last, and the instance id is a single u32 rather than a split u64.
+
+**20-byte records** (both locale packages), offset at byte 4, size at byte 8:
+
+| Byte | Field | Evidence |
+|---|---|---|
+| 0 | instance or hash | all four values in `Spore_EP1_Locale_02.package` differ |
+| 4 | offset | 96 for the first record, which is the data start |
+| 8 | stored_size, bit 31 set | contiguity holds |
+| 12 | decompressed_size | greater than the stored size |
+| 16 | group_id | `0x0001FFFF` throughout |
+
+`[UNKNOWN]` This variant appears to carry no `type_id`. That is plausible, since a locale
+package holds only locale data, but it is unconfirmed.
+
+### 6.4 Consequence for a reader
+
+`[INFERRED]` The record shape varies per file, so a reader must determine `R` from the
+package rather than assuming 28. The recommended approach, and the one that works on all
+13 packages here, is: try each candidate `R` from the exact-fit equation, then keep the one
+whose records chain contiguously when sorted by offset. That is what
+`tools/dbpf_variants.py` does.
+
+Note also that `Spore_Audio1.package` and `Spore_Audio2.package`, two audio archives in the
+same install, use different record shapes. Never assume one global layout.
 
 ## 7. Resource types observed
 

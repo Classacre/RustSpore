@@ -15,9 +15,11 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 
 pub mod header;
+pub mod index;
 pub mod refpack;
 
 pub use header::{DbpfHeader, HEADER_SIZE};
+pub use index::{RecordKind, RecordShape};
 pub use refpack::{decompress, RefPackError, RefPackInfo, RefPackOutput};
 
 /// Size of one resource index record, in bytes.
@@ -143,6 +145,7 @@ pub struct DbpfFile {
     bytes: Vec<u8>,
     header: DbpfHeader,
     entries: Vec<ResourceEntry>,
+    shape: RecordShape,
 }
 
 impl DbpfFile {
@@ -159,13 +162,19 @@ impl DbpfFile {
             });
         }
 
-        let entries = parse_index(&bytes, &header)?;
+        let (shape, entries) = parse_index(&bytes, &header)?;
         Ok(Self {
             path,
             bytes,
             header,
             entries,
+            shape,
         })
+    }
+
+    /// The record shape that was detected for this package.
+    pub fn record_shape(&self) -> RecordShape {
+        self.shape
     }
 
     /// The parsed header.
@@ -250,67 +259,20 @@ impl DbpfFile {
 
 /// Parse the resource index described by `header`.
 ///
-/// Layout, all measured: a 4-byte prefix, `index_entry_count` records of
-/// [`INDEX_RECORD_SIZE`] bytes, then a 4-byte trailer. The block begins at
-/// `header.index_offset` and runs for `header.index_size` bytes.
-fn parse_index(bytes: &[u8], header: &DbpfHeader) -> Result<Vec<ResourceEntry>, DbpfError> {
-    let count = header.index_entry_count as u64;
-    let needed = (INDEX_PREFIX_SIZE + INDEX_TRAILER_SIZE) as u64 + count * INDEX_RECORD_SIZE as u64;
-    let available = u64::from(header.index_size);
-
-    if needed > available {
-        return Err(DbpfError::UnsupportedIndexLayout {
-            count: header.index_entry_count,
-            needed,
-            available,
-            index_offset: header.index_offset,
-            index_size: header.index_size,
-        });
-    }
-
-    let base = header.index_offset as usize + INDEX_PREFIX_SIZE;
-    let end = base + header.index_entry_count as usize * INDEX_RECORD_SIZE;
-    if end > bytes.len() {
-        return Err(DbpfError::TruncatedHeader {
-            actual: bytes.len(),
-            needed: end,
-        });
-    }
-
-    let mut entries = Vec::with_capacity(header.index_entry_count as usize);
-    for i in 0..header.index_entry_count as usize {
-        let at = base + i * INDEX_RECORD_SIZE;
-        let u = |o: usize| -> u32 {
-            u32::from_le_bytes(
-                bytes[at + o..at + o + 4]
-                    .try_into()
-                    .expect("bounds checked above"),
-            )
-        };
-        // Field order measured by cardinality: group and type are
-        // low-cardinality, the two instance words are not.
-        let group_id = u(0);
-        let type_id = u(4);
-        let instance_hi = u(8);
-        let instance_lo = u(12);
-        let offset = u(16);
-        // Bit 31 of the size word is set on every record, so it is masked off.
-        let stored_size = u(20) & 0x7FFF_FFFF;
-        let decompressed_size = u(24);
-
-        entries.push(ResourceEntry {
-            key: ResourceKey {
-                type_id,
-                group_id,
-                instance_id: ((instance_hi as u64) << 32) | instance_lo as u64,
-            },
-            offset,
-            stored_size,
-            decompressed_size,
-        });
-    }
-
-    Ok(entries)
+/// The record shape is **not** constant across retail packages. Three variants were
+/// measured, differing in record size and in field order. `index::detect` picks the
+/// shape that consumes the index block exactly and whose records chain contiguously
+/// when sorted by offset. See `docs/dbpf-format.md` section 6.
+fn parse_index(
+    bytes: &[u8],
+    header: &DbpfHeader,
+) -> Result<(RecordShape, Vec<ResourceEntry>), DbpfError> {
+    index::detect(
+        bytes,
+        header.index_offset,
+        header.index_size,
+        header.index_entry_count,
+    )
 }
 
 #[cfg(test)]
@@ -463,23 +425,18 @@ mod tests {
     }
 
     #[test]
-    fn index_that_does_not_fit_the_record_layout_is_refused() {
-        // Mimic the real failing case: a count too large for the index block.
+    fn index_that_no_shape_can_consume_is_refused() {
+        // 4 entries in a 100-byte block. No candidate fits: the shapes need
+        // 120 (28-byte), 108 (24-byte) or 96 (20-byte) bytes for 4 records.
         let mut buf = synthetic_header(4);
-        buf[0x2C..0x30].copy_from_slice(&96u32.to_le_bytes());
+        buf[0x2C..0x30].copy_from_slice(&100u32.to_le_bytes());
         buf[0x40..0x44].copy_from_slice(&0x60u32.to_le_bytes());
-        buf.resize(0x60 + 96, 0);
+        buf.resize(0x60 + 100, 0);
 
         match parse_index(&buf, &DbpfHeader::parse(&buf).expect("header")) {
-            Err(DbpfError::UnsupportedIndexLayout {
-                count,
-                needed,
-                available,
-                ..
-            }) => {
+            Err(DbpfError::UnsupportedIndexLayout { count, available, .. }) => {
                 assert_eq!(count, 4);
-                assert_eq!(needed, 120);
-                assert_eq!(available, 96);
+                assert_eq!(available, 100);
             }
             other => panic!("expected UnsupportedIndexLayout, got {other:?}"),
         }

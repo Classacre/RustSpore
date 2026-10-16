@@ -61,6 +61,12 @@ fn print_package(path: &str) {
         }
     );
 
+    let shape = file.record_shape();
+    println!(
+        "  record shape     : {}-byte records, {} byte prefix, {} byte trailer ({:?})",
+        shape.record_size, shape.prefix_size, shape.trailer_size, shape.kind
+    );
+
     let entries = file.entries();
     let coded = entries.iter().filter(|e| e.is_coded()).count();
     println!(

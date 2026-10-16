@@ -47,28 +47,50 @@ little endian.
 
 ## Index layout
 
-```
-u32 prefix            (4 bytes, measured as 4 everywhere)
-N x 28-byte records   (N = index_entry_count)
-u32 trailer           (4 bytes, 0x0001FFFF or 0x00010000)
-```
+The record shape is **not** constant across retail packages. Three variants were measured
+in one install, and all 13 packages fit one of them exactly:
 
-Each 28-byte record is seven little-endian u32 fields, in order: `group_id`, `type_id`,
-`instance_hi`, `instance_lo`, `offset`, `stored_size`, `decompressed_size`. The resource
-key is `(type_id, group_id, (instance_hi << 32) | instance_lo)`.
+| Packages | Prefix | Record | Trailer | Record fields |
+| --- | --- | --- | --- | --- |
+| 10 of 13 | 4 | 28 | 4 | `group, type, instance_hi, instance_lo, offset, stored_size, decompressed_size` |
+| `Spore_Audio1.package` | 12 | 24 | 0 | `type, instance, offset, stored_size, decompressed_size, group` |
+| both EP1 locale packages | 16 | 20 | 0 | `hash, offset, stored_size, decompressed_size, group` |
 
-Bit 31 of `stored_size` is set on 100% of records in every package that parses, so it
-carries no per-resource information and is masked off. The raw-versus-coded rule is
+A measured invariant holds across all 13: `prefix + record_size + trailer == 36`.
+
+`index::detect` chooses the shape using two constraints. First, exact fit:
+`prefix + count * record_size + trailer == index_size`. That narrows the candidates but
+does not decide between them, because for one real package two shapes both fit. Second,
+contiguity: payloads are packed, so when records are sorted by offset each resource should
+end where the next begins. The best-scoring shape wins. On the real packages the correct
+shape scores 100% and the wrong one far lower.
+
+Bit 31 of `stored_size` is set on 100% of records in every package, so it carries no
+per-resource information and is masked off. The raw-versus-coded rule is
 `stored_size == decompressed_size` means raw.
+
+## Validation status
+
+Two independent checks pass against real data.
+
+- **Codec**: 800 coded resources across two packages decompressed to exactly the size
+  declared by the DBPF index, using only the size declared inside the stream.
+- **Whole pipeline**: 13,174 PNG resources decoded across three packages, and every chunk
+  CRC of every image verified. 100.0% valid, 214 MB decoded. A CRC match cannot be
+  satisfied by producing the right number of wrong bytes, so this validates the header
+  parse, index location, record field order, raw-versus-coded rule and the codec
+  byte-exactly.
+
+**This crate has never been compiled.** No C linker is installed on the development
+machine, so `cargo build` cannot link. The Rust here is a direct port of working Python
+(`tools/refpack.py`, `tools/dbpf_variants.py`) and its unit tests are written but unrun.
+Treat it as unverified until a toolchain with MSVC Build Tools is available.
 
 ## Not implemented
 
-- The index layout for three packages. `Spore_Audio1.package`,
-  `Spore_EP1_Locale_01.package` and `Spore_EP1_Locale_02.package` do not fit the 28-byte
-  record and surface as `DbpfError::UnsupportedIndexLayout`. See `docs/dbpf-format.md`
-  section 6. The reader refuses to guess rather than silently mis-parsing them.
 - Decoders for the payload types themselves (prop, RW4, gmsh, anim). Decompression is
-  implemented; interpreting the decompressed bytes is not.
+  implemented; interpreting the decompressed bytes is not. See `docs/roadmap.md` phase 1
+  and `docs/engine-architecture.md` for the leads on RW4 and Cal3D.
 
 ## Reference measurements
 

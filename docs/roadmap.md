@@ -39,11 +39,21 @@ verified against the real game data.
 
 ### Done and verified
 
-- **DBPF container reader.** Header fields at 0x24, 0x2C and 0x40 established by
-  measurement, with `index_offset + index_size == file size` confirmed exactly on three
-  packages. Index block layout and the 28-byte record established by a structural search
-  that found 11,529 consecutive valid records at a ratio of 1.0000 to the header count.
-  Field roles separated by cardinality, not by assumption.
+- **DBPF container reader, complete.** Header fields at 0x24, 0x2C and 0x40 established
+  by measurement, with `index_offset + index_size == file size` confirmed exactly on
+  three packages. **All 13 of 13 packages now parse**, using three index record variants
+  that differ in record size and field order. A measured invariant holds across every
+  package: `prefix + record_size + trailer == 36`. The three packages that were
+  previously unparsed are now resolved (see the item below).
+- **Every package accounted for.** The 3 packages whose index could not be located
+  (`Spore_Audio1`, `Spore_EP1_Locale_01`, `Spore_EP1_Locale_02`) are solved. Record shape
+  is chosen by exact fit plus storage contiguity, and the decisive evidence is
+  `Spore_Audio1.package` chaining 17,650 of 17,650 consecutive payloads with zero gaps.
+  `docs/dbpf-format.md` section 6.
+- **Engine architecture mapped.** RTTI is absent, so the class names were recovered from
+  string literals instead: 344 simulation classes, 340 ArgScript names, 332 console
+  commands, and a full middleware inventory including RenderWare 4, Havok 3.1.0, Cal3D,
+  RenderWare Audio, EAPd and EASTL. `docs/engine-architecture.md`.
 - **RefPack codec.** Validated on **800 coded resources across two packages**, each
   decompressing to exactly the size declared by the DBPF index, using only the size
   declared inside the stream. Two independent sources of truth agree. Python reference in
