@@ -13,8 +13,8 @@ mostly still open. It is deliberately blunt about that.
 |---|---|---|
 | `0x2F7D0004` | PNG | **decoded.** Standard PNG. 13,174 extracted, all CRCs valid. |
 | `0x00B1B104` | prop | **decoded.** 11,640 of 11,953 (97.38%) parse exactly. Zero overruns. Remaining 2.6% are clustered in groups `0x0001FFFF` and `0x00010000`, likely variant layouts. |
-| `0x2F4E681B` | RW4 | **magic identified.** PNG-style signature `89 52 57 34 77 33 32 00 0d 0a 1a 0a` ("RW4w32"), trailer `0xCAFED00D`. Container for RenderWare 4 objects. See below. |
-| `0x2F4E681C` | RASTER | **magic identified.** Header starts `01 00 00 00`; sub-formats include DXT5 and raw pixels. Not the same format as RW4. See below. |
+| `0x2F4E681B` | RW4 | **header decoded.** Magic signature found, two subtypes (0x01 and 0x04), footer invariant measured. Object dispatch not yet implemented. See below. |
+| `0x2F4E681C` | RASTER | **decoded and validated.** DXT1, DXT5, and raw RGBA sub-formats. Extracted to PNG with zero errors. See below. |
 | `0x01C135DA` | gmsh mesh | not decoded. |
 | `0xEE17C6AD` | anim | not decoded. Bound to Cal3D, so the format is public. |
 | `0x5CAA5E28` | blockdata | not decoded. |
