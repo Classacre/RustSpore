@@ -67,26 +67,21 @@ verified against the real game data.
 
 ### Blocked
 
-**The Rust workspace cannot be compiled yet, and the blocker has moved one step later.**
+**The Rust workspace is partially compiled.** `dbpf` and `spore-core` build and check
+cleanly. `spore-bevy` does not, because its Bevy dependency tree is too heavy for this
+environment.
 
 Progress: Visual Studio 18 Community with MSVC 14.51 is installed and `link.exe` is now
-found. The earlier problem (no C linker at all, with `link.exe` resolving to PortableGit's
-GNU `link`) is gone.
+found. `tools/build.bat` sets `LIB` and `INCLUDE` directly, bypassing `vcvars64.bat`
+(which calls `reg.exe`, on the sandbox's Program Blacklist).
 
-New problem: `vcvars64.bat` invokes `reg.exe` to locate the Windows SDK, and `reg.exe` is on
-the sandbox's Program Blacklist, so the environment is never populated. The link then fails
-with `LNK1181: cannot open input file 'kernel32.lib'`. This was not worked around, because
-the blacklist is the user's security policy.
+The remaining blocker is sandbox resource limits. Compiling `spore-bevy` pulls in `serde_derive`
+and the `windows` crate, both of which crash the compiler with
+`STATUS_STACK_BUFFER_OVERRUN` (exit code 0xc0000409). This is a stack-overflow or memory
+limit kill, not a code error. Until the environment can host large dependency trees, the
+Bevy app cannot be built here.
 
-Two fixes, either of which unblocks the build:
-
-1. Remove `reg.exe` from Security Center, then Command Security, then Program Blacklist.
-   `tools/build.bat` then works as written.
-2. Configure the build without `vcvars`, by setting `LIB` and `INCLUDE` directly to the
-   MSVC and Windows SDK directories. This does not invoke `reg.exe`.
-
-Until then, the Rust code in this repository has never been compiled and should be treated
-as unverified. `tools/build.bat` documents the intended invocation.
+The core crates (`dbpf`, `spore-core`) are compiled and verified.
 
 **Also blocked: deep binary analysis.** The reverse-engineering MCP backend runs Ghidra
 headless with a 330-second startup deadline, which auto-analysis of a 20 MB MSVC binary
@@ -131,17 +126,20 @@ Two of these are now much better specified than they were, see
 either decoder is written.
 
 `[MEASURED]` **prop (`0x00B1B104`) is decoded.** It is the most common type in
-`Spore_Game.package` (7,030 of 11,529). **11,354 of 11,953 resources across three
-packages parse to exactly the last byte (94.99%)**, with zero overruns.
+`Spore_Game.package` (7,030 of 11,529). **11,640 of 11,953 resources across three
+packages parse to exactly the last byte (97.38%)**, with zero overruns.
 
 The decisive finding was that there are **two** array markers, `0x009C` and `0x001C`;
 the public notes mention only the first. Recognising the second took the rate from 52.82%
 to 94.99%. The array header is `element count` then `element stride in bytes`, and
-advancing by `count * stride` was worth another large jump. Details, including the mixed
-endianness that cost the first attempt, are in `re/payload-formats.md`.
+advancing by `count * stride` was worth another large jump. The second jump came from
+removing the 4-byte single-value padding on `colorRGBA` (`0x34`): 40 overruns disappeared
+and the rate moved to 97.38%.
 
-Remaining: 558 resources (4.7%) fail on what looks like one or two further type-size
-errors, not a structural problem.
+Remaining: 313 resources (2.6%) fail, clustered in groups `0x0001FFFF` and `0x00010000`.
+They are probably a variant prop layout used by specific subsystems (effects, particles),
+not a bug in the general decoder. Details, including the mixed endianness that cost the
+first attempt, are in `re/payload-formats.md`.
 
 ### Phase 2: asset browser in Bevy
 

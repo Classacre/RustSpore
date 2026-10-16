@@ -101,8 +101,9 @@ FIXED = {
 # Extra bytes a SINGLE value of these types carries. Arrays do not get this; the
 # array stride covers them. Measured: applying this moved the rate from 42.40% to
 # 68.17% at that stage.
+# NOTE: colorRGBA (0x34) is deliberately absent. It is 16 bytes with no padding.
 SINGLE_PADDING = {
-    0x30: 4, 0x31: 4, 0x32: 4, 0x33: 4, 0x34: 4, 0x38: 4, 0x39: 4,
+    0x30: 4, 0x31: 4, 0x32: 4, 0x33: 4, 0x38: 4, 0x39: 4,
 }
 
 BOOL_SIZE = 1

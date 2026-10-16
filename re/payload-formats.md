@@ -12,7 +12,7 @@ mostly still open. It is deliberately blunt about that.
 | Type | Name | Status |
 |---|---|---|
 | `0x2F7D0004` | PNG | **decoded.** Standard PNG. 13,174 extracted, all CRCs valid. |
-| `0x00B1B104` | prop | **not decoded.** See below. |
+| `0x00B1B104` | prop | **decoded.** 11,640 of 11,953 (97.38%) parse exactly. Zero overruns. Remaining 2.6% are clustered in groups `0x0001FFFF` and `0x00010000`, likely variant layouts. |
 | `0x2F4E681B` | RW4 | not decoded. Dispatch strategy identified, see `docs/engine-architecture.md` section 3. |
 | `0x01C135DA` | gmsh mesh | not decoded. |
 | `0xEE17C6AD` | anim | not decoded. Bound to Cal3D, so the format is public. |
@@ -22,8 +22,13 @@ mostly still open. It is deliberately blunt about that.
 
 The most common type in `Spore_Game.package`: 7,030 of 11,529 resources.
 
-Status: **decoded.** 11,354 of 11,953 resources across three packages parse to exactly
-the last byte, which is 94.99%. Zero overruns.
+Status: **decoded.** 11,640 of 11,953 resources across three packages parse to exactly
+the last byte, which is **97.38%**. Zero overruns.
+
+The remaining 313 resources (2.6%) fail with garbage type words, which means the walk
+went out of alignment. They are heavily clustered in groups `0x0001FFFF` (236 failures)
+and `0x00010000` (77 failures), so they are probably a variant prop layout used by
+specific subsystems rather than random corruption.
 
 ### Layout
 
@@ -72,8 +77,12 @@ for `"Name"`, which is how this was caught.
 
 `[MEASURED]` A single `key` is **16** bytes, not the 12 that three u32 suggests; its
 array stride is 12. Grid test: 12 bytes gives 6.51% exact, 16 gives 22.93% at that
-stage. Array elements carry no single-value padding, and the compound types
-(vector2/3/4, colour, transform, bbox) carry 4 extra bytes as single values only.
+stage. Array elements carry no single-value padding.
+
+`[MEASURED]` Compound types (vector2/3/4, colour, transform, bbox) carry 4 extra bytes
+as single values **except** `colorRGBA` (`0x34`), which is exactly 16 bytes with no
+padding. Treating it as 20 bytes produced 40 overruns; removing the padding fixed them
+and raised the rate from 94.99% to 97.38%.
 
 `[MEASURED]` Observed type frequencies over the three packages are dominated by real
 types, which is itself a check that the walk is aligned:
@@ -99,14 +108,17 @@ at the time and is still not the real rule. Fitting one case is not confirmation
 
 ### Remaining failures
 
-`[MEASURED]` 558 resources still fail, about 4.7%:
+`[MEASURED]` 313 resources still fail, about 2.6%. They are heavily clustered by group:
 
-- 40 are `colorRGBA` needing 20 bytes with 16 left, so its single-value padding is not 4
-- 36 read `0x100e` as a type word, and 28 read `0x03`, which means misalignment
-- the rest are a long tail of garbage type words
+| Group | Failures |
+|---|---|
+| `0x0001FFFF` | 236 |
+| `0x00010000` | 77 |
 
-`[INFERRED]` These look like one or two more type-size errors rather than a structural
-problem, since the walk is exact for 95% of resources.
+`[INFERRED]` These are not random corruption or a structural bug in the general layout.
+They are probably a variant prop format used by specific subsystems (effects, particles,
+or animation). The exact-consumption rate inside those groups is near zero, while outside
+them it is effectively 100%.
 
 ## Note on method
 

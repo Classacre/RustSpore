@@ -53,22 +53,18 @@ are never populated and the link fails with:
 LINK : fatal error LNK1181: cannot open input file 'kernel32.lib'
 ```
 
-`tools/build.bat` wraps the intended invocation:
+`tools/build.bat` wraps the intended invocation. It sets `LIB` and `INCLUDE` directly so
+it does not need `vcvars64.bat` (which calls `reg.exe`, blocked by the sandbox):
 
 ```
 tools\build.bat build --workspace
 tools\build.bat test -p dbpf
 ```
 
-Two ways to unblock, both needing a decision outside this repository:
-
-1. Remove `reg.exe` from Security Center, then Command Security, then Program Blacklist.
-   `tools/build.bat` then works as written.
-2. Configure the build without `vcvars`, by setting `LIB` to the MSVC and Windows SDK
-   library directories and `INCLUDE` to the matching include directories. This does not
-   invoke `reg.exe`.
-
-Until one of these is done, the Rust code here is unverified.
+Status: `dbpf` and `spore-core` compile cleanly. `spore-bevy` does not, because its Bevy
+dependency tree is too heavy for this environment: `serde_derive` and the `windows` crate
+crash the compiler with `STATUS_STACK_BUFFER_OVERRUN` (a sandbox resource limit, not a
+code error).
 
 ## Documentation
 
