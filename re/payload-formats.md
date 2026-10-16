@@ -509,8 +509,16 @@ Example: min = (-0.1, -0.1, -0.1), max = (0.1, 0.1, 0.1), then 3 zeros.
 `[MEASURED]` The 4 flag bytes at +28 show patterns like `04 04 00 00`,
 `04 00 00 00`, `04 04 04 00`. The value 0x04 appears to be a boolean true.
 
-`[UNKNOWN]` The full structure after the flags is not yet decoded. The variable
-data may contain block properties, collision data, or terrain information.
+`[MEASURED]` After the flags, 4 bytes of zeros, then variable data:
+- 36-byte samples: 3 u32 zeros (total padding after bounding box)
+- 48-byte samples: 4 zeros + 4-byte value + 8-byte hash/ID
+- 84-byte samples: 4 zeros + 48 bytes of structured data with repeating
+  byte patterns (possibly quantized vertex positions or delta-encoded data)
+
+`[UNKNOWN]` The full structure of the variable data is not yet decoded. The
+48-byte structured data in 84-byte samples shows patterns like `22 88` and
+`66 bb` repeating with changing prefixes, suggesting quantized or delta-
+encoded geometric data.
 
 ## string table, type `0xDFAD9F51`
 
