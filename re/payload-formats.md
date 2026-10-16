@@ -15,7 +15,7 @@ mostly still open. It is deliberately blunt about that.
 | `0x00B1B104` | prop | **decoded.** 11,640 of 11,953 (97.38%) parse exactly. Zero overruns. Remaining 2.6% are clustered in groups `0x0001FFFF` and `0x00010000`, likely variant layouts. |
 | `0x2F4E681B` | RW4 | **header decoded.** Magic signature found, two subtypes (0x01 and 0x04), footer invariant measured. Object dispatch not yet implemented. See below. |
 | `0x2F4E681C` | RASTER | **decoded and validated.** DXT1, DXT5, and raw RGBA sub-formats. Extracted to PNG with zero errors. See below. |
-| `0x01C135DA` | gmsh mesh | **header and attribute sections decoded.** Index section version 1 fully decoded (100% parse). Version 2+ partially decoded. See below. |
+| `0x01C135DA` | gmsh mesh | **96.6% decoded and validated.** Header, attributes, index v1 (100%), index v2+ (91.3%). See below. |
 | `0xEE17C6AD` | anim | **decoded and validated.** 1000/1000 samples (100%) parse correctly. CHAN sections, INFO/POS/ROT headers, keyframe structure all decoded. See below. |
 | `0x5CAA5E28` | blockdata | **header partially decoded.** Starts with bounding box floats. Full structure not yet solved. |
 | `0xDFAD9F51` | string table | **decoded.** Fixed 796-byte records: 4-byte hash + UTF-16LE string + null padding. |
@@ -355,17 +355,35 @@ matrices, and the index data starts at `header + 4 + count*48 + 8` (footer).
    position: the footer may be larger than 8 bytes, or there may be additional
    data between the matrices and the index data
 
-### Footer
+### Footer (between matrices and index data)
 
-`[MEASURED]` After the index data, a footer follows. The last 8 bytes are always
-`ff ff ff ff ff ff ff ff`. Before that, a BE u16 value (8, 14, 15, 26 observed) of
-unknown meaning. The footer also repeats the index count as a LE u32.
+`[MEASURED]` The footer between the transformation matrices and the index data
+is either 8 or 10 bytes:
+
+**8-byte footer** (125 samples): padding only.
+
+**10-byte footer** (64 samples): v1-style index header:
+```
++0:  BE u32 = 1 (version)
++4:  BE u16 = 0 (padding)
++6:  BE u16 = index_count - 1
++8:  BE u16 = 2 (index stride)
+```
+
+### File trailer (after index data)
+
+`[MEASURED]` After the index data, a file trailer follows. The last 8 bytes are
+always `ff ff ff ff ff ff ff ff`. Before that, a BE u16 value (8, 14, 15, 26
+observed) of unknown meaning. The trailer also repeats the index count as a
+LE u32.
 
 ### Parse rate
 
-`[MEASURED]` Version 1 index sections: 352/352 (100%) parse to exactly the last byte.
-Version 2+ index sections: not yet fully decoded. Overall header and attribute section
-parse rate: 100% across all 560 samples.
+`[VALIDATED]` **96.6% overall** (541/560 samples):
+- Version 1 index sections: 352/352 (100%) parse to exactly the last byte
+- Version 2+ index sections: 189/207 (91.3%) with variable footer (8 or 10 bytes)
+- Remaining 19 samples have stride=2 at the count/stride position, indicating
+  a different structure not yet decoded
 
 ## anim, type `0xEE17C6AD`
 
