@@ -316,14 +316,28 @@ a triangle list.
 
 **Version 2+** (BE u32 @+4 = 2 through 10, 208 of 560 samples):
 
-`[MEASURED]` The header layout differs. The actual index data starts 228+ bytes after
-the magic, preceded by sub-section headers and bounding box float data. For the
-39722-byte PatchData sample (vcount=942, version=2), 2702 valid u16 indices were found
-starting at offset 34214. The first index is 512, followed by 0, 1, 2, 3, 2, 1, 4, 5,
-6, 7, 6, 5, 8... suggesting a triangle strip with degenerate triangles.
+`[MEASURED]` The header layout differs. The actual index data starts at a variable
+offset after the magic, preceded by sub-section headers and 3x4 transformation
+matrix data. For the 39722-byte PatchData sample (vcount=942, version=2), 2702
+valid u16 indices were found starting at offset 34214. The first index is 512,
+followed by 0, 1, 2, 3, 2, 1, 4, 5, 6, 7, 6, 5, 8... suggesting a triangle strip
+with degenerate triangles.
 
-`[UNKNOWN]` The exact header layout for version 2+ is not yet decoded. The BE u32 @+4
-value (2 through 10) may indicate the number of index buffers or sub-meshes.
+`[MEASURED]` For version 2, the gap structure is:
+24 (main header) + 4 (sub-header: BE u16 count + BE u16 stride=48) +
+count * 48 (3x4 matrix data) + 8 (footer). This fits 21 of 68 version-2 samples.
+The gap = 36 + N*48 where N is the matrix count. Observed N values: 2, 3, 4, 5,
+7, 8, 9. The 48-byte matrices contain rotation/transformation data with values
+like -1.0, 0.0, 1.0 (90-degree rotations).
+
+`[MEASURED]` The header size varies by version. Version 2 has a 24-byte header,
+version 5 has a 36-byte header. The sub-header (count + stride=48) appears at
+different offsets depending on the version.
+
+`[UNKNOWN]` The exact header layout for versions 3-10 is not yet decoded. The
+BE u32 @+4 value (2 through 10) may indicate the number of index buffers,
+sub-meshes, or LOD levels. 178 of 207 v2+ samples do not fit the 36+N*48
+pattern, suggesting additional structural variants.
 
 ### Footer
 
