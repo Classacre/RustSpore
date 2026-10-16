@@ -197,20 +197,42 @@ field at offset 28 is a subtype discriminator with two values (0x01 and 0x04).
 never appears alongside `0x2F4E681B` in the same package. The two types are **different
 formats**, not variants of the same container.
 
-`[MEASURED]` The first u32 (big-endian) is `0x00000001` in every sample. It may be a count
-or a version.
+`[MEASURED]` Header structure (28 bytes, little-endian):
 
-`[MEASURED]` At least two sub-formats exist:
+```
+offset  0: version    (u32, always 0x00000001)
+offset  4: width      (u32)
+offset  8: height     (u32)
+offset 12: mipmaps    (u32)
+offset 16: unknown    (u32, always 0x00000008)
+offset 20: format     (u32: 0x31545844 = "DXT1", 0x35545844 = "DXT5", 0x15 = raw RGBA)
+offset 24: data_size  (u32, size of the first/largest mip)
+offset 28: texture data
+```
 
-1. **DXT5 compressed**: offset 24 carries the four bytes `44 58 54 35` = `"DXT5"`. The
-   payload after the header is a DXT5 compressed texture.
-2. **Raw pixels**: offset 24 carries pixel data directly (sample shows repeating
-   `ff 80 80 00`, a pinkish colour).
+`[MEASURED]` Three sub-formats exist:
+
+| Format code | Name | Count (sampled) |
+|---|---|---|
+| `0x35545844` | DXT5 | 123 |
+| `0x00000015` | Raw RGBA | 59 |
+| `0x31545844` | DXT1 | 18 |
+
+`[MEASURED]` The texture data includes all mipmaps, packed consecutively. A 512x512
+DXT5 texture with 10 mips occupies 349,552 bytes; the file is 349,616 bytes, so the
+overhead is 64 bytes (28-byte header + 36 bytes of metadata/footer).
+
+`[MEASURED]` The raw RGBA format uses BGRA byte ordering; channels must be swapped to
+produce correct colours.
+
+`[VALIDATED]` `tools/raster_extract.py` decodes DXT5, DXT1 and raw RGBA to PNG. Twenty
+resources extracted from `Spore_Content.package` with zero errors; output PNGs are valid
+512x512 RGBA images.
 
 `[INFERRED]` This is a texture/image raster format, separate from the RW4 object
 container. It was previously listed as an unexplained "adjacent type" to RW4; the
-explanation is that they are unrelated formats that happen to have adjacent type ids in
-the DBPF index.
+explanation is that they are independent formats with adjacent type ids in the DBPF
+index.
 
 ## Note on method
 
