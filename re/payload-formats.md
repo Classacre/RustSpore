@@ -22,58 +22,74 @@ mostly still open. It is deliberately blunt about that.
 
 The most common type in `Spore_Game.package`: 7,030 of 11,529 resources.
 
-### What is established
+Status: **partially decoded.** 1,612 of 7,030 resources (22.93%) parse exactly, meaning
+the walk ends precisely on the last byte.
 
-`[MEASURED]` Prop payloads contain **length-prefixed UTF-16LE strings**. Several were
-read cleanly, where the length word and the character count agree exactly:
+### Confirmed
 
-| Bytes | Length word | String | Character count |
-|---|---|---|---|
-| `00 00 00 07` | 7 | `Details` | 7 |
-| `00 00 00 0a` | 10 | `Domes_gear` | 10 |
-| `00 00 00 16` | 22 | `Group_mkmidlegSkinny_0` | 22 |
-| `00 00 00 03` | 3 | `EMP` | 3 |
-| `00 00 00 07` | 7 | `I-Field` | 7 |
+`[MEASURED]` The layout is publicly documented (SimsWiki, via `docs/prior-art.md`
+section 4.1) and the documentation matches the bytes:
 
-`[MEASURED]` In several props the leading region reads as: a u32 count, then per record a
-u32, a u32 that is constant within the file (`0x0D001300` in every sample), a u32 name
-length, and then the UTF-16LE name. Two adjacent constants, `0x00B2CCCA` and `0x00B2CCCB`,
-recur as the leading word of records in different files.
+- `u32` item count, **big-endian**
+- per item: `u32` identifier (BE), `u16` type (BE), `u16` specifier (BE)
+- specifier `0x009C` means an array, preceded by an array number and array size, both
+  `u32` big-endian
+- strings are a big-endian `u32` length followed by that many bytes, UTF-16BE for type
+  `0x13`
 
-`[MEASURED]` Many prop resources are 4 bytes and contain a single zero u32. Whatever the
-structure is, it has a trivially empty form.
+`[MEASURED]` The documented type ids appear in real data, which is independent
+confirmation of the record header:
 
-### Why it is still open
+| Type | Name | Occurrences in `Spore_Game.package` |
+|---|---|---|
+| `0x000d` | float | 3,829 |
+| `0x0020` | key | 3,533 |
+| `0x000a` | uint32 | 1,691 |
+| `0x0013` | string (UTF-16) | 1,475 |
+| `0x0001` | bool | 754 |
+| `0x0009` | int32 | observed |
+| `0x0034`, `0x0033`, `0x0031`, `0x0012` | colorRGBA, vector4, vector3, string8 | observed |
 
-`[MEASURED]` The value encoding that follows each name is unknown, so a reader cannot
-advance from one record to the next. Without that, the only available strategy is to scan
-for the length-prefix pattern, and the scan is demonstrably unreliable.
+`[INFERRED]` A useful sanity check on the earlier work: the first attempt read
+`00 13 00 0d` as a constant u32 `0x0D001300`. It is in fact `type = 0x0013` plus
+`specifier = 0x000D`, which is exactly where the documentation puts them. The earlier
+reading was one field-width away from correct.
 
-The failure is measurable and worth recording, because it is what exposed the problem.
-`tools/prop_names.py` scans for the pattern and, with no identifier filter, returns mostly
-localisation text (`Welcome (PLACEHOLDER)`, `Your creature is an herbivore!`). Adding a
-filter for identifier-shaped names removes the prose but then returns **truncated
-fragments**: `Def`, `Too`, `Milita`, `Soci`, `Cuten`, `Influ`, `Conv`. Those are prefixes of
-`Defense`, `Tool`, `Military`, `Social`, `Cute`, `Influence`, `Conversation`.
+### Padding, measured
 
-`[INFERRED]` A scan that returns a word prefix is landing mid-string and reading a byte
-that happens to look like a short length. That means the assumed record header is wrong, so
-the pattern is being matched at wrong offsets. The extracted "vocabulary" is therefore not
-trustworthy and is not presented as a result.
+`[MEASURED]` The documentation warns that padding varies per type and per
+single-versus-array context, and that a single `key` carries an extra u32. Measuring the
+effect on the exact-consumption rate over 7,030 resources:
 
-`[MEASURED]` Coverage is also poor: only 25 of 11,953 prop resources across three packages
-yielded any identifier-shaped name at all.
+| Configuration | Resources consuming exactly |
+|---|---|
+| no padding | 459 (6.53%) |
+| `key` +4 | 1,322 (18.81%) |
+| `key`, `vector3` +4 | 1,328 (18.89%) |
+| all compound types +4 | **1,612 (22.93%)** |
 
-### What would settle it
+So `key` padding alone accounts for most of the gain, and the wider compound set is
+confirmed by the same measurement.
 
-1. A prop with uniform record types, where the value stride can be read off by inspection.
-2. Decompilation of the prop reader, which needs a working analysis toolchain. Ghidra could
-   not finish a 20 MB binary inside its deadline.
-3. Public documentation of the prop format. `docs/prior-art.md` section 4.1 records what
-   public sources say, which is a description of intent rather than a byte layout.
+### Blockers
 
-Until one of those lands, the prop format stays an open item, and the honest statement is
-that the payload contains readable strings but its structure is not known.
+- **`texts` (type `0x22`).** Layout unknown. The candidate implemented in
+  `tools/prop_parse.py` (a count, then triples of key, length and UTF-16 text) does
+  **not** raise the rate, so it is probably wrong. It is kept so the failure is
+  reproducible.
+- **`type 0x00`**, responsible for 1,432 failures. Not in the documented type list.
+  Possibly a terminator or an empty slot.
+- **Overrun in 1,388 cases**, so at least one type size or padding rule is still wrong.
+
+`[INFERRED]` These three are likely one problem: a single mis-sized value early in a
+resource derails the rest of the walk, which is why garbage type words appear.
+
+### The earlier failed attempt, and why it is kept
+
+`tools/prop_names.py` scanned for length prefixes as **little-endian** and produced
+truncated fragments such as `Def` for `Defense`. The documentation explains it: the
+fields are big-endian. The tool is retained because its failure is the evidence that
+identified the error.
 
 ## Note on method
 
