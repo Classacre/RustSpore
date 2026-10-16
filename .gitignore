@@ -1,0 +1,6 @@
+# Rust build output
+/target
+
+# User-supplied game data. Nothing under here is redistributed.
+assets/extracted/
+*.package

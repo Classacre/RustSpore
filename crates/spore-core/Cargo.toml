@@ -1,0 +1,10 @@
+[package]
+name = "spore-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+description = "Engine-agnostic core types for RustSpore. No Bevy dependency."
+
+[dependencies]

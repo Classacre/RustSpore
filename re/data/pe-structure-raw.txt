@@ -1,0 +1,243 @@
+==============================================================================
+BINARY: BASE
+path: D:\Games\SPORE Collection\SporeBin\SporeApp.exe
+size: 20447744 bytes
+sha256: 17cf32b3e3adbcc7ed9c4e593c83b5d3deb3c675059b7ad9cbfd19192df5f87a
+md5: 144613253b97a2e2e2e463936360254a
+
+--- COFF / OPTIONAL HEADER ---
+Machine: 0x014c
+NumberOfSections: 7
+TimeDateStamp: 0x4a6a58c9 (2009-07-25 00:58:49 UTC)
+PointerToSymbolTable: 0x00000000
+NumberOfSymbols: 0
+SizeOfOptionalHeader: 0xe0
+Characteristics: 0x0122
+Magic: 0x010b  (0x10b=PE32, 0x20b=PE32+)
+MajorLinkerVersion: 9  MinorLinkerVersion: 0
+AddressOfEntryPoint: 0x00de0f90  (VA 0x011e0f90)
+ImageBase: 0x00400000
+SectionAlignment: 0x1000  FileAlignment: 0x200
+OS Version: 5.0
+Image Version: 0.0
+Subsystem Version: 5.0
+SizeOfImage: 0x14d3000  SizeOfHeaders: 0x400
+CheckSum: 0x0138d567
+Subsystem: 2  (2=GUI, 3=CUI)
+DllCharacteristics: 0x8140
+SizeOfStackReserve: 0x100000  Commit: 0x1000
+SizeOfHeapReserve: 0x100000  Commit: 0x1000
+NumberOfRvaAndSizes: 16
+
+--- SECTIONS ---
+name                VA       VSize      RawPtr     RawSize       Chars  Entropy
+.text     0x00001000  0x00fcae0a  0x00000400  0x00fcb000  0x60000020    6.6369
+.rdata    0x00fcc000  0x001400ae  0x00fcb400  0x00140200  0x40000040    6.2780
+.data     0x0110d000  0x00212764  0x0110b600  0x000c4c00  0xc0000040    3.7190
+.tls      0x01320000  0x0000000d  0x011d0200  0x00000200  0xc0000040    0.0000
+CONST     0x01321000  0x0000001f  0x011d0400  0x00000200  0xc0000040    0.5417
+.rsrc     0x01322000  0x000cd2dc  0x011d0600  0x000cd400  0x40000040    5.7916
+.reloc    0x013f0000  0x000e261e  0x0129da00  0x000e2800  0x42000040    6.2264
+
+--- DATA DIRECTORIES ---
+EXPORT           RVA 0x00000000  Size 0x0
+IMPORT           RVA 0x0110980c  Size 0x1a4
+RESOURCE         RVA 0x01322000  Size 0xcd2dc
+EXCEPTION        RVA 0x00000000  Size 0x0
+SECURITY         RVA 0x00000000  Size 0x0
+BASERELOC        RVA 0x013f0000  Size 0xc2c0c
+DEBUG            RVA 0x00feb100  Size 0x1c
+ARCHITECTURE     RVA 0x00000000  Size 0x0
+GLOBALPTR        RVA 0x00000000  Size 0x0
+TLS              RVA 0x010f9b60  Size 0x18
+LOAD_CONFIG      RVA 0x00000000  Size 0x0
+BOUND_IMPORT     RVA 0x00000000  Size 0x0
+IAT              RVA 0x00fcc000  Size 0x80c
+DELAY_IMPORT     RVA 0x00000000  Size 0x0
+COM_DESCRIPTOR   RVA 0x00000000  Size 0x0
+RESERVED         RVA 0x00000000  Size 0x0
+
+--- TLS ---
+StartAddressOfRawData: 0x01720000
+EndAddressOfRawData: 0x0172000c
+AddressOfIndex: 0x016f3618
+AddressOfCallBacks: 0x013eb0b4
+Callbacks: []
+
+--- LOAD CONFIG ---
+LOAD_CONFIG data directory is empty (RVA 0, size 0): no load config
+
+--- RICH HEADER ---
+XOR key: 0xd05b2bcd
+checksum valid: False (computed 0xc6b82d0c)
+entries: 16
+  prod=96 (0x60) build=4035 count=1  # Utc1310_CPP
+  prod=95 (0x5f) build=4035 count=1  # Utc1310_C
+  prod=110 (0x6e) build=50727 count=1  # Utc1400_CPP
+  prod=5 (0x5) build=8447 count=1  # Cvtomf600
+  prod=147 (0x93) build=30729 count=2  # Implib900
+  prod=150 (0x96) build=20413 count=5  # AliasObj900
+  prod=109 (0x6d) build=50727 count=5  # Utc1400_C
+  prod=149 (0x95) build=30729 count=24  # Masm900
+  prod=123 (0x7b) build=50727 count=33  # Implib800
+  prod=93 (0x5d) build=4035 count=8  # Implib710
+  prod=1 (0x1) build=0 count=558  # Import0
+  prod=96 (0x60) build=3077 count=546  # Utc1310_CPP
+  prod=131 (0x83) build=30729 count=461  # Utc1500_C
+  prod=132 (0x84) build=30729 count=1880  # Utc1500_CPP
+  prod=148 (0x94) build=21022 count=1  # Cvtres900
+  prod=145 (0x91) build=30729 count=1  # Linker900
+
+--- IMPORTS (summary) ---
+WINMM.dll: 3 imports
+WSOCK32.dll: 23 imports
+PSAPI.DLL: 1 imports
+steam_api.dll: 3 imports
+KERNEL32.dll: 148 imports
+USER32.dll: 89 imports
+GDI32.dll: 6 imports
+ADVAPI32.dll: 12 imports
+SHELL32.dll: 3 imports
+ole32.dll: 6 imports
+MSVCR90.dll: 159 imports
+VERSION.dll: 5 imports
+d3dx9_27.dll: 9 imports
+DINPUT8.dll: 1 imports
+IMM32.dll: 12 imports
+USP10.dll: 2 imports
+dbghelp.dll: 7 imports
+WS2_32.dll: 3 imports
+DSOUND.dll: 2 imports
+d3d9.dll: 1 imports
+
+--- EXPORTS ---
+no export directory parsed
+
+--- RESOURCES ---
+type id=None name=DATA entries=2
+type id=3 name=None entries=22
+type id=14 name=None entries=2
+type id=16 name=None entries=1
+type id=24 name=None entries=1
+
+==============================================================================
+BINARY: EP1
+path: D:\Games\SPORE Collection\SporebinEP1\SporeApp.exe
+size: 24888320 bytes
+sha256: 922af7c7908af2614b9caca2ffb1ec2353442022fd124866105724acaa24c26e
+md5: 5acb26fc0d340e0cef44419636419d33
+
+--- COFF / OPTIONAL HEADER ---
+Machine: 0x014c
+NumberOfSections: 7
+TimeDateStamp: 0x4a6a589e (2009-07-25 00:58:06 UTC)
+PointerToSymbolTable: 0x00000000
+NumberOfSymbols: 0
+SizeOfOptionalHeader: 0xe0
+Characteristics: 0x0122
+Magic: 0x010b  (0x10b=PE32, 0x20b=PE32+)
+MajorLinkerVersion: 9  MinorLinkerVersion: 0
+AddressOfEntryPoint: 0x00de11e1  (VA 0x011e11e1)
+ImageBase: 0x00400000
+SectionAlignment: 0x1000  FileAlignment: 0x200
+OS Version: 5.0
+Image Version: 0.0
+Subsystem Version: 5.0
+SizeOfImage: 0x190f000  SizeOfHeaders: 0x400
+CheckSum: 0x017cc1af
+Subsystem: 2  (2=GUI, 3=CUI)
+DllCharacteristics: 0x8140
+SizeOfStackReserve: 0x100000  Commit: 0x1000
+SizeOfHeapReserve: 0x100000  Commit: 0x1000
+NumberOfRvaAndSizes: 16
+
+--- SECTIONS ---
+name                VA       VSize      RawPtr     RawSize       Chars  Entropy
+.text     0x00001000  0x00fcaf2a  0x00000400  0x00fcb000  0x60000020    6.6344
+.rdata    0x00fcc000  0x00140156  0x00fcb400  0x00140200  0x40000040    6.2757
+.data     0x0110d000  0x00212764  0x0110b600  0x000c4c00  0xc0000040    3.7189
+.tls      0x01320000  0x0000000d  0x011d0200  0x00000200  0xc0000040    0.0000
+CONST     0x01321000  0x0000001f  0x011d0400  0x00000200  0xc0000040    0.5417
+.rsrc     0x01322000  0x00506b70  0x011d0600  0x00506c00  0x40000040    7.1488
+.reloc    0x01829000  0x000e5068  0x016d7200  0x000e5200  0x42000040    6.1850
+
+--- DATA DIRECTORIES ---
+EXPORT           RVA 0x00000000  Size 0x0
+IMPORT           RVA 0x011098b4  Size 0x1a4
+RESOURCE         RVA 0x01322000  Size 0x506b70
+EXCEPTION        RVA 0x00000000  Size 0x0
+SECURITY         RVA 0x00000000  Size 0x0
+BASERELOC        RVA 0x01829000  Size 0xc2bc4
+DEBUG            RVA 0x00feb100  Size 0x1c
+ARCHITECTURE     RVA 0x00000000  Size 0x0
+GLOBALPTR        RVA 0x00000000  Size 0x0
+TLS              RVA 0x010f9c10  Size 0x18
+LOAD_CONFIG      RVA 0x00000000  Size 0x0
+BOUND_IMPORT     RVA 0x00000000  Size 0x0
+IAT              RVA 0x00fcc000  Size 0x80c
+DELAY_IMPORT     RVA 0x00000000  Size 0x0
+COM_DESCRIPTOR   RVA 0x00000000  Size 0x0
+RESERVED         RVA 0x00000000  Size 0x0
+
+--- TLS ---
+StartAddressOfRawData: 0x01720000
+EndAddressOfRawData: 0x0172000c
+AddressOfIndex: 0x016f3618
+AddressOfCallBacks: 0x013eb0b4
+Callbacks: []
+
+--- LOAD CONFIG ---
+LOAD_CONFIG data directory is empty (RVA 0, size 0): no load config
+
+--- RICH HEADER ---
+XOR key: 0xd05b2bcd
+checksum valid: False (computed 0xc6b82d0c)
+entries: 16
+  prod=96 (0x60) build=4035 count=1  # Utc1310_CPP
+  prod=95 (0x5f) build=4035 count=1  # Utc1310_C
+  prod=110 (0x6e) build=50727 count=1  # Utc1400_CPP
+  prod=5 (0x5) build=8447 count=1  # Cvtomf600
+  prod=147 (0x93) build=30729 count=2  # Implib900
+  prod=150 (0x96) build=20413 count=5  # AliasObj900
+  prod=109 (0x6d) build=50727 count=5  # Utc1400_C
+  prod=149 (0x95) build=30729 count=24  # Masm900
+  prod=123 (0x7b) build=50727 count=33  # Implib800
+  prod=93 (0x5d) build=4035 count=8  # Implib710
+  prod=1 (0x1) build=0 count=558  # Import0
+  prod=96 (0x60) build=3077 count=546  # Utc1310_CPP
+  prod=131 (0x83) build=30729 count=461  # Utc1500_C
+  prod=132 (0x84) build=30729 count=1880  # Utc1500_CPP
+  prod=148 (0x94) build=21022 count=1  # Cvtres900
+  prod=145 (0x91) build=30729 count=1  # Linker900
+
+--- IMPORTS (summary) ---
+WINMM.dll: 3 imports
+WSOCK32.dll: 23 imports
+PSAPI.DLL: 1 imports
+steam_api.dll: 3 imports
+KERNEL32.dll: 148 imports
+USER32.dll: 89 imports
+GDI32.dll: 6 imports
+ADVAPI32.dll: 12 imports
+SHELL32.dll: 3 imports
+ole32.dll: 6 imports
+MSVCR90.dll: 159 imports
+VERSION.dll: 5 imports
+d3dx9_27.dll: 9 imports
+DINPUT8.dll: 1 imports
+IMM32.dll: 12 imports
+USP10.dll: 2 imports
+dbghelp.dll: 7 imports
+WS2_32.dll: 3 imports
+DSOUND.dll: 2 imports
+d3d9.dll: 1 imports
+
+--- EXPORTS ---
+no export directory parsed
+
+--- RESOURCES ---
+type id=None name=DATA entries=2
+type id=3 name=None entries=252
+type id=14 name=None entries=2
+type id=16 name=None entries=1
+type id=24 name=None entries=1

@@ -1,0 +1,28 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/dbpf",
+    "crates/spore-core",
+    "crates/spore-bevy",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.93"
+repository = "https://example.invalid/rustspore"
+
+[workspace.dependencies]
+dbpf = { path = "crates/dbpf" }
+spore-core = { path = "crates/spore-core" }
+thiserror = "2"
+# Bevy 0.20 and 0.19 require rustc 1.97.1 and 1.95.0 respectively. The installed
+# toolchain is 1.93.1, so the workspace pins the newest Bevy that builds on it.
+bevy = "0.18"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

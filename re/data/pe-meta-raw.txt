@@ -1,0 +1,1061 @@
+==============================================================================
+BINARY: BASE  (D:\Games\SPORE Collection\SporeBin\SporeApp.exe)
+size=20447744 sha256=17cf32b3e3adbcc7ed9c4e593c83b5d3deb3c675059b7ad9cbfd19192df5f87a
+
+--- RAW DATA DIRECTORIES (16) ---
+  [ 0] RVA=0x00000000 Size=0x0
+  [ 1] RVA=0x0110980c Size=0x1a4
+  [ 2] RVA=0x01322000 Size=0xcd2dc
+  [ 3] RVA=0x00000000 Size=0x0
+  [ 4] RVA=0x00000000 Size=0x0
+  [ 5] RVA=0x013f0000 Size=0xc2c0c
+  [ 6] RVA=0x00feb100 Size=0x1c
+  [ 7] RVA=0x00000000 Size=0x0
+  [ 8] RVA=0x00000000 Size=0x0
+  [ 9] RVA=0x010f9b60 Size=0x18
+  [10] RVA=0x00000000 Size=0x0
+  [11] RVA=0x00000000 Size=0x0
+  [12] RVA=0x00fcc000 Size=0x80c
+  [13] RVA=0x00000000 Size=0x0
+  [14] RVA=0x00000000 Size=0x0
+  [15] RVA=0x00000000 Size=0x0
+
+--- DEBUG DIRECTORY ---
+  {'type': 2, 'size': 104, 'addr_raw': '0x10f9b78', 'ptr_raw': '0x10f8f78', 'timestamp': '0x4a6a58c9', 'pdb': 'c:\\BuildAgent\\cm-spore040-spore\\CMBuild\\SporeEP1\\out\\Win32\\Release\\SporeApp.pdb', 'pdb_guid': 'b2e186bc571f1a4ab5cbe11733bb8d85', 'pdb_age': 121}
+
+--- FIXED FILE INFO ---
+  {'filevers': '1.2.0.2818', 'prodvers': '1.2.0.2818', 'fileflags': '0x28', 'fileos': '0x4', 'filetype': '0x1', 'filesubtype': '0x0'}
+
+--- VERSION STRINGS ---
+  'VS_VERSION_INFO'
+  'StringFileInfo'
+  '040904b0'
+  't*'
+  'CompanyName'
+  'Maxis, a division of Electronic Arts Inc.'
+  'FileDescription'
+  'Spore'
+  'FileVersion'
+  '1.2.0.2818'
+  'InternalName'
+  'Spore'
+  'p&'
+  'LegalCopyright'
+  'Copyright '
+  ' 2008 Electronic Arts Inc.'
+  'LegalTrademarks'
+  'Spore'
+  ' is a trademark of Electronic Arts Inc.'
+  'OriginalFilename'
+  'SporeApp.exe'
+  'ProductName'
+  'Spore'
+  'ProductVersion'
+  '1.2.0.2818'
+  'SpecialBuild'
+  'Shipping'
+  'Debug Version'
+  '2009-07-24-1719 (by codebuilder on CM-SPORE040 )'
+  'VarFileInfo'
+  'Translation'
+
+--- MANIFEST ---
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false"></requestedExecutionLevel>
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity type="win32" name="Microsoft.VC90.CRT" version="9.0.21022.8" processorArchitecture="x86" publicKeyToken="1fc8b3b9a1e18e3b"></assemblyIdentity>
+    </dependentAssembly>
+  </dependency>
+</assembly>
+
+--- RESOURCE TREE ---
+  type None (DATA): 2 entries
+      __GDF_THUMBNAIL[1024]
+      __GDF_XML[1024]
+  type 3 (ICON): 22 entries
+      1[1033]
+      2[1033]
+      3[1033]
+      4[1033]
+      5[1033]
+      6[1033]
+      7[1033]
+      8[1033]
+      9[1033]
+      10[1033]
+      11[1033]
+      12[1024]
+      13[1024]
+      14[1024]
+      15[1024]
+      16[1024]
+      17[1024]
+      18[1024]
+      19[1024]
+      20[1024]
+      21[1024]
+      22[1024]
+  type 14 (GROUP_ICON): 2 entries
+      IDI_APPICON[1033]
+      101[1024]
+  type 16 (VERSION): 1 entries
+      1[1033]
+  type 24 (MANIFEST): 1 entries
+      1[1033]
+
+--- EXPORTS ---
+  no export directory
+
+==============================================================================
+BINARY: EP1  (D:\Games\SPORE Collection\SporebinEP1\SporeApp.exe)
+size=24888320 sha256=922af7c7908af2614b9caca2ffb1ec2353442022fd124866105724acaa24c26e
+
+--- RAW DATA DIRECTORIES (16) ---
+  [ 0] RVA=0x00000000 Size=0x0
+  [ 1] RVA=0x011098b4 Size=0x1a4
+  [ 2] RVA=0x01322000 Size=0x506b70
+  [ 3] RVA=0x00000000 Size=0x0
+  [ 4] RVA=0x00000000 Size=0x0
+  [ 5] RVA=0x01829000 Size=0xc2bc4
+  [ 6] RVA=0x00feb100 Size=0x1c
+  [ 7] RVA=0x00000000 Size=0x0
+  [ 8] RVA=0x00000000 Size=0x0
+  [ 9] RVA=0x010f9c10 Size=0x18
+  [10] RVA=0x00000000 Size=0x0
+  [11] RVA=0x00000000 Size=0x0
+  [12] RVA=0x00fcc000 Size=0x80c
+  [13] RVA=0x00000000 Size=0x0
+  [14] RVA=0x00000000 Size=0x0
+  [15] RVA=0x00000000 Size=0x0
+
+--- DEBUG DIRECTORY ---
+  {'type': 2, 'size': 104, 'addr_raw': '0x10f9c28', 'ptr_raw': '0x10f9028', 'timestamp': '0x4a6a589e', 'pdb': 'c:\\BuildAgent\\cm-spore041-spore\\CMBuild\\SporeEP1\\out\\Win32\\Release\\SporeApp.pdb', 'pdb_guid': '8683feffb8dfd147b7f08d7b44d688fa', 'pdb_age': 105}
+
+--- FIXED FILE INFO ---
+  {'filevers': '3.0.0.2818', 'prodvers': '3.0.0.2818', 'fileflags': '0x28', 'fileos': '0x4', 'filetype': '0x1', 'filesubtype': '0x0'}
+
+--- VERSION STRINGS ---
+  'VS_VERSION_INFO'
+  'StringFileInfo'
+  '040404b0'
+  'v+'
+  'CompanyName'
+  'Maxis, a division of Electronic Arts Inc. '
+  'FileDescription'
+  'SPORE(TM)'
+  'FileVersion'
+  '3.0.0.2818'
+  'InternalName'
+  'SPORE(TM)'
+  'LegalCopyright'
+  'Copyright '
+  ' 2009 Electronic Arts Inc. All Rights Reserved. '
+  'LegalTrademarks'
+  'SPORE??Galactic Adventures is a trademark of Electronic Arts Inc. '
+  'OriginalFilename'
+  'SporeApp.exe'
+  'ProductName'
+  'SPORE(TM)'
+  'ProductVersion'
+  '3.0.0.2818'
+  'SpecialBuild'
+  'Shipping'
+  'Debug Version'
+  '2009-07-24-1717 (by codebuilder on CM-SPORE041 )'
+  'VarFileInfo'
+  'Translation'
+  'VS_VERSION_INFO'
+  'StringFileInfo'
+  '040504b0'
+  't*'
+  'CompanyName'
+  'Maxis, a division of Electronic Arts Inc.'
+  'h '
+  'FileDescription'
+  'SPORE'
+  ' Galaktick'
+  ' dobrodru'
+  'stv'
+  'FileVersion'
+  '3.0.0.2818'
+  '` '
+  'InternalName'
+  'SPORE'
+  ' Galaktick'
+  ' dobrodru'
+  'stv'
+  'LegalCopyright'
+  'Copyright '
+  ' 2009 Electronic Arts Inc. All Rights Reserved.'
+  'LegalTrademarks'
+  'SPORE'
+  ' Galactic Adventures is a trademark of Electronic Arts Inc.'
+  'OriginalFilename'
+  'SporeApp.exe'
+  '` '
+  'ProductName'
+  'SPORE'
+  ' Galaktick'
+  ' dobrodru'
+  'stv'
+  'ProductVersion'
+  '3.0.0.2818'
+  'SpecialBuild'
+  'Shipping'
+  'Debug Version'
+  '2009-07-24-1717 (by codebuilder on CM-SPORE041 )'
+  'VarFileInfo'
+  'Translation'
+  'VS_VERSION_INFO'
+  'StringFileInfo'
+  '040604b0'
+  't*'
+  'CompanyName'
+  'Maxis, a division of Electronic Arts Inc.'
+  'FileDescription'
+  'SPORE'
+  ' Galactic Adventures'
+  'FileVersion'
+  '3.0.0.2818'
+  'InternalName'
+  'SPORE'
+  ' Galactic Adventures'
+  'LegalCopyright'
+  'Copyright '
+  ' 2009 Electronic Arts Inc. All Rights Reserved.'
+  'LegalTrademarks'
+  'SPORE'
+  ' Galactic Adventures is a trademark of Electronic Arts Inc.'
+  'OriginalFilename'
+  'SporeApp.exe'
+  'ProductName'
+  'SPORE'
+  ' Galactic Adventures'
+  'ProductVersion'
+  '3.0.0.2818'
+  'SpecialBuild'
+  'Shipping'
+  'Debug Version'
+  '2009-07-24-1717 (by codebuilder on CM-SPORE041 )'
+  'VarFileInfo'
+  'Translation'
+  'VS_VERSION_INFO'
+  'StringFileInfo'
+  '040704b0'
+  't*'
+  'CompanyName'
+  'Maxis, a division of Electronic Arts Inc.'
+  'FileDescription'
+  'SPORE'
+  ' Galaktische Abenteuer'
+  'FileVersion'
+  '3.0.0.2818'
+  'InternalName'
+  'SPORE'
+  ' Galaktische Abenteuer'
+  'LegalCopyright'
+  'Copyright '
+  ' 2009 Electronic Arts Inc. All Rights Reserved.'
+  'LegalTrademarks'
+  'SPORE'
+  ' Galactic Adventures is a trademark of Electronic Arts Inc.'
+  'OriginalFilename'
+  'SporeApp.exe'
+  'ProductName'
+  'SPORE'
+  ' Galaktische Abenteuer'
+  'ProductVersion'
+  '3.0.0.2818'
+  'SpecialBuild'
+  'Shipping'
+  'Debug Version'
+  '2009-07-24-1717 (by codebuilder on CM-SPORE041 )'
+  'VarFileInfo'
+  'Translation'
+  'VS_VERSION_INFO'
+  'StringFileInfo'
+  '040804b0'
+  't*'
+  'CompanyName'
+  'Maxis, a division of Electronic Arts Inc.'
+  'FileDescription'
+  'SPORE'
+  ' Galactic Adventures'
+  'FileVersion'
+  '3.0.0.2818'
+  'InternalName'
+  'SPORE'
+  ' Galactic Adventures'
+  'LegalCopyright'
+  'Copyright '
+  ' 2009 Electronic Arts Inc. All Rights Reserved.'
+  'LegalTrademarks'
+  'SPORE'
+  ' Galactic Adventures is a trademark of Electronic Arts Inc.'
+  'OriginalFilename'
+  'SporeApp.exe'
+  'ProductName'
+  'SPORE'
+  ' Galactic Adventures'
+  'ProductVersion'
+  '3.0.0.2818'
+  'SpecialBuild'
+  'Shipping'
+  'Debug Version'
+  '2009-07-24-1717 (by codebuilder on CM-SPORE041 )'
+  'VarFileInfo'
+  'Translation'
+  'VS_VERSION_INFO'
+  'StringFileInfo'
+  '040904b0'
+  't*'
+  'CompanyName'
+  'Maxis, a division of Electronic Arts Inc.'
+  'FileDescription'
+  'SPORE'
+  ' Galactic Adventures'
+  'FileVersion'
+  '3.0.0.2818'
+  'InternalName'
+  'SPORE'
+  ' Galactic Adventures'
+  'LegalCopyright'
+  'Copyright '
+  ' 2009 Electronic Arts Inc. All Rights Reserved.'
+  'LegalTrademarks'
+  'SPORE'
+  ' Galactic Adventures is a trademark of Electronic Arts Inc.'
+  'OriginalFilename'
+  'SporeApp.exe'
+  'ProductName'
+  'SPORE'
+  ' Galactic Adventures'
+  'ProductVersion'
+  '3.0.0.2818'
+  'SpecialBuild'
+  'Shipping'
+  'Debug Version'
+  '2009-07-24-1717 (by codebuilder on CM-SPORE041 )'
+  'VarFileInfo'
+  'Translation'
+  'VS_VERSION_INFO'
+  'StringFileInfo'
+  '040B04b0'
+  't*'
+  'CompanyName'
+  'Maxis, a division of Electronic Arts Inc.'
+  'FileDescription'
+  'SPORE'
+  ' Galaksissa kuhisee'
+  'FileVersion'
+  '3.0.0.2818'
+  'InternalName'
+  'SPORE'
+  ' Galaksissa kuhisee'
+  'LegalCopyright'
+  'Copyright '
+  ' 2009 Electronic Arts Inc. All Rights Reserved.'
+  'LegalTrademarks'
+  'SPORE'
+  ' Galactic Adventures is a trademark of Electronic Arts Inc.'
+  'OriginalFilename'
+  'SporeApp.exe'
+  'ProductName'
+  'SPORE'
+  ' Galaksissa kuhisee'
+  'ProductVersion'
+  '3.0.0.2818'
+  'SpecialBuild'
+  'Shipping'
+  'Debug Version'
+  '2009-07-24-1717 (by codebuilder on CM-SPORE041 )'
+  'VarFileInfo'
+  'Translation'
+  'VS_VERSION_INFO'
+  'StringFileInfo'
+  '040C04b0'
+  't*'
+  'CompanyName'
+  'Maxis, a division of Electronic Arts Inc.'
+  'FileDescription'
+  'SPORE'
+  ' Aventures Galactiques'
+  'FileVersion'
+  '3.0.0.2818'
+  'InternalName'
+  'SPORE'
+  ' Aventures Galactiques'
+  'LegalCopyright'
+  'Copyright '
+  ' 2009 Electronic Arts Inc. All Rights Reserved.'
+  'LegalTrademarks'
+  'SPORE'
+  ' Galactic Adventures is a trademark of Electronic Arts Inc.'
+  'OriginalFilename'
+  'SporeApp.exe'
+  'ProductName'
+  'SPORE'
+  ' Aventures Galactiques'
+  'ProductVersion'
+  '3.0.0.2818'
+  'SpecialBuild'
+  'Shipping'
+  'Debug Version'
+  '2009-07-24-1717 (by codebuilder on CM-SPORE041 )'
+  'VarFileInfo'
+  'Translation'
+  'VS_VERSION_INFO'
+  'StringFileInfo'
+  '040E04b0'
+  't*'
+  'CompanyName'
+  'Maxis, a division of Electronic Arts Inc.'
+  'FileDescription'
+  'SPORE'
+  ' Galaktikus kalandok'
+  'FileVersion'
+  '3.0.0.2818'
+  'InternalName'
+  'SPORE'
+  ' Galaktikus kalandok'
+  'LegalCopyright'
+  'Copyright '
+  ' 2009 Electronic Arts Inc. All Rights Reserved.'
+  'LegalTrademarks'
+  'SPORE'
+  ' Galactic Adventures is a trademark of Electronic Arts Inc.'
+  'OriginalFilename'
+  'SporeApp.exe'
+  'ProductName'
+  'SPORE'
+  ' Galaktikus kalandok'
+  'ProductVersion'
+  '3.0.0.2818'
+  'SpecialBuild'
+  'Shipping'
+  'Debug Version'
+  '2009-07-24-1717 (by codebuilder on CM-SPORE041 )'
+  'VarFileInfo'
+  'Translation'
+  'VS_VERSION_INFO'
+  'StringFileInfo'
+  '041004b0'
+  't*'
+  'CompanyName'
+  'Maxis, a division of Electronic Arts Inc.'
+  'FileDescription'
+  'SPORE'
+  ' Avventure galattiche'
+  'FileVersion'
+  '3.0.0.2818'
+  'InternalName'
+  'SPORE'
+  ' Avventure galattiche'
+  'LegalCopyright'
+  'Copyright '
+  ' 2009 Electronic Arts Inc. All Rights Reserved.'
+  'LegalTrademarks'
+  'SPORE'
+  ' Galactic Adventures is a trademark of Electronic Arts Inc.'
+  'OriginalFilename'
+  'SporeApp.exe'
+  'ProductName'
+  'SPORE'
+  ' Avventure galattiche'
+  'ProductVersion'
+  '3.0.0.2818'
+  'SpecialBuild'
+  'Shipping'
+  'Debug Version'
+  '2009-07-24-1717 (by codebuilder on CM-SPORE041 )'
+  'VarFileInfo'
+  'Translation'
+  'VS_VERSION_INFO'
+  'StringFileInfo'
+  '041104b0'
+  't*'
+  'CompanyName'
+  'Maxis, a division of Electronic Arts Inc.'
+  'FileDescription'
+  'SPORE(TM) '
+  'FileVersion'
+  '3.0.0.2818'
+  'InternalName'
+  'SPORE(TM) '
+  'LegalCopyright'
+  'Copyright '
+  ' 2009 Electronic Arts Inc. All Rights Reserved.'
+  'LegalTrademarks'
+  'SPORE'
+  ' Galactic Adventures is a trademark of Electronic Arts Inc.'
+  'OriginalFilename'
+  'SporeApp.exe'
+  'ProductName'
+  'SPORE(TM) '
+  'ProductVersion'
+  '3.0.0.2818'
+  'SpecialBuild'
+  'Shipping'
+  'Debug Version'
+  '2009-07-24-1717 (by codebuilder on CM-SPORE041 )'
+  'VarFileInfo'
+  'Translation'
+  'VS_VERSION_INFO'
+  'StringFileInfo'
+  '041204b0'
+  't*'
+  'CompanyName'
+  'Maxis, a division of Electronic Arts Inc.'
+  'FileDescription'
+  'SPORE'
+  'FileVersion'
+  '3.0.0.2818'
+  'InternalName'
+  'SPORE'
+  'LegalCopyright'
+  'Copyright '
+  ' 2009 Electronic Arts Inc. All Rights Reserved.'
+  'LegalTrademarks'
+  'SPORE'
+  ' Galactic Adventures is a trademark of Electronic Arts Inc.'
+  'OriginalFilename'
+  'SporeApp.exe'
+  'ProductName'
+  'SPORE'
+  'ProductVersion'
+  '3.0.0.2818'
+  'SpecialBuild'
+  'Shipping'
+  'Debug Version'
+  '2009-07-24-1717 (by codebuilder on CM-SPORE041 )'
+  'VarFileInfo'
+  'Translation'
+  'VS_VERSION_INFO'
+  'StringFileInfo'
+  '041304b0'
+  't*'
+  'CompanyName'
+  'Maxis, a division of Electronic Arts Inc.'
+  'FileDescription'
+  'SPORE'
+  ' Ruimteavonturen'
+  'FileVersion'
+  '3.0.0.2818'
+  'InternalName'
+  'SPORE'
+  ' Ruimteavonturen'
+  'LegalCopyright'
+  'Copyright '
+  ' 2009 Electronic Arts Inc. All Rights Reserved.'
+  'LegalTrademarks'
+  'SPORE'
+  ' Galactic Adventures is a trademark of Electronic Arts Inc.'
+  'OriginalFilename'
+  'SporeApp.exe'
+  'ProductName'
+  'SPORE'
+  ' Ruimteavonturen'
+  'ProductVersion'
+  '3.0.0.2818'
+  'SpecialBuild'
+  'Shipping'
+  'Debug Version'
+  '2009-07-24-1717 (by codebuilder on CM-SPORE041 )'
+  'VarFileInfo'
+  'Translation'
+  'VS_VERSION_INFO'
+  'StringFileInfo'
+  '0C1404b0'
+  't*'
+  'CompanyName'
+  'Maxis, a division of Electronic Arts Inc.'
+  'FileDescription'
+  'SPORE'
+  ' P'
+  ' eventyr i galaksen '
+  'FileVersion'
+  '3.0.0.2818'
+  'InternalName'
+  'SPORE'
+  ' P'
+  ' eventyr i galaksen '
+  'LegalCopyright'
+  'Copyright '
+  ' 2009 Electronic Arts Inc. All Rights Reserved.'
+  'LegalTrademarks'
+  'SPORE'
+  ' Galactic Adventures is a trademark of Electronic Arts Inc.'
+  'OriginalFilename'
+  'SporeApp.exe'
+  'ProductName'
+  'SPORE'
+  ' P'
+  ' eventyr i galaksen '
+  'ProductVersion'
+  '3.0.0.2818'
+  'SpecialBuild'
+  'Shipping'
+  'Debug Version'
+  '2009-07-24-1717 (by codebuilder on CM-SPORE041 )'
+  'VarFileInfo'
+  'Translation'
+  'VS_VERSION_INFO'
+  'StringFileInfo'
+  '041504b0'
+  't*'
+  'CompanyName'
+  'Maxis, a division of Electronic Arts Inc.'
+  'FileDescription'
+  'SPORE'
+  ' Kosmiczne przygody'
+  'FileVersion'
+  '3.0.0.2818'
+  'InternalName'
+  'SPORE'
+  ' Kosmiczne przygody'
+  'LegalCopyright'
+  'Copyright '
+  ' 2009 Electronic Arts Inc. All Rights Reserved.'
+  'LegalTrademarks'
+  'SPORE'
+  ' Galactic Adventures is a trademark of Electronic Arts Inc.'
+  'OriginalFilename'
+  'SporeApp.exe'
+  'ProductName'
+  'SPORE'
+  ' Kosmiczne przygody'
+  'ProductVersion'
+  '3.0.0.2818'
+  'SpecialBuild'
+  'Shipping'
+  'Debug Version'
+  '2009-07-24-1717 (by codebuilder on CM-SPORE041 )'
+  'VarFileInfo'
+  'Translation'
+  'VS_VERSION_INFO'
+  'StringFileInfo'
+  '041604b0'
+  't*'
+  'CompanyName'
+  'Maxis, a division of Electronic Arts Inc.'
+  'FileDescription'
+  'SPORE'
+  ' Aventuras Gal'
+  'cticas'
+  'FileVersion'
+  '3.0.0.2818'
+  'InternalName'
+  'SPORE'
+  ' Aventuras Gal'
+  'cticas'
+  'LegalCopyright'
+  'Copyright '
+  ' 2009 Electronic Arts Inc. All Rights Reserved.'
+  'LegalTrademarks'
+  'SPORE'
+  ' Galactic Adventures is a trademark of Electronic Arts Inc.'
+  'OriginalFilename'
+  'SporeApp.exe'
+  'ProductName'
+  'SPORE'
+  ' Aventuras Gal'
+  'cticas'
+  'ProductVersion'
+  '3.0.0.2818'
+  'SpecialBuild'
+  'Shipping'
+  'Debug Version'
+  '2009-07-24-1717 (by codebuilder on CM-SPORE041 )'
+  'VarFileInfo'
+  'Translation'
+  'VS_VERSION_INFO'
+  'StringFileInfo'
+  '041904b0'
+  't*'
+  'CompanyName'
+  'Maxis, a division of Electronic Arts Inc.'
+  'FileDescription'
+  'SPORE'
+  'FileVersion'
+  '3.0.0.2818'
+  'InternalName'
+  'SPORE'
+  'LegalCopyright'
+  'Copyright '
+  ' 2009 Electronic Arts Inc. All Rights Reserved.'
+  'LegalTrademarks'
+  'SPORE'
+  ' Galactic Adventures is a trademark of Electronic Arts Inc.'
+  'OriginalFilename'
+  'SporeApp.exe'
+  'ProductName'
+  'SPORE'
+  'ProductVersion'
+  '3.0.0.2818'
+  'SpecialBuild'
+  'Shipping'
+  'Debug Version'
+  '2009-07-24-1717 (by codebuilder on CM-SPORE041 )'
+  'VarFileInfo'
+  'Translation'
+  'VS_VERSION_INFO'
+  'StringFileInfo'
+  '041D04b0'
+  't*'
+  'CompanyName'
+  'Maxis, a division of Electronic Arts Inc.'
+  'FileDescription'
+  'SPORE'
+  ' Galactic Adventures'
+  'FileVersion'
+  '3.0.0.2818'
+  'InternalName'
+  'SPORE'
+  ' Galactic Adventures'
+  'LegalCopyright'
+  'Copyright '
+  ' 2009 Electronic Arts Inc. All Rights Reserved.'
+  'LegalTrademarks'
+  'SPORE'
+  ' Galactic Adventures is a trademark of Electronic Arts Inc.'
+  'OriginalFilename'
+  'SporeApp.exe'
+  'ProductName'
+  'SPORE'
+  ' Galactic Adventures'
+  'ProductVersion'
+  '3.0.0.2818'
+  'SpecialBuild'
+  'Shipping'
+  'Debug Version'
+  '2009-07-24-1717 (by codebuilder on CM-SPORE041 )'
+  'VarFileInfo'
+  'Translation'
+  'VS_VERSION_INFO'
+  'StringFileInfo'
+  '041E04b0'
+  't*'
+  'CompanyName'
+  'Maxis, a division of Electronic Arts Inc.'
+  'FileDescription'
+  'SPORE'
+  ' Galactic Adventures'
+  'FileVersion'
+  '3.0.0.2818'
+  'InternalName'
+  'SPORE'
+  ' Galactic Adventures'
+  'LegalCopyright'
+  'Copyright '
+  ' 2009 Electronic Arts Inc. All Rights Reserved.'
+  'LegalTrademarks'
+  'SPORE'
+  ' Galactic Adventures is a trademark of Electronic Arts Inc.'
+  'OriginalFilename'
+  'SporeApp.exe'
+  'ProductName'
+  'SPORE'
+  ' Galactic Adventures'
+  'ProductVersion'
+  '3.0.0.2818'
+  'SpecialBuild'
+  'Shipping'
+  'Debug Version'
+  '2009-07-24-1717 (by codebuilder on CM-SPORE041 )'
+  'VarFileInfo'
+  'Translation'
+  'VS_VERSION_INFO'
+  'StringFileInfo'
+  '080404b0'
+  'v+'
+  'CompanyName'
+  'Maxis, a division of Electronic Arts Inc. '
+  'FileDescription'
+  'SPORE'
+  ' Galactic Adventures '
+  'FileVersion'
+  '3.0.0.2818'
+  'InternalName'
+  'SPORE'
+  ' Galactic Adventures '
+  'LegalCopyright'
+  'Copyright '
+  ' 2009 Electronic Arts Inc. All Rights Reserved. '
+  'LegalTrademarks'
+  'SPORE'
+  ' Galactic Adventures is a trademark of Electronic Arts Inc. '
+  'OriginalFilename'
+  'SporeApp.exe'
+  'ProductName'
+  'SPORE'
+  ' Galactic Adventures '
+  'ProductVersion'
+  '3.0.0.2818'
+  'SpecialBuild'
+  'Shipping'
+  'Debug Version'
+  '2009-07-24-1717 (by codebuilder on CM-SPORE041 )'
+  'VarFileInfo'
+  'Translation'
+  'VS_VERSION_INFO'
+  'StringFileInfo'
+  '081604b0'
+  't*'
+  'CompanyName'
+  'Maxis, a division of Electronic Arts Inc.'
+  'FileDescription'
+  'SPORE'
+  ' Aventuras Gal'
+  'cticas'
+  'FileVersion'
+  '3.0.0.2818'
+  'InternalName'
+  'SPORE'
+  ' Aventuras Gal'
+  'cticas'
+  'LegalCopyright'
+  'Copyright '
+  ' 2009 Electronic Arts Inc. All Rights Reserved.'
+  'LegalTrademarks'
+  'SPORE'
+  ' Galactic Adventures is a trademark of Electronic Arts Inc.'
+  'OriginalFilename'
+  'SporeApp.exe'
+  'ProductName'
+  'SPORE'
+  ' Aventuras Gal'
+  'cticas'
+  'ProductVersion'
+  '3.0.0.2818'
+  'SpecialBuild'
+  'Shipping'
+  'Debug Version'
+  '2009-07-24-1717 (by codebuilder on CM-SPORE041 )'
+  'VarFileInfo'
+  'Translation'
+  'VS_VERSION_INFO'
+  'StringFileInfo'
+  '040A04b0'
+  't*'
+  'CompanyName'
+  'Maxis, a division of Electronic Arts Inc.'
+  'FileDescription'
+  'SPORE'
+  ' Aventuras Gal'
+  'cticas'
+  'FileVersion'
+  '3.0.0.2818'
+  'InternalName'
+  'SPORE'
+  ' Aventuras Gal'
+  'cticas'
+  'LegalCopyright'
+  'Copyright '
+  ' 2009 Electronic Arts Inc. All Rights Reserved.'
+  'LegalTrademarks'
+  'SPORE'
+  ' Galactic Adventures is a trademark of Electronic Arts Inc.'
+  'OriginalFilename'
+  'SporeApp.exe'
+  'ProductName'
+  'SPORE'
+  ' Aventuras Gal'
+  'cticas'
+  'ProductVersion'
+  '3.0.0.2818'
+  'SpecialBuild'
+  'Shipping'
+  'Debug Version'
+  '2009-07-24-1717 (by codebuilder on CM-SPORE041 )'
+  'VarFileInfo'
+  'Translation'
+
+--- MANIFEST ---
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false"></requestedExecutionLevel>
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity type="win32" name="Microsoft.VC90.CRT" version="9.0.21022.8" processorArchitecture="x86" publicKeyToken="1fc8b3b9a1e18e3b"></assemblyIdentity>
+    </dependentAssembly>
+  </dependency>
+</assembly>
+
+--- RESOURCE TREE ---
+  type None (DATA): 2 entries
+      __GDF_THUMBNAIL[1024,1028,1029,1030,1031,1033,1034,1035,1036,1038,1040,1041,1042,1043,1044,1045,1046,1049,1053,2070]
+      __GDF_XML[1024,1028,1029,1030,1031,1033,1034,1035,1036,1038,1040,1041,1042,1043,1044,1045,1046,1049,1053,2070]
+  type 3 (ICON): 252 entries
+      1[1028]
+      2[1028]
+      3[1028]
+      4[1028]
+      5[1028]
+      6[1028]
+      7[1028]
+      8[1028]
+      9[1028]
+      10[1028]
+      11[1028]
+      12[1028]
+      13[1024]
+      14[1024]
+      15[1024]
+      16[1024]
+      17[1024]
+      18[1024]
+      19[1024]
+      20[1024]
+      21[1024]
+      22[1024]
+      23[1024]
+      24[1024]
+      25[1028]
+      26[1028]
+      27[1028]
+      28[1028]
+      29[1028]
+      30[1028]
+      31[1028]
+      32[1028]
+      33[1028]
+      34[1028]
+      35[1028]
+      36[1028]
+      37[1029]
+      38[1029]
+      39[1029]
+      40[1029]
+  type 14 (GROUP_ICON): 2 entries
+      IDI_APPICON[1028]
+      101[1024,1028,1029,1030,1031,1033,1034,1035,1036,1038,1040,1041,1042,1043,1044,1045,1046,1049,1053,2070]
+  type 16 (VERSION): 1 entries
+      1[1028,1029,1030,1031,1032,1033,1035,1036,1038,1040,1041,1042,1043,1044,1045,1046,1049,1053,1054,2052,2070,3082]
+  type 24 (MANIFEST): 1 entries
+      1[1033]
+
+--- EXPORTS ---
+  no export directory
+
+==============================================================================
+BINARY: steam_api_BASE  (D:\Games\SPORE Collection\SporeBin\steam_api.dll)
+size=15360 sha256=76c46ed372ec7bce7ea40c2b2137258dffb378993590535e8fbe72b2c30e4049
+
+--- RAW DATA DIRECTORIES (16) ---
+  [ 0] RVA=0x00004830 Size=0x224
+  [ 1] RVA=0x000044d4 Size=0x64
+  [ 2] RVA=0x00000000 Size=0x0
+  [ 3] RVA=0x00000000 Size=0x0
+  [ 4] RVA=0x00000000 Size=0x0
+  [ 5] RVA=0x00006000 Size=0x560
+  [ 6] RVA=0x00000000 Size=0x0
+  [ 7] RVA=0x00000000 Size=0x0
+  [ 8] RVA=0x00000000 Size=0x0
+  [ 9] RVA=0x00000000 Size=0x0
+  [10] RVA=0x00000000 Size=0x0
+  [11] RVA=0x00000000 Size=0x0
+  [12] RVA=0x00003000 Size=0x90
+  [13] RVA=0x00000000 Size=0x0
+  [14] RVA=0x00000000 Size=0x0
+  [15] RVA=0x00000000 Size=0x0
+
+--- DEBUG DIRECTORY ---
+  {'error': 'AttributeError("\'PE\' object has no attribute \'DIRECTORY_ENTRY_DEBUG\'")'}
+
+--- FIXED FILE INFO ---
+  error: AttributeError("'PE' object has no attribute 'DIRECTORY_ENTRY_RESOURCE'")
+
+--- VERSION STRINGS ---
+
+--- MANIFEST ---
+  error: AttributeError("'PE' object has no attribute 'DIRECTORY_ENTRY_RESOURCE'")
+  (none)
+
+--- RESOURCE TREE ---
+
+--- EXPORTS ---
+  dll name: b'steam_api_sr3.dll'
+  symbols: 17
+    ord=1 rva=0x00001110 name=b'SteamAPI_Init'
+    ord=2 rva=0x00001460 name=b'SteamAPI_RegisterCallResult'
+    ord=3 rva=0x00001420 name=b'SteamAPI_RegisterCallback'
+    ord=4 rva=0x000022c0 name=b'SteamAPI_RestartAppIfNecessary'
+    ord=5 rva=0x000012e0 name=b'SteamAPI_RunCallbacks'
+    ord=6 rva=0x000023c0 name=b'SteamAPI_Shutdown'
+    ord=7 rva=0x00001480 name=b'SteamAPI_UnregisterCallResult'
+    ord=8 rva=0x00001440 name=b'SteamAPI_UnregisterCallback'
+    ord=9 rva=0x00001990 name=b'SteamApps'
+    ord=10 rva=0x00001a10 name=b'SteamClient'
+    ord=11 rva=0x000019d0 name=b'SteamFriends'
+    ord=12 rva=0x000019f0 name=b'SteamMatchmaking'
+    ord=13 rva=0x00001a00 name=b'SteamNetworking'
+    ord=14 rva=0x000019e0 name=b'SteamRemoteStorage'
+    ord=15 rva=0x000019a0 name=b'SteamUser'
+    ord=16 rva=0x000019b0 name=b'SteamUserStats'
+    ord=17 rva=0x000019c0 name=b'SteamUtils'
+
+==============================================================================
+BINARY: goggame_EP1  (D:\Games\SPORE Collection\SporebinEP1\goggame-1948823323.dll)
+size=229984 sha256=83bdc656d1c31bfb00edc746fdfae3b349a228489dbbf5cd032913b3d5403439
+
+--- RAW DATA DIRECTORIES (16) ---
+  [ 0] RVA=0x00009b20 Size=0x38
+  [ 1] RVA=0x000095cc Size=0x28
+  [ 2] RVA=0x0000c000 Size=0x2c538
+  [ 3] RVA=0x00000000 Size=0x0
+  [ 4] RVA=0x00036600 Size=0x1c60
+  [ 5] RVA=0x00039000 Size=0x6d4
+  [ 6] RVA=0x00008120 Size=0x1c
+  [ 7] RVA=0x00000000 Size=0x0
+  [ 8] RVA=0x00000000 Size=0x0
+  [ 9] RVA=0x00000000 Size=0x0
+  [10] RVA=0x00009280 Size=0x40
+  [11] RVA=0x00000000 Size=0x0
+  [12] RVA=0x00008000 Size=0xec
+  [13] RVA=0x00000000 Size=0x0
+  [14] RVA=0x00000000 Size=0x0
+  [15] RVA=0x00000000 Size=0x0
+
+--- DEBUG DIRECTORY ---
+  {'type': 2, 'size': 76, 'addr_raw': '0x92c8', 'ptr_raw': '0x7ac8', 'timestamp': '0x57836054', 'pdb': 'y:\\_GAMES_GALAXY_\\__data\\GDF\\1948823323\\goggame.pdb', 'pdb_guid': '6baea09bd803604ea80d521ffddc677b', 'pdb_age': 1}
+
+--- FIXED FILE INFO ---
+  {}
+
+--- VERSION STRINGS ---
+
+--- MANIFEST ---
+  (none)
+
+--- RESOURCE TREE ---
+  type None (DATA): 2 entries
+      __GDF_THUMBNAIL[1024]
+      __GDF_XML[1024]
+  type 3 (ICON): 9 entries
+      1[1024]
+      2[1024]
+      3[1024]
+      4[1024]
+      5[1024]
+      6[1024]
+      7[1024]
+      8[1024]
+      9[1024]
+  type 14 (GROUP_ICON): 1 entries
+      ID_ICON[1024]
+
+--- EXPORTS ---
+  dll name: b'GDF_GOGgame.dll'
+  symbols: 0

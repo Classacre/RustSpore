@@ -1,0 +1,17 @@
+[package]
+name = "spore-bevy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+description = "The RustSpore binary. Wires the core crates into a Bevy app."
+
+[[bin]]
+name = "rustspore"
+path = "src/main.rs"
+
+[dependencies]
+bevy.workspace = true
+dbpf.workspace = true
+spore-core.workspace = true

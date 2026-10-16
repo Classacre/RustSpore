@@ -1,0 +1,11 @@
+[package]
+name = "dbpf"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+description = "Reader for the DBPF container format used by SPORE .package files."
+
+[dependencies]
+thiserror.workspace = true
