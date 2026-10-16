@@ -102,22 +102,32 @@ def be16(d, p):
 
 
 def read_texts(d, p):
-    """Read a `texts` value (type 0x22).
+    """Read a `texts` value (type 0x22). Layout confirmed by measurement.
 
-    Layout is NOT established. The candidate implemented here is a big-endian count
-    followed by count pairs of (u32 key, u32 length, UTF-16BE text). It is a
-    hypothesis: it does not raise the exact-consumption rate, which means it is
-    probably wrong, and it is kept only so the failure is reproducible.
+    Derived from props that contain exactly one record of this type, where the
+    entry size is known exactly: three such props have a 540-byte blob, so the
+    entry is 540 - 4 = 536 bytes. Since the first field of the entry is 520,
+    `536 - 520 = 16`, which fixes the header at 12 bytes after the count:
+
+        u32 count, big-endian
+        per entry:
+            u32 buffer_size in BYTES, big-endian   (520 = 0x208 in every sample)
+            u32 unknown
+            u32 unknown
+            buffer_size bytes of UTF-16LE text, NUL padded
+
+    So the value length is `4 + count * (12 + buffer_size)`.
     """
     n, p = be32(d, p)
     if n > 4096:
         raise PropError(f"texts count {n} implausible")
     for _ in range(n):
-        _key, p = be32(d, p)
-        ln, p = be32(d, p)
-        if ln > 4096 or p + ln * 2 > len(d):
-            raise PropError(f"texts entry length {ln} implausible")
-        p += ln * 2
+        size, p = be32(d, p)
+        _f2, p = be32(d, p)
+        _f3, p = be32(d, p)
+        if size > 65536 or p + size > len(d):
+            raise PropError(f"texts buffer size {size} overruns")
+        p += size
     return n, p
 
 
@@ -133,7 +143,10 @@ def read_value(d, p, typ, bool_size=1, single=True):
         if p + n * width > len(d):
             raise PropError(f"string length {n} overruns")
         raw = d[p:p + n * width]
-        text = raw.decode("latin-1") if typ == 0x12 else raw.decode("utf-16-be", "replace")
+        # Mixed endianness, as the public notes warn: the LENGTH is big-endian
+        # but the characters are UTF-16 little-endian. Reading the text as BE
+        # produces CJK nonsense, which is how this was caught.
+        text = raw.decode("latin-1") if typ == 0x12 else raw.decode("utf-16-le", "replace")
         return text, p + n * width
     if typ == 0x22:  # texts, layout unconfirmed
         return read_texts(d, p)

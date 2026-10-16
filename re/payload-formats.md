@@ -71,18 +71,66 @@ effect on the exact-consumption rate over 7,030 resources:
 So `key` padding alone accounts for most of the gain, and the wider compound set is
 confirmed by the same measurement.
 
+### `texts` (type `0x22`), layout derived exactly
+
+`[MEASURED]` Solved by arithmetic rather than by guessing, using props that contain
+exactly one record of this type. Three such props have a 540-byte blob, so the record
+occupies 540 - 4 = **536** bytes. The first field inside the value is **520**, and
+`536 - 520 = 16`, which fixes the header at 12 bytes following the count:
+
+```
+u32 count, big-endian
+per entry:
+    u32 buffer_size in BYTES, big-endian      (520 = 0x208 in 1,784 of 1,793 samples)
+    u32 unknown
+    u32 unknown
+    buffer_size bytes of UTF-16LE text, NUL padded
+```
+
+So the value length is `4 + count * (12 + buffer_size)`. `count` is 1 in 1,784 of the
+1,793 reachable records.
+
+### Mixed endianness, and a corrected error
+
+`[MEASURED]` Strings carry a **big-endian** length but **little-endian** UTF-16 characters:
+`00 00 00 07` followed by `44 00 65 00 74 00 ...` is `"Details"`, not CJK. Reading the
+characters as big-endian produces `一愀洀攀` for `"Name"`, which is how this was caught.
+The public notes warn that endianness is mixed; this is the concrete instance.
+
+### `key` is 16 bytes, measured
+
+`[MEASURED]` Grid-testing the two suspect types over all 7,030 resources:
+
+| `key` size | Exact |
+|---|---|
+| 12 bytes | 458 (6.51%) |
+| **16 bytes** | **1,612 (22.93%)** |
+
+So a `key` occupies 16 bytes, not the 12 that three u32 would suggest. Whether the fourth
+u32 is padding or a real field is `[UNKNOWN]`. The array case makes almost no difference
+(1,612 versus 1,610), so the extra word is a single-value concern.
+
+The `texts` header size (8, 12 or 16) and the `key` array size do not move the rate.
+
 ### Blockers
 
-- **`texts` (type `0x22`).** Layout unknown. The candidate implemented in
-  `tools/prop_parse.py` (a count, then triples of key, length and UTF-16 text) does
-  **not** raise the rate, so it is probably wrong. It is kept so the failure is
-  reproducible.
-- **`type 0x00`**, responsible for 1,432 failures. Not in the documented type list.
-  Possibly a terminator or an empty slot.
-- **Overrun in 1,388 cases**, so at least one type size or padding rule is still wrong.
+`[MEASURED]` With everything above applied, the failures are still dominated by:
 
-`[INFERRED]` These three are likely one problem: a single mis-sized value early in a
-resource derails the rest of the walk, which is why garbage type words appear.
+| Preceding type | Failures |
+|---|---|
+| `key` (`0x20`) | 1,220 |
+| `type 0x00` | 2,000+ |
+
+`[INFERRED]` Since `key` is now correctly sized and still precedes the largest group of
+failures, the error is probably in how a `key` **value** is followed, or in a type that
+appears immediately after a key. `type 0x00` is not in the documented type list and the
+bytes around it are often zeros, which suggests the walk has run past the real end of the
+records rather than that `0x00` is a real type.
+
+`[INFERRED]` The remaining work is a search over a small space, and the exact-consumption
+rate is the metric. It was not completed here.
+
+### The earlier failed attempt, and why it is kept
 
 ### The earlier failed attempt, and why it is kept
 
