@@ -10,6 +10,7 @@ use std::fmt;
 pub mod anim;
 pub mod blockdata;
 pub mod gmsh;
+pub mod prop;
 pub mod raster;
 pub mod string_table;
 
