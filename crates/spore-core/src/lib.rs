@@ -9,6 +9,8 @@ use std::fmt;
 
 pub mod anim;
 pub mod gmsh;
+pub mod raster;
+pub mod string_table;
 
 /// One of the five stages of SPORE, in progression order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
