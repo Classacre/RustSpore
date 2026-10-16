@@ -324,21 +324,29 @@ valid u16 indices were found starting at offset 34214. The first index is 512,
 followed by 0, 1, 2, 3, 2, 1, 4, 5, 6, 7, 6, 5, 8... suggesting a triangle strip
 with degenerate triangles.
 
-`[MEASURED]` For version 2, the gap structure is:
-24 (main header) + 4 (sub-header: BE u16 count + BE u16 stride=48) +
-count * 48 (3x4 matrix data) + 8 (footer). This fits 21 of 68 version-2 samples.
-The gap = 36 + N*48 where N is the matrix count. Observed N values: 2, 3, 4, 5,
-7, 8, 9. The 48-byte matrices contain rotation/transformation data with values
-like -1.0, 0.0, 1.0 (90-degree rotations).
+`[MEASURED]` The gap structure follows the formula:
+`gap = 16 + version*4 + 4 + N*matrix_size + 8`
 
-`[MEASURED]` The header size varies by version. Version 2 has a 24-byte header,
-version 5 has a 36-byte header. The sub-header (count + stride=48) appears at
-different offsets depending on the version.
+Where:
+- 16 = common header (magic + version + 1024 + 256)
+- version*4 = per-version attribute fields (v2=24, v3=28, v4=32, v5=36)
+- 4 = count (BE u16) + stride (BE u16)
+- N*matrix_size = N transformation matrices
+- 8 = footer
 
-`[UNKNOWN]` The exact header layout for versions 3-10 is not yet decoded. The
-BE u32 @+4 value (2 through 10) may indicate the number of index buffers,
-sub-meshes, or LOD levels. 178 of 207 v2+ samples do not fit the 36+N*48
-pattern, suggesting additional structural variants.
+`[MEASURED]` Matrix size is 48 bytes (3x4 transform) for 49.8% of v2+ samples
+(103/207). Alternative matrix sizes: 32 bytes (44 samples), 36 bytes (23),
+40 bytes (12). The 48-byte matrices contain rotation/transformation data with
+values like -1.0, 0.0, 1.0 (90-degree rotations).
+
+`[MEASURED]` The header size = 16 + version*4. Version 2 has a 24-byte header,
+version 5 has a 36-byte header. The count/stride sub-header appears right
+after the version-specific fields.
+
+`[UNKNOWN]` 96 of 207 v2+ samples (46%) do not fit any tested formula. Many
+have very few detected indices (3-9), suggesting the index data detection
+finds false positives. The actual index data may start at a position that
+doesn't have a long run of valid u16 values.
 
 ### Footer
 
