@@ -605,13 +605,20 @@ Example: min = (-0.1, -0.1, -0.1), max = (0.1, 0.1, 0.1), then 3 zeros.
 `[MEASURED]` After the flags, 4 bytes of zeros, then variable data:
 - 36-byte samples: 3 u32 zeros (total padding after bounding box)
 - 48-byte samples: 4 zeros + 4-byte value + 8-byte hash/ID
-- 84-byte samples: 4 zeros + 48 bytes of structured data with repeating
-  byte patterns (possibly quantized vertex positions or delta-encoded data)
+- 84-byte samples: 4 zeros + 48 bytes of structured data
 
-`[UNKNOWN]` The full structure of the variable data is not yet decoded. The
-48-byte structured data in 84-byte samples shows patterns like `22 88` and
-`66 bb` repeating with changing prefixes, suggesting quantized or delta-
-encoded geometric data.
+`[MEASURED]` The 48-byte structured data in 84-byte samples consists of 4 groups
+of 12 bytes. Each group contains 6 BE u16 values. The values show a consistent
+increment pattern: the step between groups is 0x22 (34 decimal) for most fields.
+This suggests 4 quantized reference points or vertices with multiple attributes.
+
+`[MEASURED]` Example (Sample 3): groups have bytes like `01 00 | 00 30 | 30 00 |
+70 90 | 00 d0 | f0 00` with the second byte of fields 2, 3, 5, 6 incrementing by
+0x22 across groups (00, 22, 44, 66). The first field (`01 00` = 256) is constant.
+
+`[UNKNOWN]` The exact meaning of the 6 u16 fields per group is not yet decoded.
+They could be quantized positions, normals, or other geometric attributes
+relative to the bounding box.
 
 ## string table, type `0xDFAD9F51`
 
