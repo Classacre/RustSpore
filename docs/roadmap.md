@@ -130,17 +130,18 @@ Two of these are now much better specified than they were, see
 `0x2F4E681B` (1,131 resources) and `0x2F4E681C` (2,954). The pair needs explaining before
 either decoder is written.
 
-`[MEASURED]` **prop (`0x00B1B104`) is partially decoded.** It is the most common type in
-`Spore_Game.package` (7,030 of 11,529). The record header is confirmed: a big-endian item
-count, then per item a big-endian identifier, a `u16` type and a `u16` specifier, with the
-documented type ids appearing in real data (`0x000d` float, `0x0020` key, `0x000a` uint32,
-`0x0013` string, `0x0001` bool). Single-value padding was measured and confirmed. **1,612 of
-7,030 resources (22.93%) now parse to exactly the last byte**, up from zero.
+`[MEASURED]` **prop (`0x00B1B104`) is decoded.** It is the most common type in
+`Spore_Game.package` (7,030 of 11,529). **11,354 of 11,953 resources across three
+packages parse to exactly the last byte (94.99%)**, with zero overruns.
 
-Remaining blockers, all in `re/payload-formats.md`: the `texts` (type `0x22`) layout is
-unknown, `type 0x00` is undocumented, and 1,388 overruns remain, so at least one type size
-or padding rule is still wrong. This stays the highest-value open item in phase 1, and the
-exact-consumption rate is the metric to move.
+The decisive finding was that there are **two** array markers, `0x009C` and `0x001C`;
+the public notes mention only the first. Recognising the second took the rate from 52.82%
+to 94.99%. The array header is `element count` then `element stride in bytes`, and
+advancing by `count * stride` was worth another large jump. Details, including the mixed
+endianness that cost the first attempt, are in `re/payload-formats.md`.
+
+Remaining: 558 resources (4.7%) fail on what looks like one or two further type-size
+errors, not a structural problem.
 
 ### Phase 2: asset browser in Bevy
 

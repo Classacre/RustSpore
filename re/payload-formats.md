@@ -22,122 +22,91 @@ mostly still open. It is deliberately blunt about that.
 
 The most common type in `Spore_Game.package`: 7,030 of 11,529 resources.
 
-Status: **partially decoded.** 1,612 of 7,030 resources (22.93%) parse exactly, meaning
-the walk ends precisely on the last byte.
+Status: **decoded.** 11,354 of 11,953 resources across three packages parse to exactly
+the last byte, which is 94.99%. Zero overruns.
 
-### Confirmed
+### Layout
 
-`[MEASURED]` The layout is publicly documented (SimsWiki, via `docs/prior-art.md`
-section 4.1) and the documentation matches the bytes:
+`[MEASURED]` Confirmed against the public documentation and refined where the
+documentation is a statement of intent rather than a byte layout:
 
-- `u32` item count, **big-endian**
-- per item: `u32` identifier (BE), `u16` type (BE), `u16` specifier (BE)
-- specifier `0x009C` means an array, preceded by an array number and array size, both
-  `u32` big-endian
-- strings are a big-endian `u32` length followed by that many bytes, UTF-16BE for type
-  `0x13`
+```
+u32 item count, BIG-ENDIAN
+per item:
+    u32 identifier, big-endian
+    u16 type, big-endian
+    u16 specifier, big-endian
+    if specifier is an array marker:
+        u32 element count, big-endian
+        u32 element stride in bytes, big-endian
+        count * stride bytes of elements
+    else:
+        one value, sized by type
+```
 
-`[MEASURED]` The documented type ids appear in real data, which is independent
-confirmation of the record header:
+### The finding that mattered: there are two array markers
 
-| Type | Name | Occurrences in `Spore_Game.package` |
+`[MEASURED]` The public notes mention only `0x009C`. **`0x001C` is also an array
+marker.** Recognising it took the exact-consumption rate from **52.82% to 94.99%** over
+three packages.
+
+It was found by dumping bytes at a failure rather than by guessing. A record with
+`type = 0x39` (bbox) carried `specifier = 0x001C`, and the bytes immediately after were
+`00 00 00 01 | 00 00 00 18`, that is `count = 1, stride = 0x18 = 24`. A bbox is 24 bytes,
+so the record was an array of one bbox and `0x001C` was flagging it.
+
+### The array header is count then stride
+
+`[MEASURED]` The two words after an array marker are the element **count** and the
+element **stride in bytes**. Reading the second as the count is wrong. Advancing by
+`count * stride` raised the rate from 22.93% to 68.17% on its own.
+
+### Mixed endianness
+
+`[MEASURED]` Count, identifier, type, specifier, array header and string lengths are
+big-endian. UTF-16 string **characters are little-endian**. `00 00 00 07` followed by
+`44 00 65 00 74 00 ...` is `"Details"`. Reading characters as big-endian yields `一愀洀攀`
+for `"Name"`, which is how this was caught.
+
+### Type sizes, measured
+
+`[MEASURED]` A single `key` is **16** bytes, not the 12 that three u32 suggests; its
+array stride is 12. Grid test: 12 bytes gives 6.51% exact, 16 gives 22.93% at that
+stage. Array elements carry no single-value padding, and the compound types
+(vector2/3/4, colour, transform, bbox) carry 4 extra bytes as single values only.
+
+`[MEASURED]` Observed type frequencies over the three packages are dominated by real
+types, which is itself a check that the walk is aligned:
+
+| Type | Name | Occurrences |
 |---|---|---|
-| `0x000d` | float | 3,829 |
-| `0x0020` | key | 3,533 |
-| `0x000a` | uint32 | 1,691 |
-| `0x0013` | string (UTF-16) | 1,475 |
-| `0x0001` | bool | 754 |
-| `0x0009` | int32 | observed |
-| `0x0034`, `0x0033`, `0x0031`, `0x0012` | colorRGBA, vector4, vector3, string8 | observed |
+| `0x0020` | key | 37,622 |
+| `0x000d` | float | 25,765 |
+| `0x0009` | int32 | 9,485 |
+| `0x0001` | bool | 7,470 |
+| `0x000a` | uint32 | 7,286 |
 
-`[INFERRED]` A useful sanity check on the earlier work: the first attempt read
-`00 13 00 0d` as a constant u32 `0x0D001300`. It is in fact `type = 0x0013` plus
-`specifier = 0x000D`, which is exactly where the documentation puts them. The earlier
-reading was one field-width away from correct.
+### A superseded derivation, kept as a warning
 
-### Padding, measured
+An earlier revision gave `texts` (type `0x22`) a bespoke layout, derived from a prop
+holding exactly one record of that type: `count`, then per entry a buffer size, two more
+u32, and that many bytes. It appeared to work because it consumed the same number of
+bytes as the array reading for that particular case.
 
-`[MEASURED]` The documentation warns that padding varies per type and per
-single-versus-array context, and that a single `key` carries an extra u32. Measuring the
-effect on the exact-consumption rate over 7,030 resources:
+`[INFERRED]` It was wrong. `texts` is an ordinary array with a stride of 520 bytes. This
+is the clearest instance in the project of a derivation that fits the evidence available
+at the time and is still not the real rule. Fitting one case is not confirmation.
 
-| Configuration | Resources consuming exactly |
-|---|---|
-| no padding | 459 (6.53%) |
-| `key` +4 | 1,322 (18.81%) |
-| `key`, `vector3` +4 | 1,328 (18.89%) |
-| all compound types +4 | **1,612 (22.93%)** |
+### Remaining failures
 
-So `key` padding alone accounts for most of the gain, and the wider compound set is
-confirmed by the same measurement.
+`[MEASURED]` 558 resources still fail, about 4.7%:
 
-### `texts` (type `0x22`), layout derived exactly
+- 40 are `colorRGBA` needing 20 bytes with 16 left, so its single-value padding is not 4
+- 36 read `0x100e` as a type word, and 28 read `0x03`, which means misalignment
+- the rest are a long tail of garbage type words
 
-`[MEASURED]` Solved by arithmetic rather than by guessing, using props that contain
-exactly one record of this type. Three such props have a 540-byte blob, so the record
-occupies 540 - 4 = **536** bytes. The first field inside the value is **520**, and
-`536 - 520 = 16`, which fixes the header at 12 bytes following the count:
-
-```
-u32 count, big-endian
-per entry:
-    u32 buffer_size in BYTES, big-endian      (520 = 0x208 in 1,784 of 1,793 samples)
-    u32 unknown
-    u32 unknown
-    buffer_size bytes of UTF-16LE text, NUL padded
-```
-
-So the value length is `4 + count * (12 + buffer_size)`. `count` is 1 in 1,784 of the
-1,793 reachable records.
-
-### Mixed endianness, and a corrected error
-
-`[MEASURED]` Strings carry a **big-endian** length but **little-endian** UTF-16 characters:
-`00 00 00 07` followed by `44 00 65 00 74 00 ...` is `"Details"`, not CJK. Reading the
-characters as big-endian produces `一愀洀攀` for `"Name"`, which is how this was caught.
-The public notes warn that endianness is mixed; this is the concrete instance.
-
-### `key` is 16 bytes, measured
-
-`[MEASURED]` Grid-testing the two suspect types over all 7,030 resources:
-
-| `key` size | Exact |
-|---|---|
-| 12 bytes | 458 (6.51%) |
-| **16 bytes** | **1,612 (22.93%)** |
-
-So a `key` occupies 16 bytes, not the 12 that three u32 would suggest. Whether the fourth
-u32 is padding or a real field is `[UNKNOWN]`. The array case makes almost no difference
-(1,612 versus 1,610), so the extra word is a single-value concern.
-
-The `texts` header size (8, 12 or 16) and the `key` array size do not move the rate.
-
-### Blockers
-
-`[MEASURED]` With everything above applied, the failures are still dominated by:
-
-| Preceding type | Failures |
-|---|---|
-| `key` (`0x20`) | 1,220 |
-| `type 0x00` | 2,000+ |
-
-`[INFERRED]` Since `key` is now correctly sized and still precedes the largest group of
-failures, the error is probably in how a `key` **value** is followed, or in a type that
-appears immediately after a key. `type 0x00` is not in the documented type list and the
-bytes around it are often zeros, which suggests the walk has run past the real end of the
-records rather than that `0x00` is a real type.
-
-`[INFERRED]` The remaining work is a search over a small space, and the exact-consumption
-rate is the metric. It was not completed here.
-
-### The earlier failed attempt, and why it is kept
-
-### The earlier failed attempt, and why it is kept
-
-`tools/prop_names.py` scanned for length prefixes as **little-endian** and produced
-truncated fragments such as `Def` for `Defense`. The documentation explains it: the
-fields are big-endian. The tool is retained because its failure is the evidence that
-identified the error.
+`[INFERRED]` These look like one or two more type-size errors rather than a structural
+problem, since the walk is exact for 95% of resources.
 
 ## Note on method
 
