@@ -188,9 +188,38 @@ type. The payload after the header is expected to carry an object type id that s
 decoder (shader, mesh, etc.). The string literals `RWGOBJECTTYPE_*` and `RWCOBJECTTYPE_*`
 extracted from the binary are the dispatch table. See `docs/engine-architecture.md`.
 
+### Payload structure and object dispatch
+
+`[MEASURED]` All payloads begin with LE u32 = 1 at offset 96 (right after the 96-byte
+header). At offset 100, a u32 value varies (possibly a payload size). At offset 104,
+LE u32 = 4 (invariant).
+
+`[MEASURED]` Object type codes appear as LE u32 values throughout the payload, starting
+around offset 152. They are not at fixed offsets but appear in a table-like sequence.
+Type code categories by high 16 bits:
+
+| High 16 bits | Category | Examples |
+|---|---|---|
+| `0x0001` | BaseResource family | 0x00010030 (BaseResource), 0x00010031, 0x00010032 |
+| `0x0002` | Graphics objects | 0x00020003 (Raster), 0x00020004 (VertexDescription), 0x00020005 (VertexBuffer), 0x00020007 (IndexBuffer), 0x00020009 (Mesh), 0x000200AF (BlendShapeBuffer) |
+| `0x0007` | Animation objects | 0x00070001 (KeyframeAnim), 0x00070002 (Skeleton) |
+
+`[MEASURED]` Type code occurrence frequency across 80 samples: Raster (255),
+BaseResource (207), IndexBuffer (206), Skeleton (196), KeyframeAnim (185),
+VertexDescription (89), VertexBuffer (87), Mesh (83), BlendShapeBuffer (15).
+
+`[MEASURED]` Subtype distribution (offset 28): 1 (22 samples), 0x04000000 (38),
+0xCAFEBABE (20). The subtype determines the payload structure. Subtype 1 payloads
+contain mesh-related types (VertexDescription, VertexBuffer). Subtype 0x04000000
+payloads contain animation types (KeyframeAnim, Skeleton).
+
+`[UNKNOWN]` The exact table structure (entry sizes, field meanings) is not yet
+decoded. Each entry appears to have a type code followed by count, offset, and
+size fields, but the entry size varies by type.
+
 `[CORRECTION]` An earlier revision claimed `0xCAFED00D` at offset 28 as a universal magic
 trailer. It is not universal: it appeared in one sample and was misreported. The actual
-field at offset 28 is a subtype discriminator with two values (0x01 and 0x04).
+field at offset 28 is a subtype discriminator with values 1, 0x04000000, and 0xCAFEBABE.
 
 ## RASTER, type `0x2F4E681C`
 
