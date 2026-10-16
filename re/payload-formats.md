@@ -211,11 +211,42 @@ VertexDescription (89), VertexBuffer (87), Mesh (83), BlendShapeBuffer (15).
 `[MEASURED]` Subtype distribution (offset 28): 1 (22 samples), 0x04000000 (38),
 0xCAFEBABE (20). The subtype determines the payload structure. Subtype 1 payloads
 contain mesh-related types (VertexDescription, VertexBuffer). Subtype 0x04000000
-payloads contain animation types (KeyframeAnim, Skeleton).
+payloads contain fewer types and different data after the type code table.
 
-`[UNKNOWN]` The exact table structure (entry sizes, field meanings) is not yet
-decoded. Each entry appears to have a type code followed by count, offset, and
-size fields, but the entry size varies by type.
+### Payload structure
+
+`[MEASURED]` The payload after the 96-byte header has a consistent structure:
+
+```
+offset  96: LE u32 = 1 (version/count)
+offset 100: LE u32 = varies (hash for subtype 1, offset 440 for subtype 0x04000000)
+offset 104: LE u32 = 4 (invariant)
+offset 108-148: zeros and repeating (1, 0) pattern (3 pairs)
+offset 152: section header: type 0x00010004 + count + offset/size pairs
+offset 180: section header: type 0x00010005 + count + values
+offset 196: type code table (flat list of LE u32 type codes)
+offset ???: object data (type code + instance data)
+offset off76: footer (off68 bytes)
+```
+
+`[MEASURED]` The two section headers at 152 and 180 (types 0x00010004 and 0x00010005)
+contain metadata: count followed by offset/size pairs. For subtype 1, the first
+section header has 3 offset/size pairs (12/28, 128/164, 192/???). The second has
+count=22 and values (12, 0).
+
+`[MEASURED]` The type code table at offset 196 is a flat sequence of LE u32 type codes.
+For subtype 1 (Sample 1, 33 type codes total), the table contains:
+0x00010030, 0x00010031, 0x00010032, 0x00010010, 0x00020003, 0x00020004,
+0x00020005, 0x00020007, 0x00020009, 0x0002000B, 0x0002001A, 0x00070001,
+0x00070002, 0x00070003, 0x0007000B, 0x0007000C, 0x0007000F.
+
+`[MEASURED]` For subtype 0x04000000, the type code table is shorter (ends at Raster
+0x00020003), and the data after the table diverges. The value at offset 100 is
+440 (0x01B8) for this subtype, consistently across samples.
+
+`[UNKNOWN]` The exact mapping between type code table entries and object data
+instances is not yet decoded. Object instances appear later in the file with
+type codes followed by data, but the table-to-instance relationship is unclear.
 
 `[CORRECTION]` An earlier revision claimed `0xCAFED00D` at offset 28 as a universal magic
 trailer. It is not universal: it appeared in one sample and was misreported. The actual
