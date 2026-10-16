@@ -7,6 +7,8 @@
 
 use std::fmt;
 
+pub mod gmsh;
+
 /// One of the five stages of SPORE, in progression order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum GameStage {
