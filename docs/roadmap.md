@@ -125,6 +125,15 @@ Two of these are now much better specified than they were, see
 `0x2F4E681B` (1,131 resources) and `0x2F4E681C` (2,954). The pair needs explaining before
 either decoder is written.
 
+`[MEASURED]` **prop (`0x00B1B104`) was attacked and is not yet decoded.** It is the most
+common type in `Spore_Game.package` (7,030 of 11,529). Prop payloads provably contain
+length-prefixed UTF-16LE strings, several of which read cleanly (`Details`,
+`Domes_gear`, `Group_mkmidlegSkinny_0`), but the value encoding after each name is unknown,
+so a reader cannot advance from one record to the next. The scan-based fallback is
+demonstrably unreliable: it returns truncated fragments such as `Def` for `Defense`, which
+shows it is landing mid-string. Details and the specific blocker are in
+`re/payload-formats.md`. This is the highest-value open item in phase 1.
+
 ### Phase 2: asset browser in Bevy
 
 A Bevy app that opens a package, walks the index, decodes textures and meshes, and renders

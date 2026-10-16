@@ -1,0 +1,33 @@
+Property names extracted from SPORE .prop resources (type 0x00B1B104).
+Method: scan for length-prefixed UTF-16LE names, see tools/prop_names.py.
+prop resources scanned: 11953
+distinct names: 27
+
+count	name
+2	Def
+2	Attack
+2	Too
+2	Tool
+2	Milita
+2	Ass
+1	Soci
+1	Cuten
+1	Influ
+1	Conv
+1	Online
+1	Cult
+1	Misc
+1	Dec
+1	Building
+1	Econo
+1	You
+1	Eat
+1	Pow
+1	GGE
+1	Trac
+1	Tra
+1	CLG
+1	Crea
+1	Civilization
+1	Acce
+1	Cal
