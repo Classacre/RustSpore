@@ -8,6 +8,7 @@
 use std::fmt;
 
 pub mod anim;
+pub mod blockdata;
 pub mod gmsh;
 pub mod raster;
 pub mod string_table;
