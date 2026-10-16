@@ -134,26 +134,62 @@ In ASCII: `0x89` (non-printable, same as PNG), `"RW4w32"`, `0x00`, then `0x0D 0x
 The trailing four bytes are **identical** to the PNG signature trailer. This is a deliberate
 magic number, not coincidence.
 
-`[MEASURED]` Bytes 28-31 of the header are `0d d0 fe ca`, which is `0xCAFED00D` in
-little-endian. That is a second magic value confirming the header.
-
-`[MEASURED]` Header fields following the signature:
-
-```
-offset 12: 00 20 04 00   (u32, purpose unknown)
-offset 16: "454\0"       (platform code?)
-offset 20: "000\0"       (version?)
-offset 24: 00 00 00 00   (padding?)
-offset 28: 0xCAFED00D    (magic trailer)
-```
-
 `[MEASURED]` The resources appear in `Spore_Graphics.package` (9,368) and
 `Spore_Content.package` (1,131). `Spore_Game.package` carries none.
+
+`[MEASURED]` Header structure, derived from statistical analysis of 500 samples:
+
+```
+offset   0: magic signature (12 bytes)
+offset  12: 00 20 04 00   (u32, invariant)
+offset  16: "454\0"       (platform code, invariant)
+offset  20: "000\0"       (version, invariant)
+offset  24: 00 00 00 00   (u32, invariant)
+offset  28: subtype       (u32, two values: 0x00000001 or 0x00000004)
+offset  32: u32           (34 distinct values, always equals offset 36)
+offset  36: u32           (same as offset 32)
+offset  40: u32           (0x04 when subtype=0x04, 0x10 when subtype=0x01)
+offset  44: 00 00 00 00   (u32, invariant)
+offset  48: off48         (u32, 203 distinct values)
+offset  52: 0x00000098    (u32, invariant = 152)
+offset  56: 00 00 00 00   (u32, invariant)
+offset  60: 00 00 00 00   (u32, invariant)
+offset  64: 00 00 00 00   (u32, invariant)
+offset  68: off68         (u32, 202 distinct values)
+offset  72: u72           (0x04 when subtype=0x04, 0x10 when subtype=0x01)
+offset  76: off76         (u32, 228 distinct values)
+offset  80: 0x00000004    (u32, invariant)
+offset  84: 00 00 00 00   (u32, invariant)
+offset  88: 0x00000001    (u32, invariant)
+offset  92: 00 00 00 00   (u32, invariant)
+offset  96: 0x00000001    (u32, invariant)
+offset 100: off100        (u32, 32 distinct values)
+offset 104: 0x00000004    (u32, invariant)
+offset 108: 00 00 00 00   (u32, invariant)
+offset 112: 0x00000001    (u32, invariant)
+offset 116: 00 00 00 00   (u32, invariant)
+offset 120: 0x00000001    (u32, invariant)
+offset 124: 00 00 00 00   (u32, invariant)
+```
+
+`[MEASURED]` **Footer size invariant**: for every sample, `len(payload) - off76` equals
+`off68` when `subtype = 0x04`, and the relationship `off68 = len(payload) - off76` holds
+for every resource regardless of subtype. So `off76` is an offset to a footer section whose
+size is `off68`.
+
+`[MEASURED]` **Subtype 0x04 is uniform**: all 291 samples with `subtype = 0x04` have
+`off48 = 324`, `off68 = 372`, and `off72 = 4`. The footer is exactly 372 bytes. This
+suggests subtype 0x04 is a single well-defined object type (possibly a mesh or shader),
+while subtype 0x01 is a family of related types with variable sizes.
 
 `[INFERRED]` This is a **container format** for RenderWare 4 objects, not a single asset
 type. The payload after the header is expected to carry an object type id that selects the
 decoder (shader, mesh, etc.). The string literals `RWGOBJECTTYPE_*` and `RWCOBJECTTYPE_*`
 extracted from the binary are the dispatch table. See `docs/engine-architecture.md`.
+
+`[CORRECTION]` An earlier revision claimed `0xCAFED00D` at offset 28 as a universal magic
+trailer. It is not universal: it appeared in one sample and was misreported. The actual
+field at offset 28 is a subtype discriminator with two values (0x01 and 0x04).
 
 ## RASTER, type `0x2F4E681C`
 
