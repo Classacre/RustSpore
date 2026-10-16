@@ -40,17 +40,35 @@ cargo run -p spore-bevy
 cargo run -p spore-bevy -- "C:/path/to/Data/Spore_Game.package"
 ```
 
-### Known blocker: no C linker on this machine
+### Known blocker: `vcvars64.bat` cannot run, so linking fails
 
-The workspace **has not been compiled**. There is no Visual Studio or Build Tools
-installation, so MSVC's `vcruntime.lib` and `msvcrt.lib` are absent, and `link.exe` on
-`PATH` resolves to PortableGit's GNU `link`, which is a different program. Rust's bundled
-`rust-lld` combined with the Windows SDK import libraries gets as far as the MSVC CRT
-symbols, where it fails on `_CxxThrowException`, `__CxxFrameHandler3`, `__chkstk`,
-`_tls_index`, `_tls_used`, `memcpy`, `memset` and others.
+The workspace **has not been compiled**. Visual Studio 18 Community with MSVC 14.51 is now
+installed and `link.exe` is found, but the environment still cannot be set up:
 
-Installing Visual Studio Build Tools with the "Desktop development with C++" workload is
-the unblocking step. Until then the Rust code here should be treated as unverified.
+`vcvars64.bat` invokes `reg.exe` to locate the Windows SDK, and `reg.exe` is on the
+sandbox's Program Blacklist, so the script does not run. Without it, `LIB` and `INCLUDE`
+are never populated and the link fails with:
+
+```
+LINK : fatal error LNK1181: cannot open input file 'kernel32.lib'
+```
+
+`tools/build.bat` wraps the intended invocation:
+
+```
+tools\build.bat build --workspace
+tools\build.bat test -p dbpf
+```
+
+Two ways to unblock, both needing a decision outside this repository:
+
+1. Remove `reg.exe` from Security Center, then Command Security, then Program Blacklist.
+   `tools/build.bat` then works as written.
+2. Configure the build without `vcvars`, by setting `LIB` to the MSVC and Windows SDK
+   library directories and `INCLUDE` to the matching include directories. This does not
+   invoke `reg.exe`.
+
+Until one of these is done, the Rust code here is unverified.
 
 ## Documentation
 

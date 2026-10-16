@@ -67,21 +67,26 @@ verified against the real game data.
 
 ### Blocked
 
-**The Rust workspace cannot be compiled or tested on this machine.** There is no C
-linker installed:
+**The Rust workspace cannot be compiled yet, and the blocker has moved one step later.**
 
-- `link.exe` on `PATH` resolves to PortableGit's GNU `link`, which is a different program.
-- No Visual Studio or Build Tools installation exists, so MSVC's `vcruntime.lib` and
-  `msvcrt.lib` are absent.
-- Rust's bundled `rust-lld` gets much further (it is present, and the Windows SDK import
-  libraries at `Windows Kits\10\Lib\10.0.28000.0` supply `kernel32.lib` and `ucrt.lib`),
-  but linking still fails on MSVC CRT symbols that only ship with MSVC:
-  `_CxxThrowException`, `__CxxFrameHandler3`, `__chkstk`, `_tls_index`, `_tls_used`,
-  `memcpy`, `memset` and friends.
+Progress: Visual Studio 18 Community with MSVC 14.51 is installed and `link.exe` is now
+found. The earlier problem (no C linker at all, with `link.exe` resolving to PortableGit's
+GNU `link`) is gone.
 
-**Remediation:** install Visual Studio Build Tools with the "Desktop development with C++"
-workload. That is the single unblocking step. Until then, the Rust code in this repository
-has never been compiled, and should be treated as unverified.
+New problem: `vcvars64.bat` invokes `reg.exe` to locate the Windows SDK, and `reg.exe` is on
+the sandbox's Program Blacklist, so the environment is never populated. The link then fails
+with `LNK1181: cannot open input file 'kernel32.lib'`. This was not worked around, because
+the blacklist is the user's security policy.
+
+Two fixes, either of which unblocks the build:
+
+1. Remove `reg.exe` from Security Center, then Command Security, then Program Blacklist.
+   `tools/build.bat` then works as written.
+2. Configure the build without `vcvars`, by setting `LIB` and `INCLUDE` directly to the
+   MSVC and Windows SDK directories. This does not invoke `reg.exe`.
+
+Until then, the Rust code in this repository has never been compiled and should be treated
+as unverified. `tools/build.bat` documents the intended invocation.
 
 **Also blocked: deep binary analysis.** The reverse-engineering MCP backend runs Ghidra
 headless with a 330-second startup deadline, which auto-analysis of a 20 MB MSVC binary
