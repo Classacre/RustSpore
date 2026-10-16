@@ -64,6 +64,19 @@ verified against the real game data.
   corrected finding that the two executables' `.text` sections are 93.96% different
   despite near-identical sizes.
 - **Rust workspace.** Three crates: `dbpf`, `spore-core`, `spore-bevy`.
+- **Payload formats largely decoded.** Six of eight major types now have working
+  decoders validated against real data:
+  - **anim (0xEE17C6AD): 100% validated.** Per-bone CHAN sections with INFO/POS/ROT
+    sub-headers, 20-byte ROT keyframes (time + quaternion), morph bone channels.
+    All 1000 samples parse correctly.
+  - **gmsh (0x01C135DA): 96.6% validated.** Header, position data, attribute sections,
+    index v1 (100%), index v2+ (91.3% with variable footer). 541 of 560 samples.
+  - **RASTER (0x2F4E681C): fully decoded.** DXT1, DXT5, raw RGBA extracted to PNG.
+  - **string table (0xDFAD9F51): fully decoded.** Fixed 796-byte records.
+  - **RW4 (0x2F4E681B): header + payload structure decoded.** Type code table at
+    offset 196, object dispatch pending.
+  - **prop (0x00B1B104): 97.38% decoded.** Two array markers, mixed endianness.
+  - **blockdata (0x5CAA5E28): header partially decoded.** Bounding box + flags.
 
 ### Blocked
 
@@ -98,14 +111,16 @@ Each phase is independently useful and verifiable against real data.
 The container is solved; the payloads are not. Dominant types seen so far, with what
 stands between each and being readable:
 
-| Type | Name | Work required |
+| Type | Name | Status |
 |---|---|---|
-| 0x2F7D0004 | PNG | none, standard format, already recognisable after decompression |
-| 0x00B1B104 | prop | decode the property tree; public sources describe it, needs measurement |
-| 0x2F4E681B | RW4 | RenderWare 4 asset container; the largest single job in this phase |
-| 0x01C135DA | gmsh | mesh format: vertex buffers, index buffers, submesh splits |
-| 0xEE17C6AD | anim | animation curves and skeletal binding |
-| 0x5CAA5E28 | blockdata | unknown structure |
+| 0x2F7D0004 | PNG | **decoded.** Standard PNG. 13,174 extracted, all CRCs valid. |
+| 0x00B1B104 | prop | **97.38% decoded.** 11,640 of 11,953 parse exactly. |
+| 0x2F4E681B | RW4 | **header + payload structure decoded.** Type code table identified. Object dispatch not yet implemented. |
+| 0x2F4E681C | RASTER | **decoded and validated.** DXT1, DXT5, raw RGBA. Extracted to PNG. |
+| 0x01C135DA | gmsh | **96.6% decoded.** Header, attributes, index v1 (100%), v2+ (91.3%). |
+| 0xEE17C6AD | anim | **100% decoded and validated.** CHAN sections, INFO/POS/ROT, keyframes. |
+| 0x5CAA5E28 | blockdata | **header partially decoded.** Bounding box + flags identified. |
+| 0xDFAD9F51 | string table | **decoded.** Fixed 796-byte records with hash + UTF-16LE string. |
 
 Deliverable: a `spore-formats` crate with a decoder per type, each with a round-trip test
 against a real resource.
