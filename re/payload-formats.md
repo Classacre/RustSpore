@@ -16,7 +16,7 @@ mostly still open. It is deliberately blunt about that.
 | `0x2F4E681B` | RW4 | **header decoded.** Magic signature found, two subtypes (0x01 and 0x04), footer invariant measured. Object dispatch not yet implemented. See below. |
 | `0x2F4E681C` | RASTER | **decoded and validated.** DXT1, DXT5, and raw RGBA sub-formats. Extracted to PNG with zero errors. See below. |
 | `0x01C135DA` | gmsh mesh | **header and attribute sections decoded.** Index section version 1 fully decoded (100% parse). Version 2+ partially decoded. See below. |
-| `0xEE17C6AD` | anim | **mostly decoded.** Header, CHAN sections, INFO/POS/ROT sub-headers, keyframe structure. Morph bones have channel types 3/4. See below. |
+| `0xEE17C6AD` | anim | **decoded and validated.** 1000/1000 samples (100%) parse correctly. CHAN sections, INFO/POS/ROT headers, keyframe structure all decoded. See below. |
 | `0x5CAA5E28` | blockdata | **header partially decoded.** Starts with bounding box floats. Full structure not yet solved. |
 | `0xDFAD9F51` | string table | **decoded.** Fixed 796-byte records: 4-byte hash + UTF-16LE string + null padding. |
 
@@ -462,6 +462,17 @@ ASCII animation name (null-terminated, e.g. "vidle_get_angry03")
 `[MEASURED]` Animation names are ASCII (not UTF-16LE like the path in the header).
 Examples: "vidle_get_angry03", "vidle_herbi_rollindust", "vwalk_neutral",
 "footstep".
+
+### Validation
+
+`[VALIDATED]` `tools/anim_validate.py` parses all 1000 anim resources across
+PatchData and Spore_Game with 100% success. Every bone's INFO header is at
+section+232, POS at +264, ROT at +296. POS and ROT keyframe counts always match
+the INFO keyframe count.
+
+`[MEASURED]` Bone count per animation: 5 to 14 (median 10). Most common bones:
+root (892), ears (857), R foot (773), L foot (773), eyes (691), head (674).
+Keyframe counts: 440 (most common), 280, 240, 200, 140, 60, 180, 360, 100, 320.
 
 ## blockdata, type `0x5CAA5E28`
 
