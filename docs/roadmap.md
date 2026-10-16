@@ -125,14 +125,17 @@ Two of these are now much better specified than they were, see
 `0x2F4E681B` (1,131 resources) and `0x2F4E681C` (2,954). The pair needs explaining before
 either decoder is written.
 
-`[MEASURED]` **prop (`0x00B1B104`) was attacked and is not yet decoded.** It is the most
-common type in `Spore_Game.package` (7,030 of 11,529). Prop payloads provably contain
-length-prefixed UTF-16LE strings, several of which read cleanly (`Details`,
-`Domes_gear`, `Group_mkmidlegSkinny_0`), but the value encoding after each name is unknown,
-so a reader cannot advance from one record to the next. The scan-based fallback is
-demonstrably unreliable: it returns truncated fragments such as `Def` for `Defense`, which
-shows it is landing mid-string. Details and the specific blocker are in
-`re/payload-formats.md`. This is the highest-value open item in phase 1.
+`[MEASURED]` **prop (`0x00B1B104`) is partially decoded.** It is the most common type in
+`Spore_Game.package` (7,030 of 11,529). The record header is confirmed: a big-endian item
+count, then per item a big-endian identifier, a `u16` type and a `u16` specifier, with the
+documented type ids appearing in real data (`0x000d` float, `0x0020` key, `0x000a` uint32,
+`0x0013` string, `0x0001` bool). Single-value padding was measured and confirmed. **1,612 of
+7,030 resources (22.93%) now parse to exactly the last byte**, up from zero.
+
+Remaining blockers, all in `re/payload-formats.md`: the `texts` (type `0x22`) layout is
+unknown, `type 0x00` is undocumented, and 1,388 overruns remain, so at least one type size
+or padding rule is still wrong. This stays the highest-value open item in phase 1, and the
+exact-consumption rate is the metric to move.
 
 ### Phase 2: asset browser in Bevy
 
