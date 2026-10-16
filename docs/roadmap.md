@@ -77,6 +77,9 @@ verified against the real game data.
     offset 196, object dispatch pending.
   - **prop (0x00B1B104): 97.38% decoded.** Two array markers, mixed endianness.
   - **blockdata (0x5CAA5E28): header partially decoded.** Bounding box + flags.
+- **Rust format parsers.** Six of seven major formats have Rust implementations in
+  `spore-core`: `gmsh`, `anim`, `string_table`, `raster`, `blockdata`, `prop`.
+  33 unit tests pass. Only RW4 lacks a Rust parser.
 
 ### Blocked
 
