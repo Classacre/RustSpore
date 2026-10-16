@@ -343,10 +343,17 @@ values like -1.0, 0.0, 1.0 (90-degree rotations).
 version 5 has a 36-byte header. The count/stride sub-header appears right
 after the version-specific fields.
 
-`[UNKNOWN]` 96 of 207 v2+ samples (46%) do not fit any tested formula. Many
-have very few detected indices (3-9), suggesting the index data detection
-finds false positives. The actual index data may start at a position that
-doesn't have a long run of valid u16 values.
+`[MEASURED]` Header-based decoding (reading count and stride directly from the
+header at position `16 + version*4`) validates 125 of 207 v2+ samples (60.4%).
+All valid samples have stride=48. The count field gives the number of 48-byte
+matrices, and the index data starts at `header + 4 + count*48 + 8` (footer).
+
+`[MEASURED]` Invalid samples fall into two categories:
+1. stride=2 with large count (e.g. 1116, 2874): the `15 00 06 08` at this
+   position is not the index section header but a different structure
+2. stride=48 with reasonable count but 0 valid indices at the predicted
+   position: the footer may be larger than 8 bytes, or there may be additional
+   data between the matrices and the index data
 
 ### Footer
 
