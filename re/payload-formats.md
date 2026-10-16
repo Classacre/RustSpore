@@ -17,7 +17,7 @@ mostly still open. It is deliberately blunt about that.
 | `0x2F4E681C` | RASTER | **decoded and validated.** DXT1, DXT5, and raw RGBA sub-formats. Extracted to PNG with zero errors. See below. |
 | `0x01C135DA` | gmsh mesh | **header and attribute sections decoded.** Index section version 1 fully decoded (100% parse). Version 2+ partially decoded. See below. |
 | `0xEE17C6AD` | anim | **header decoded.** ANIM magic, file path string, frame duration, duration. Track data format not yet solved. See below. |
-| `0x5CAA5E28` | blockdata | not decoded. |
+| `0x5CAA5E28` | blockdata | **header partially decoded.** Starts with bounding box floats. Full structure not yet solved. |
 
 ## prop, type 0x00B1B104
 
@@ -410,6 +410,44 @@ These values vary per animation and do not form an obvious pattern. The
 values 21744 and 21572 are close to the file size, suggesting they may be
 offsets from the start of the file rather than from the start of the
 animation data.
+
+## blockdata, type `0x5CAA5E28`
+
+`[MEASURED]` Appears in `PatchData.package` (500+) and `Spore_Game.package` (500+).
+Total sampled: 1000. No magic string. Size distribution: 36 (121), 48 (241),
+84 (256), 228 (279), 804 (81), 3108 (18), 12324 (3), 49188 (1).
+
+### Bounding box
+
+`[MEASURED]` All samples begin with 6 little-endian floats forming a bounding box:
+
+```
++0:  LE float: min X
++4:  LE float: min Y
++8:  LE float: min Z
++12: LE float: max X
++16: LE float: max Y
++20: LE float: max Z
+```
+
+`[MEASURED]` For the 36-byte samples, the remaining 12 bytes are 3 u32 zeros.
+Example: min = (-0.1, -0.1, -0.1), max = (0.1, 0.1, 0.1), then 3 zeros.
+
+### Flags and additional data
+
+`[MEASURED]` For larger samples (48+ bytes), after the 6 bounding box floats:
+
+```
++24: LE float (unknown, varies)
++28: 4 bytes of flags (0x04 = set, 0x00 = not set)
++32: variable data
+```
+
+`[MEASURED]` The 4 flag bytes at +28 show patterns like `04 04 00 00`,
+`04 00 00 00`, `04 04 04 00`. The value 0x04 appears to be a boolean true.
+
+`[UNKNOWN]` The full structure after the flags is not yet decoded. The variable
+data may contain block properties, collision data, or terrain information.
 
 ## Note on method
 
