@@ -739,11 +739,16 @@ Beyond the formats documented above, several more have identifiable structure:
 - `[INFERRED]` Content assembly manifest or RSS-like index format
 
 **Type `0x250FE9A2`** (601 resources, PatchData/Spore_Graphics):
-- Magic `0xB83FFEE3` (BE u32, 100% invariant)
-- BE u32=3 (version), BE u16 count
-- Repeating 12-byte records: BE u32 hash + BE u32 + BE u32
-- Same hash+value pairs repeat many times (lookup table)
-- `[INFERRED]` Fixed-stride lookup table with magic header
+- Magic `0xB83FFEE3` (BE u32, 100% invariant), version 3 (BE u32)
+- BE u16 count at +8 (varies: 5-24)
+- 12-byte records starting at +12: BE u32 hash + BE u32 val1 + BE u32 val2
+- Most records are identical sentinel values (e.g., hash=0xA431C96C,
+  val1=0xD60B0400, val2=0x7D2F9348 repeating 100+ times)
+- A few unique records at the start, then sentinel padding
+- `[INFERRED]` Hash table with open addressing. The count at +8 is the
+  number of slots. Unique entries are stored at the beginning, empty slots
+  filled with sentinel values. The val1/val2 fields may be offsets or sizes
+  into a separate data section.
 
 **Type `0x1A99B06B`** (1,733 resources, Spore_Content/Spore_Pack_03):
 - Magic `0xD37E6548` (BE u32, 100% invariant)
