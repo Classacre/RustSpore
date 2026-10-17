@@ -503,6 +503,23 @@ varies: 0 for INFO, 20 for POS, 100 for ROT (possibly data stride or offset).
 `[MEASURED]` ROT keyframes are 20 bytes each: LE float time + 4 LE floats
 (x, y, z, w quaternion). POS keyframes are likely 16 bytes: time + 3 floats.
 
+`[MEASURED]` Keyframe data starts at bone_offset + 312 (after INFO+POS+ROT
+headers). The data uses a 200-byte stride per keyframe. Each 200-byte block
+contains:
+- LE u32 frame index (incrementing by 1 for each stored keyframe)
+- 12 bytes of zeros
+- 16 bytes: LE float4 position (XYZ + W=1.0)
+- Variable zeros and additional float4 values
+
+Only a subset of the 200 total frames have stored keyframes (sparse storage).
+For a bone with kf_count=200, approximately 11 keyframes are stored at frames
+33-43. The frame index low byte increments: 0x21, 0x22, 0x23... (33, 34, 35).
+
+`[MEASURED]` Each 200-byte keyframe block contains two float4 values with
+W=1.0 (position-like). The first is at block+16, the second at block+112.
+The 80 bytes between them and the 72 bytes after are mostly zeros, possibly
+containing rotation, scale, or morph data for other channels.
+
 `[MEASURED]` Morph bones ("MouthMorphs", "eyes", "ears") have no POS/ROT headers.
 Instead, the INFO section contains sub-entries with channel types 3 and 4:
 ```
