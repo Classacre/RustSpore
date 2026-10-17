@@ -576,26 +576,28 @@ Example: min = (-0.1, -0.1, -0.1), max = (0.1, 0.1, 0.1), then 3 zeros.
 +32: variable data
 ```
 
-`[MEASURED]` The 4 flag bytes at +28 show patterns like `04 04 00 00`,
-`04 00 00 00`, `04 04 04 00`. The value 0x04 appears to be a boolean true.
+`[MEASURED]` The 4 flag bytes at +28 show patterns that correlate with data size:
+- 36-byte samples: flags = `00 00 00 00` (0 flags set, no extra data)
+- 48-byte samples: flags = `04 00 00 00` (1 flag, 12 bytes data)
+- 84-byte samples: flags = `04 04 00 00` (2 flags, 48 bytes data)
+- 228-byte samples: flags = `04 04 04 00` (3 flags, 192 bytes data)
 
-`[MEASURED]` After the flags, 4 bytes of zeros, then variable data:
-- 36-byte samples: 3 u32 zeros (total padding after bounding box)
-- 48-byte samples: 4 zeros + 4-byte value + 8-byte hash/ID
-- 84-byte samples: 4 zeros + 48 bytes of structured data
+`[MEASURED]` After the flags, 4 bytes of zeros at +32, then variable data.
+The data size grows quadratically with the number of set flags:
+12, 48, 192 bytes (each additional flag quadruples the data).
 
-`[MEASURED]` The 48-byte structured data in 84-byte samples consists of 4 groups
-of 12 bytes. Each group contains 6 BE u16 values. The values show a consistent
-increment pattern: the step between groups is 0x22 (34 decimal) for most fields.
-This suggests 4 quantized reference points or vertices with multiple attributes.
+`[MEASURED]` The data consists of groups of 12 bytes. For 84-byte samples,
+there are 4 groups; for 228-byte samples, 16 groups; for 804-byte samples,
+64 groups. Each group contains 3 LE u32 values. The high byte of the first
+u32 is often constant (e.g., 0x44), while other bytes vary.
 
-`[MEASURED]` Example (Sample 3): groups have bytes like `01 00 | 00 30 | 30 00 |
-70 90 | 00 d0 | f0 00` with the second byte of fields 2, 3, 5, 6 incrementing by
-0x22 across groups (00, 22, 44, 66). The first field (`01 00` = 256) is constant.
+`[INFERRED]` This is likely a **terrain or voxel block format** with a LOD
+(level of detail) system. The flags indicate which LOD levels are present.
+Each LOD level quadruples the data resolution (quadtree-like). The 12-byte
+groups may encode height, moisture, and temperature values per grid cell.
 
-`[UNKNOWN]` The exact meaning of the 6 u16 fields per group is not yet decoded.
-They could be quantized positions, normals, or other geometric attributes
-relative to the bounding box.
+`[UNKNOWN]` The exact meaning of the 3 u32 values per group is not yet decoded.
+They could be quantized height/attribute values relative to the bounding box.
 
 ## string table, type `0xDFAD9F51`
 
