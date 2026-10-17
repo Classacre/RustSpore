@@ -12,6 +12,7 @@ pub mod blockdata;
 pub mod gmsh;
 pub mod prop;
 pub mod raster;
+pub mod rw4;
 pub mod string_table;
 
 /// One of the five stages of SPORE, in progression order.
