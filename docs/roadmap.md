@@ -64,8 +64,8 @@ verified against the real game data.
   corrected finding that the two executables' `.text` sections are 93.96% different
   despite near-identical sizes.
 - **Rust workspace.** Three crates: `dbpf`, `spore-core`, `spore-bevy`.
-- **Payload formats largely decoded.** Six of eight major types now have working
-  decoders validated against real data:
+- **Payload formats largely decoded.** Nine major types now have working
+  decoders or validated structural analysis:
   - **anim (0xEE17C6AD): 100% validated.** Per-bone CHAN sections with INFO/POS/ROT
     sub-headers, 20-byte ROT keyframes (time + quaternion), morph bone channels.
     All 1000 samples parse correctly.
@@ -77,9 +77,17 @@ verified against the real game data.
     offset 196, object dispatch pending.
   - **prop (0x00B1B104): 97.38% decoded.** Two array markers, mixed endianness.
   - **blockdata (0x5CAA5E28): header partially decoded.** Bounding box + flags.
-- **Rust format parsers.** Six of seven major formats have Rust implementations in
-  `spore-core`: `gmsh`, `anim`, `string_table`, `raster`, `blockdata`, `prop`.
-  33 unit tests pass. Only RW4 lacks a Rust parser.
+  - **audio event (0x02B9F662): header partially decoded.** FNV-1 hashed string keys
+    (parent, gain, is3d, samples, codec). 16,841 resources. 50.6% exact parse.
+  - **gmdl model (0x00E6BCE5): header decoded.** Version 8, bounding box, triangle
+    buffer, 16-bit indices. 4,209 resources. 92% header validation.
+- **Type census completed.** All 91,267 resources across 80 distinct types catalogued.
+  Additional structural notes for 6+ unknown types (0x030BDEE3, 0x250FE9A2,
+  0x1A99B06B, 0x0F43029A, 0x02D5C9AF, 0x01A527DB). Text formats identified:
+  XML (9 types), Lua, PureData, WAV, OLE, nested DBPF.
+- **Rust format parsers.** All seven major formats have Rust implementations in
+  `spore-core`: `gmsh`, `anim`, `string_table`, `raster`, `blockdata`, `prop`,
+  `rw4`. 39 unit tests pass.
 
 ### Blocked
 
