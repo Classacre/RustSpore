@@ -15,7 +15,7 @@ mostly still open. It is deliberately blunt about that.
 | `0x00B1B104` | prop | **decoded.** 11,640 of 11,953 (97.38%) parse exactly. Zero overruns. Remaining 2.6% are clustered in groups `0x0001FFFF` and `0x00010000`, likely variant layouts. |
 | `0x2F4E681B` | RW4 | **header decoded.** Magic signature found, two subtypes (0x01 and 0x04), footer invariant measured. Object dispatch not yet implemented. See below. |
 | `0x2F4E681C` | RASTER | **decoded and validated.** DXT1, DXT5, and raw RGBA sub-formats. Extracted to PNG with zero errors. See below. |
-| `0x01C135DA` | gmsh mesh | **96.6% decoded and validated.** Header, attributes, index v1 (100%), index v2+ (91.3%). See below. |
+| `0x01C135DA` | gmsh mesh | **99.95% decoded and validated.** 1999/2000 samples fully parsed with valid indices. See below. |
 | `0xEE17C6AD` | anim | **decoded and validated.** 1000/1000 samples (100%) parse correctly. CHAN sections, INFO/POS/ROT headers, keyframe structure all decoded. See below. |
 | `0x5CAA5E28` | blockdata | **header partially decoded.** Starts with bounding box floats. Full structure not yet solved. |
 | `0xDFAD9F51` | string table | **decoded.** Fixed 796-byte records: 4-byte hash + UTF-16LE string + null padding. See below. |
@@ -360,9 +360,32 @@ vcount * stride bytes of data
 ### Index section
 
 `[MEASURED]` Magic: `15 00 06 08`. The BE u32 at +4 is a version discriminator.
+The index section has two sub-types based on the stride field:
 
-**Version 1** (BE u32 @+4 = 1, 352 of 560 samples, 100% parse success):
+**Direct indices** (stride=2, 382 of 2000 samples):
 
+The count/stride sub-header is followed directly by u16 LE index data.
+For version 1, the sub-header is at +20/+22 within the 24-byte header.
+For version 2+, the header is `16 + version*4` bytes, then the sub-header
+(BE u16 count + BE u16 stride=2), then `count * 2` bytes of u16 LE indices.
+
+**Matrices + indices** (stride=48, 1617 of 2000 samples):
+
+The count/stride sub-header specifies `count` 48-byte 3x4 transformation
+matrices. After the matrices, a v1-style index header follows:
+
+```
++0:  BE u32 = 1 (version)
++4:  BE u32 = index_count
++8:  BE u16 = 2 (index stride)
++10: BE u16 = 0 (flags)
++12: index_count * 2 bytes of LE u16 indices
+```
+
+The 48-byte matrices contain rotation/transformation data (values like
+-1.0, 0.0, 1.0 for 90-degree rotations). Matrix count ranges from 2 to 16.
+
+**Version 1 header** (24 bytes):
 ```
 4 bytes:  magic (15 00 06 08)
 4 bytes:  BE u32 = 1 (version)
@@ -370,84 +393,34 @@ vcount * stride bytes of data
 4 bytes:  zeros
 2 bytes:  BE u16 = 1
 2 bytes:  BE u16 = 0
-2 bytes:  BE u16 = index_count
-2 bytes:  BE u16 = 2 (index stride, u16)
-index_count * 2 bytes of LE u16 indices
+2 bytes:  BE u16 = count (matrix count or index count)
+2 bytes:  BE u16 = stride (2 or 48)
 ```
 
-`[VALIDATED]` All 352 version 1 samples parse to exactly the last byte. All indices
-are less than vcount. Example: 410-byte sample with vcount=14 has 36 indices forming
-a triangle list.
-
-**Version 2+** (BE u32 @+4 = 2 through 10, 208 of 560 samples):
-
-`[MEASURED]` The header layout differs. The actual index data starts at a variable
-offset after the magic, preceded by sub-section headers and 3x4 transformation
-matrix data. For the 39722-byte PatchData sample (vcount=942, version=2), 2702
-valid u16 indices were found starting at offset 34214. The first index is 512,
-followed by 0, 1, 2, 3, 2, 1, 4, 5, 6, 7, 6, 5, 8... suggesting a triangle strip
-with degenerate triangles.
-
-`[MEASURED]` The gap structure follows the formula:
-`gap = 16 + version*4 + 4 + N*matrix_size + 8`
-
-Where:
-- 16 = common header (magic + version + 1024 + 256)
-- version*4 = per-version attribute fields (v2=24, v3=28, v4=32, v5=36)
-- 4 = count (BE u16) + stride (BE u16)
-- N*matrix_size = N transformation matrices
-- 8 = footer
-
-`[MEASURED]` Matrix size is 48 bytes (3x4 transform) for 49.8% of v2+ samples
-(103/207). Alternative matrix sizes: 32 bytes (44 samples), 36 bytes (23),
-40 bytes (12). The 48-byte matrices contain rotation/transformation data with
-values like -1.0, 0.0, 1.0 (90-degree rotations).
-
-`[MEASURED]` The header size = 16 + version*4. Version 2 has a 24-byte header,
-version 5 has a 36-byte header. The count/stride sub-header appears right
-after the version-specific fields.
-
-`[MEASURED]` Header-based decoding (reading count and stride directly from the
-header at position `16 + version*4`) validates 125 of 207 v2+ samples (60.4%).
-All valid samples have stride=48. The count field gives the number of 48-byte
-matrices, and the index data starts at `header + 4 + count*48 + 8` (footer).
-
-`[MEASURED]` Invalid samples fall into two categories:
-1. stride=2 with large count (e.g. 1116, 2874): the `15 00 06 08` at this
-   position is not the index section header but a different structure
-2. stride=48 with reasonable count but 0 valid indices at the predicted
-   position: the footer may be larger than 8 bytes, or there may be additional
-   data between the matrices and the index data
-
-### Footer (between matrices and index data)
-
-`[MEASURED]` The footer between the transformation matrices and the index data
-is either 8 or 10 bytes:
-
-**8-byte footer** (125 samples): padding only.
-
-**10-byte footer** (64 samples): v1-style index header:
+**Version 2+ header** (16 + version*4 bytes, then 4-byte sub-header):
 ```
-+0:  BE u32 = 1 (version)
-+4:  BE u16 = 0 (padding)
-+6:  BE u16 = index_count - 1
-+8:  BE u16 = 2 (index stride)
+4 bytes:  magic (15 00 06 08)
+4 bytes:  BE u32 = version (2-11)
+4 bytes:  constant (00 04 00 00)
+(version-1) * 4 bytes: entries (00 00 0X 00 for X=1..version-1)
+2 bytes:  BE u16 = count
+2 bytes:  BE u16 = stride (2 or 48)
 ```
 
 ### File trailer (after index data)
 
 `[MEASURED]` After the index data, a file trailer follows. The last 8 bytes are
-always `ff ff ff ff ff ff ff ff`. Before that, a BE u16 value (8, 14, 15, 26
-observed) of unknown meaning. The trailer also repeats the index count as a
-LE u32.
+always `ff ff ff ff ff ff ff ff`. Before that, a BE u16 value of unknown meaning.
+The trailer size varies (56-206 bytes observed).
 
 ### Parse rate
 
-`[VALIDATED]` **96.6% overall** (541/560 samples):
-- Version 1 index sections: 352/352 (100%) parse to exactly the last byte
-- Version 2+ index sections: 189/207 (91.3%) with variable footer (8 or 10 bytes)
-- Remaining 19 samples have stride=2 at the count/stride position, indicating
-  a different structure not yet decoded
+`[VALIDATED]` **99.95% overall** (1999/2000 samples):
+- All 1999 parsed samples have valid indices (all < vcount)
+- All 1999 parsed samples have the 0xff*8 footer
+- Direct indices (stride=2): 382 samples, 100% valid
+- Matrices + indices (stride=48): 1617 samples, 100% valid
+- Only 1 sample out of 2000 fails to parse (likely a variant layout)
 
 ## anim, type `0xEE17C6AD`
 
