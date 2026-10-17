@@ -727,6 +727,60 @@ a bounding box. The format is related to but distinct from the gmsh mesh format.
 
 Tool: `tools/gmdl_quick.py`, `tools/gmdl_parse.py`.
 
+## Other unknown types (structural notes)
+
+`[MEASURED]` Type census identified 80 distinct types across 91,267 resources.
+Beyond the formats documented above, several more have identifiable structure:
+
+**Type `0x030BDEE3`** (1,641 resources, Spore_Content):
+- BE u32=10 (version), BE u32=0, BE u16 count, then hash/float pairs
+- Contains ASCII string `#tag:spore.com,2006:AssembledContent`
+- Two `0xFFFFFFFF` sentinels at +24 and +28
+- `[INFERRED]` Content assembly manifest or RSS-like index format
+
+**Type `0x250FE9A2`** (601 resources, PatchData/Spore_Graphics):
+- Magic `0xB83FFEE3` (BE u32, 100% invariant)
+- BE u32=3 (version), BE u16 count
+- Repeating 12-byte records: BE u32 hash + BE u32 + BE u32
+- Same hash+value pairs repeat many times (lookup table)
+- `[INFERRED]` Fixed-stride lookup table with magic header
+
+**Type `0x1A99B06B`** (1,733 resources, Spore_Content/Spore_Pack_03):
+- Magic `0xD37E6548` (BE u32, 100% invariant)
+- BE u32=5 (version), BE u32 count, BE u32=0
+- Float data at +48 onwards (small values, transform-like)
+- `[INFERRED]` Animation or transform data with magic header
+
+**Type `0x0F43029A`** (1,022 resources, Spore_Content):
+- Magic `0xB755B4AB` (BE u32, 100% invariant)
+- BE u32=9 (version), then BE u32 counts
+- Float data at +48 onwards (similar to 0x1A99B06B)
+- `[INFERRED]` Related to 0x1A99B06B, possibly a variant
+
+**Type `0x02D5C9AF`** (1,631 resources, Spore_Content):
+- BE u32=4 (count), BE u32=10 or variable
+- Pairs of hashes: `0x02DD90AF` + `0x02E1A75D` (both 100% invariant)
+- Followed by more hash pairs (e.g., `0x438F6347`, `0x05FB4759`)
+- `[INFERRED]` Reference/dependency table linking resource hashes
+
+**Type `0x01A527DB`** (2,898 resources, PatchData/Spore_Audio2):
+- BE u32 ~0x05005622 or 0x0400AC44 (variable, similar range)
+- Data after first 4 bytes appears compressed or encoded
+- `[UNKNOWN]` Format not yet identified
+
+**Identifiable text formats** (no binary decoding needed):
+- XML: types `0x2B978C46` (94), `0x3D97A8E4` (26), `0x3C7E0F63` (86),
+  `0x0330A65E` (10), `0x24682294` (8), `0xCF6C21B8` (5), `0x476A98C7` (4),
+  `0x2399BE55` (2), `0x438F6347` (2)
+- Lua scripts: type `0x024A0E52` (101), starts with `DeclareState CIS...`
+- PureData patches: type `0x617715D9` (289), starts with `#N canvas`
+- Plain text: types `0x497767B9` (123), `0x03055F61` (50), `0x0248F226` (4)
+- WAV audio: type `0x3F9C28B5` (1), RIFF magic
+- OLE documents: type `0x1F639D98` (2), `D0CF11E0` magic
+- Nested DBPF: type `0x06EFC6AA` (23), `DBPF` magic
+
+Tool: `tools/type_census.py`, `tools/type_unknowns.py`.
+
 ## Note on method
 
 This file exists because the alternative was to ship `tools/prop_names.py` as though it
