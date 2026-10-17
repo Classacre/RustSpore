@@ -18,6 +18,10 @@ mostly still open. It is deliberately blunt about that.
 | `0x01C135DA` | gmsh mesh | **96.6% decoded and validated.** Header, attributes, index v1 (100%), index v2+ (91.3%). See below. |
 | `0xEE17C6AD` | anim | **decoded and validated.** 1000/1000 samples (100%) parse correctly. CHAN sections, INFO/POS/ROT headers, keyframe structure all decoded. See below. |
 | `0x5CAA5E28` | blockdata | **header partially decoded.** Starts with bounding box floats. Full structure not yet solved. |
+| `0xDFAD9F51` | string table | **decoded.** Fixed 796-byte records: 4-byte hash + UTF-16LE string + null padding. See below. |
+| `0x02B9F662` | audio event | **header partially decoded.** FNV-1 hashed string keys. Known keys: parent, gain, is3d, samples, codec. 50.6% exact parse. See below. |
+| `0x00E6BCE5` | gmdl model | **header decoded.** Version 8, bounding box, triangle buffer header, index data. Vertex format partially decoded. See below. |
+| `0x03F51892` | audio event (variant) | **header partially decoded.** Same FNV-1 hash scheme as 0x02B9F662. |
 | `0xDFAD9F51` | string table | **decoded.** Fixed 796-byte records: 4-byte hash + UTF-16LE string + null padding. |
 
 ## prop, type 0x00B1B104
@@ -638,6 +642,90 @@ have empty strings (all zeros after the hash).
 `[INFERRED]` The 4-byte hash at offset 0 is likely a lookup key for the string.
 The fixed 796-byte size suggests this is a pre-allocated string buffer, possibly
 for locale text or creature part names.
+
+## audio event, type `0x02B9F662`
+
+`[MEASURED]` 16,841 resources across `PatchData.package` and `Spore_Audio2.package`.
+No magic string. The format uses **FNV-1 32-bit hashes** as string keys.
+
+`[MEASURED]` Known FNV-1 hash-to-string mappings (confirmed against binary strings):
+
+| Hash | String | Meaning |
+|---|---|---|
+| `0x5F6317D5` | `parent` | Parent reference (appears in 85% of entries) |
+| `0x25DF0108` | `gain` | Audio gain/volume |
+| `0x12D2A4D4` | `is3d` | 3D positional audio flag |
+| `0x701ED91E` | `samples` | Audio sample references |
+| `0xBA03D0CD` | `codec` | Audio codec identifier |
+
+`[MEASURED]` Header structure (all big-endian):
+
+```
+offset   0: BE u32 entry_count (2-11, typically 2-3)
+offset   4: N entries of 12 bytes each:
+              BE u32 hash (FNV-1 of property name)
+              BE u16 type (32=value, 13=float, 1=bool, 0=null)
+              BE u16 flags
+              BE u32 value (or float if type=13)
+```
+
+`[MEASURED]` After the entries, optional sections follow:
+
+- **samples section**: hash=`0x701ED91E`, type=32, flags=156, then BE u32 pair_count,
+  BE u32 stride=12, then pair_count pairs of 12 bytes (hash + 8 bytes data).
+  The pairs contain consecutive hash values (e.g., 0xA844269D, 0xAB442269D).
+- **codec section**: hash=`0xBA03D0CD`, type=10, flags=0, then BE u32 count.
+
+`[MEASURED]` Parse rate: 50.6% exact fit (8,515 of 16,841 samples). The remaining
+49.4% have additional sections or data not yet fully decoded. Gap analysis shows
+28-byte and 25-byte trailing data in many inexact samples.
+
+`[INFERRED]` This is an audio event/sound configuration table. The property names
+(parent, gain, is3d, samples, codec) are all audio-related. The format defines
+sound events with their properties and sample references. Type `0x03F51892` is a
+related variant using the same FNV-1 hash scheme.
+
+Tool: `tools/audio_event_parse.py`, `tools/audio_event_v2.py`, `tools/type_02b9_deep.py`.
+
+## gmdl model, type `0x00E6BCE5`
+
+`[MEASURED]` 4,209 resources, all in `Spore_Content.package`. All RefPack compressed.
+
+`[MEASURED]` Header structure (little-endian):
+
+```
+offset   0: LE u32 version = 8 (100% invariant across 50 samples)
+offset   4: LE u32 flags = 0 (92% invariant)
+offset   8: LE u32 count = 1 (84%) or 2 (8%) - possibly mesh count or LOD level
+offset  12: 7 LE floats (bounding box + extra):
+              min X, min Y, min Z, max X, max Y, max Z, extra (radius?)
+offset  40: LE u32 triangle_buffer_count = 1 (84%)
+offset  44: LE u32 primitive_type = 4 (D3DPT_TRIANGLELIST, 92%)
+offset  48: LE u32 indices_count
+offset  52: LE u32 indices_bits = 16 (92%)
+offset  56: LE u32 buffer_size (usually = indices_count * 2)
+offset  60: LE u32 = 0 (padding)
+offset  64: index data (u16 LE values, triangle indices)
+```
+
+`[MEASURED]` Validation across 50 samples: version=8 (100%), primitive_type=4 (92%),
+indices_bits=16 (92%), buffer_size = indices_count * 2 (92%). The 8% failures are
+from variant layouts or insufficient decompressed data.
+
+`[MEASURED]` Index data starts at offset 64 as u16 LE values. First indices observed:
+2, 0, 3, 1, 4, 5, 6, 6, 5, 7, 8, 4, 6, 6, 7, 9... These form triangles in
+groups of 3, with some degenerate triangles (repeated indices).
+
+`[MEASURED]` After the index data, a vertex format description section follows,
+containing vertex element descriptors. Vertex data appears as LE floats
+(position XYZ + normal XYZ, stride approximately 24 bytes). The exact vertex
+format layout is not yet fully decoded.
+
+`[INFERRED]` This is the higher-level model format referenced by the SporeModder
+Blender Addon documentation. It contains mesh geometry (indices + vertices) with
+a bounding box. The format is related to but distinct from the gmsh mesh format.
+
+Tool: `tools/gmdl_quick.py`, `tools/gmdl_parse.py`.
 
 ## Note on method
 
