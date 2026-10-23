@@ -1,5 +1,23 @@
-# Rust build output
-/target
+# Rust build output. Cargo.lock stays tracked for this application.
+target/
+**/*.rs.bk
+
+# Native build output, compiled shaders and crash dumps.
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.obj
+*.o
+*.a
+*.so
+*.dylib
+*.cso
+*.dxbc
+*.spv
+*.dmp
 
 # Build and test scratch output
 *.log
@@ -7,10 +25,64 @@
 # Local Python analysis caches
 __pycache__/
 *.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Local JavaScript/MCP dependencies.
+node_modules/
+
+# Local credentials. Sanitized examples can be committed.
+.env
+.env.*
+!.env.example
+!.env.*.example
+!.env.sample
+!.env.template
+*.pem
+*.key
+*.pfx
+*.p12
+.secrets/
+
+# Local reverse-engineering projects and binary analysis output.
+*.gpr
+*.rep/
+*.idb
+*.i64
+*.bndb
+*.bin
+
+# Local editor and operating-system state.
+.vs/
+.idea/
+*.suo
+*.user
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
 
 # User-supplied game data. Nothing under here is redistributed.
 assets/extracted/
 *.package
+*.rw4
+*.gmdl
+*.gmsh
+*.raster
+*.anim
+*.spui
+*.pctp
+*.creaturedata
+*.dds
+*.ttf
+*.otf
 
 # Local extracted textures and validation captures; preserve outside Git.
-/re/data/skins/*.png
+/re/data/skins/
