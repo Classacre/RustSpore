@@ -1,6 +1,6 @@
 # Static analysis of the SPORE executables
 
-Status: measured 2026-10-16 from the shipped binaries.
+Status: original measurements 2026-10-16; environment recovery recorded 2026-10-22 in section 10.
 Evidence grades: `[MEASURED]` read directly from bytes, `[INFERRED]` reasoned from
 measurements, `[UNKNOWN]` not established.
 
@@ -195,21 +195,34 @@ be the cleanest way to state which patch level each executable is.
 
 ## 8. Limits of this analysis
 
-These are real gaps, not omissions by choice.
+The following records the limits of the earlier runs. Section 10 records the later
+environment investigation; the 330-second deadline is configurable, not a fixed limit.
 
 1. **No decompilation.** The reverse-engineering MCP backend runs Ghidra headless and its
    startup deadline is 330 seconds. Auto-analysis of a 20 MB MSVC binary exceeded that on
-   two attempts, both ending in `Ghidra startup deadline elapsed` while still mid
-   analysis. The import table in section 3 came from the import log of those runs, which
-   is why it is detailed. No pseudocode, no call graph and no function list was obtained.
-2. **No RTTI recovery.** MSVC binaries embed mangled class-name strings that would expose
-   the engine's internal architecture. Because analysis never completed, no type names
-   were recovered. This is the single highest-value missing item.
+   three attempts, each ending in `Ghidra startup deadline elapsed` while still mid
+   analysis. The third attempt used the MCP directly rather than a headless script:
+   `open_binary` accepted the file and returned its identity (PE, x86, SHA-256
+   `17cf32b3...`), then `binary_overview` timed out at 330000 ms with
+   `failure_kind: timeout`, `failure_message: "Ghidra startup deadline elapsed"`. The log
+   shows import and library linking had completed and `ANALYZING all memory and code` had
+   begun. So the limit is the provider's own deadline during auto-analysis, not the calling
+   script, and it is not something a smaller request can work around: the first request
+   after `open_binary` is what triggers analysis. The import table in section 3 came from
+   the import log of those runs, which is why it is detailed. No pseudocode, no call graph
+   and no function list was obtained.
+2. **Sparse RTTI.** The separate byte scan in `tools/pe_rtti.py` found only two distinct
+   RTTI names per binary (`re/data/rtti-types.json`), rather than a useful engine-class
+   inventory. Engine names were instead mapped from registration strings in
+   `docs/engine-architecture.md`. Completed Ghidra analysis must not be assumed to recover
+   a class hierarchy that the executable does not supply.
 3. **No symbol or PDB data.** Ghidra reported no PDB file found in its search paths, and
    neither binary has a symbol table (`PointerToSymbolTable = 0`, `NumberOfSymbols = 0`).
 4. **No dynamic analysis.** Neither executable was run. Everything here is static.
-5. **The string inventory** in `re/data/strings-classified.txt` is extracted but not yet
-   interpreted in this report.
+5. **The string inventory** in `re/data/strings-classified.txt` is extracted and is the
+   only route into the engine that works at this file size: `tools/pe_engine_map.py` turns
+   it into `simulator-classes.txt`, `argscript-functions.txt`, `console-commands.txt` and
+   the RenderWare names. Section 4 stands on that, not on decompilation.
 
 The honest summary: the container format in `docs/dbpf-format.md` is on solid measured
 ground, but the engine internals are largely unexplored, and the blocker is tooling
@@ -222,4 +235,52 @@ PY=C:/Users/nieuw/.workbuddy-ai/binaries/python/envs/default/Scripts/python.exe
 $PY tools/pe_meta.py        # headers, Rich header, imports, resources
 $PY tools/pe_sections.py    # section table and entropy
 $PY tools/pe_strings.py     # classified string inventory
+```
+
+## 10. Environment recovery, 2026-10-22
+
+`[MEASURED]` REA MCP 6.5.0 was already installed and answered `binary_session`.
+Ghidra 12.1.4 exists at `C:\Program Files\ghidra_12.1.4_PUBLIC`, with its Windows
+decompiler and headless launcher; Java 21 meets its declared requirement. The running
+desktop environment lacked `GHIDRA_INSTALL_DIR`, although the user-scope value existed.
+
+`[MEASURED]` Installed REA 6.5.0 supports `REA_GHIDRA_STARTUP_TIMEOUT_MS`; 330000 is
+the default, not a fixed cap. The Codex REA environment now explicitly sets the installed
+Ghidra path and a 1200000 ms startup budget. The two-setting change was backed up and
+validated as TOML, preserving all other settings. Existing MCP processes need reconnection
+to receive new environment values; `tools/rea-spore.ps1` starts a fresh CLI process with
+the values immediately.
+
+The runner keeps complete JSON Evidence and query snapshots under ignored `target/rea/`.
+These snapshots cache observations, not a persistent Ghidra database. Retain an MCP session
+for successive queries when possible, because separate CLI calls can repeat auto-analysis.
+
+```powershell
+.\tools\rea-spore.ps1 -Operation trace -Query 'SPSkinPaintFloodEffect'
+```
+
+`[MEASURED]` A new full-default-profile run against the same base-game SHA-256 still
+timed out at **1200000 ms**, during the first `search_strings` inside `trace_feature`.
+The error was `provider_timeout` / `Ghidra startup deadline elapsed`. Profile digest:
+`3c06738e45e144d5f073edbd3244c6bff46222f389525fe659bc92dca2ccdece`.
+The complete error is local-only at `target/rea/20261022-paint-trace/evidence.json`.
+Thread dumps showed active work progressing through constant-reference, scalar-operand
+and stack-variable analysis. Raising the deadline alone did not establish readiness.
+
+`[MEASURED]` A subsequent **focused profile completed**, with `Stack`,
+`x86 Constant Reference Analyzer` and `Decompiler Switch Analysis` disabled. Ghidra's
+log reports 676 seconds for the configured analysis. A persistent stdio REA MCP session
+then traced two flood-effect strings to `0x535900` and returned pseudocode/assembly for
+seven selected functions, without repeating startup. Complete Evidence was exported and
+the native session closed. The original executable's SHA-256 remained unchanged.
+
+This partially unblocks task #2: native function inspection works with the focused
+profile, while the full default profile remains unverified beyond its timeout. Automatic
+stack-variable, propagated-reference and switch recovery are reduced; three indirect call
+sites in the selected functions remain unresolved. No game runtime was observed.
+See `re/paint-entrypoints.md` for the exact target/profile, Evidence IDs, observed path and
+remaining unknowns. The corresponding runner command is:
+
+```powershell
+.\tools\rea-spore.ps1 -Focused -Operation trace -Query 'SPSkinPaintFloodEffect'
 ```

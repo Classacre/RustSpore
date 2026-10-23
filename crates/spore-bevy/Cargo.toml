@@ -11,7 +11,27 @@ description = "The RustSpore binary. Wires the core crates into a Bevy app."
 name = "rustspore"
 path = "src/main.rs"
 
+[[example]]
+name = "source_ui_shader_probe"
+required-features = ["native_shader_probe"]
+
+[[example]]
+name = "source_cell_shader_probe"
+required-features = ["native_shader_probe"]
+
+[features]
+default = ["native_renderer"]
+native_renderer = ["dep:windows"]
+native_shader_probe = ["native_renderer"]
+
 [dependencies]
 bevy.workspace = true
 dbpf.workspace = true
 spore-core.workspace = true
+
+# PNG resources are standard PNG files, so decoding them is not format work. The
+# crate is already in the tree through Bevy; this only names it directly.
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61.3", optional = true, features = ["Win32_Foundation", "Win32_Graphics_Direct3D9", "Win32_System_LibraryLoader", "Win32_UI_WindowsAndMessaging"] }

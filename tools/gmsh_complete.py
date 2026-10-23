@@ -18,6 +18,11 @@ from refpack import decompress
 BASE = Path("D:/Games/SPORE Collection/Data")
 GMSH_TYPE = 0x01C135DA
 
+# The index section magic is normally `15 00 06 08`. A variant uses
+# `14 00 06 08` (first byte 0x14 instead of 0x15) with an otherwise identical
+# v1 index header. Both are accepted.
+INDEX_MAGICS = (b"\x15\x00\x06\x08", b"\x14\x00\x06\x08")
+
 
 def parse_full(d):
     """Parse complete gmsh format including index data."""
@@ -34,7 +39,7 @@ def parse_full(d):
     attrs = []
     while off + 10 <= len(d):
         magic = d[off:off+4]
-        if magic == b"\x15\x00\x06\x08":
+        if magic in INDEX_MAGICS:
             break
         attr_vcount = struct.unpack_from(">I", d, off + 4)[0]
         attr_stride = struct.unpack_from(">H", d, off + 8)[0]
@@ -46,7 +51,7 @@ def parse_full(d):
         attrs.append({"vcount": attr_vcount, "stride": attr_stride})
         off += 10 + attr_vcount * attr_stride
 
-    if off + 4 > len(d) or d[off:off+4] != b"\x15\x00\x06\x08":
+    if off + 4 > len(d) or d[off:off+4] not in INDEX_MAGICS:
         return None
 
     # Index section

@@ -1,0 +1,567 @@
+/* Owned, no-CRT x86 verification driver. Native code/data are generated only
+   into the ignored target bundle. Preparation never authorizes execution. */
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include "native-font-payload.h"
+
+typedef unsigned char U8;
+typedef unsigned short U16;
+typedef unsigned long U32;
+typedef long I32;
+typedef char require_x86_pointers[(sizeof(void *) == 4 && sizeof(U32) == 4) ? 1 : -1];
+
+#define LEDGER_LIMIT 4096
+#define ALLOCATION_LIMIT 0x00100000UL
+#define LIVE_LIMIT 0x04000000UL
+#define REQUEST_MAGIC 0x31544E46UL
+#define OUTPUT_MAGIC 0x31524E46UL
+#define ERROR_MAGIC 0x31524546UL
+#define CONTEXT_MAGIC 0x31585443UL
+#define GLYPH_MAGIC 0x31594C47UL
+#define FINAL_MAGIC 0x31444E45UL
+
+typedef struct {
+    U8 *raw;
+    U8 *provided;
+    U32 size;
+    U32 ordinal;
+    U32 live;
+} Allocation;
+
+typedef struct {
+    U32 previous;
+    U32 handler;
+    U32 scope;
+    U32 try_level;
+} SourceSehFrame;
+
+typedef struct {
+    const void *vtable;
+    const U8 *font;
+    U32 length;
+    U32 position;
+    U32 magic;
+} FontStream;
+
+static Allocation g_allocations[LEDGER_LIMIT];
+static U32 g_ordinal, g_live, g_live_bytes, g_peak, g_alloc_calls;
+static U32 g_free_calls, g_realloc_calls, g_guard_checks;
+static U32 g_setjmp_calls, g_reads, g_read_bytes, g_copies, g_sets;
+static U32 g_phase, g_context, g_glyph, g_fatal;
+static U32 g_poison, g_layout;
+static SourceSehFrame *g_seh_frame;
+static U8 *g_font;
+static FontStream g_stream;
+static HANDLE g_input, g_output, g_heap;
+static U32 g_request[4], g_glyphs[64];
+static const U16 g_control_word = 0x037F;
+static const U32 g_mxcsr = 0x1F80;
+
+__declspec(naked) static U32 stack_base(void) {
+    __asm {
+        mov eax, fs:[4]
+        ret
+    }
+}
+__declspec(naked) static U32 stack_limit(void) {
+    __asm {
+        mov eax, fs:[8]
+        ret
+    }
+}
+__declspec(naked) static U32 seh_top(void) {
+    __asm {
+        mov eax, fs:[0]
+        ret
+    }
+}
+__declspec(naked) static void __cdecl set_seh_top(U32 value) {
+    __asm {
+        mov eax, [esp+4]
+        mov fs:[0], eax
+        ret
+    }
+}
+
+static void bytes_fill(void *destination, U8 value, U32 length) {
+    volatile U8 *p = (volatile U8 *)destination;
+    while (length) { *p++ = value; --length; }
+}
+static void bytes_copy(void *destination, const void *source, U32 length) {
+    volatile U8 *out = (volatile U8 *)destination;
+    const volatile U8 *in = (const volatile U8 *)source;
+    while (length) { *out++ = *in++; --length; }
+}
+static int in_range(U32 pointer, U32 length, U32 base, U32 size) {
+    return pointer >= base && pointer - base <= size && length <= size - (pointer - base);
+}
+static int is_stack(const void *pointer, U32 length) {
+    U32 low = stack_limit(), high = stack_base();
+    return high >= low && in_range((U32)pointer, length, low, high - low);
+}
+static int is_live_heap(const void *pointer, U32 length) {
+    U32 n;
+    for (n = 0; n < LEDGER_LIMIT; ++n) {
+        Allocation *a = &g_allocations[n];
+        if (a->live && in_range((U32)pointer, length, (U32)a->provided, a->size)) return 1;
+    }
+    return 0;
+}
+static int is_mapped_native_read(const void *pointer, U32 length) {
+    U32 n;
+    for (n = 0; n < PAYLOAD_READ_RANGE_COUNT; ++n) {
+        const NativeReadRange *m = &payload_read_ranges[n];
+        if (in_range((U32)pointer, length, m->address, m->size)) return 1;
+    }
+    return 0;
+}
+static int readable(const void *pointer, U32 length) {
+    return is_live_heap(pointer, length) || is_stack(pointer, length) ||
+        in_range((U32)pointer, length, (U32)g_font, FONT_BYTE_COUNT) ||
+        is_mapped_native_read(pointer, length);
+}
+static int writable(const void *pointer, U32 length) {
+    return is_live_heap(pointer, length) || is_stack(pointer, length);
+}
+
+static int write_all(const void *buffer, U32 length) {
+    const U8 *p = (const U8 *)buffer;
+    while (length) {
+        DWORD done = 0;
+        if (!WriteFile(g_output, p, length, &done, 0) || !done) return 0;
+        p += done; length -= done;
+    }
+    return 1;
+}
+__declspec(noreturn) static void fatal(U32 kind, U32 detail, U32 value, U32 extra) {
+    U32 record[12];
+    if (g_fatal) ExitProcess(0xEF);
+    g_fatal = 1;
+    record[0] = ERROR_MAGIC; record[1] = 1;
+    record[2] = kind; record[3] = detail; record[4] = value; record[5] = extra;
+    record[6] = g_phase; record[7] = g_context; record[8] = g_glyph;
+    record[9] = g_live; record[10] = g_live_bytes; record[11] = g_setjmp_calls;
+    write_all(record, sizeof(record));
+    ExitProcess(0x80 | (kind & 0x3F));
+}
+static void emit(const void *buffer, U32 length) {
+    if (!write_all(buffer, length)) ExitProcess(0xE0);
+}
+static int read_exact(void *buffer, U32 length) {
+    U8 *p = (U8 *)buffer;
+    U32 original = length;
+    while (length) {
+        DWORD done = 0;
+        if (!ReadFile(g_input, p, length, &done, 0)) fatal(1, 1, GetLastError(), length);
+        if (!done) {
+            if (length == original) return 0;
+            fatal(1, 2, original - length, original);
+        }
+        p += done; length -= done;
+    }
+    return 1;
+}
+static void check_read(const void *pointer, U32 length, U32 detail) {
+    if (!readable(pointer, length)) fatal(3, detail, (U32)pointer, length);
+}
+static void check_write(void *pointer, U32 length, U32 detail) {
+    if (!writable(pointer, length)) fatal(3, detail, (U32)pointer, length);
+}
+static U32 heap_u32(const void *object, U32 offset) {
+    const U8 *p;
+    if (offset > 0xFFFFFFFFUL - (U32)object) fatal(5, 1, (U32)object, offset);
+    p = (const U8 *)((U32)object + offset);
+    if (!is_live_heap(p, 4)) fatal(5, 1, (U32)p, offset);
+    return *(const U32 *)p;
+}
+static U16 heap_u16(const void *object, U32 offset) {
+    const U8 *p;
+    if (offset > 0xFFFFFFFFUL - (U32)object) fatal(5, 2, (U32)object, offset);
+    p = (const U8 *)((U32)object + offset);
+    if (!is_live_heap(p, 2)) fatal(5, 2, (U32)p, offset);
+    return *(const U16 *)p;
+}
+static U8 heap_u8(const void *object, U32 offset) {
+    const U8 *p;
+    if (offset > 0xFFFFFFFFUL - (U32)object) fatal(5, 3, (U32)object, offset);
+    p = (const U8 *)((U32)object + offset);
+    if (!is_live_heap(p, 1)) fatal(5, 3, (U32)p, offset);
+    return *p;
+}
+static void expect(U32 actual, U32 expected, U32 field) {
+    if (actual != expected) fatal(5, field, actual, expected);
+}
+
+static void check_guards(void) {
+    U32 n, j;
+    for (n = 0; n < LEDGER_LIMIT; ++n) {
+        Allocation *a = &g_allocations[n];
+        if (!a->live) continue;
+        for (j = 0; j < 16; ++j) {
+            U8 expected = (U8)(0x53 ^ (j * 13));
+            if (a->provided[-16 + (I32)j] != expected) fatal(3, 10, a->ordinal, j);
+            if (a->provided[a->size + j] != expected) fatal(3, 11, a->ordinal, j);
+        }
+        ++g_guard_checks;
+    }
+}
+static Allocation *find_allocation(void *pointer) {
+    U32 n;
+    for (n = 0; n < LEDGER_LIMIT; ++n) {
+        if (g_allocations[n].live && g_allocations[n].provided == pointer) return &g_allocations[n];
+    }
+    fatal(3, 12, (U32)pointer, 0);
+}
+static void *__cdecl owned_allocate(U32 size) {
+    U32 n, j, padding = g_layout ? 48 : 16;
+    U8 *raw, *provided;
+    Allocation *a = 0;
+    check_guards();
+    if (!size || size > ALLOCATION_LIMIT || size > LIVE_LIMIT - g_live_bytes) fatal(3, 13, size, g_live_bytes);
+    for (n = 0; n < LEDGER_LIMIT; ++n) if (!g_allocations[n].live) { a = &g_allocations[n]; break; }
+    if (!a) fatal(3, 14, g_live, LEDGER_LIMIT);
+    raw = (U8 *)HeapAlloc(g_heap, 0, size + padding + 47);
+    if (!raw) fatal(2, 1, GetLastError(), size);
+    provided = (U8 *)(((U32)raw + padding + 15) & ~15UL);
+    a->raw = raw; a->provided = provided; a->size = size;
+    a->ordinal = ++g_ordinal; a->live = 1;
+    bytes_fill(provided, (U8)g_poison, size);
+    for (j = 0; j < 16; ++j) provided[-16 + (I32)j] = provided[size + j] = (U8)(0x53 ^ (j * 13));
+    ++g_live; ++g_alloc_calls; g_live_bytes += size;
+    if (g_live_bytes > g_peak) g_peak = g_live_bytes;
+    return provided;
+}
+static void __cdecl owned_free(void *pointer) {
+    Allocation *a;
+    if (!pointer) return;
+    check_guards();
+    a = find_allocation(pointer);
+    bytes_fill(a->provided, 0xDD, a->size);
+    if (!HeapFree(g_heap, 0, a->raw)) fatal(2, 2, GetLastError(), a->ordinal);
+    --g_live; g_live_bytes -= a->size; ++g_free_calls;
+    a->live = 0; a->raw = 0; a->provided = 0; a->size = 0;
+}
+static void *__cdecl owned_reallocate(void *pointer, U32 size) {
+    Allocation *a;
+    U32 previous;
+    void *result;
+    ++g_realloc_calls;
+    if (!pointer) return owned_allocate(size);
+    check_guards(); a = find_allocation(pointer); previous = a->size;
+    result = owned_allocate(size);
+    bytes_copy(result, pointer, previous < size ? previous : size);
+    owned_free(pointer);
+    return result;
+}
+static void *__cdecl checked_copy(void *destination, const void *source, U32 length) {
+    U32 d = (U32)destination, s = (U32)source;
+    if (!length) { ++g_copies; return destination; }
+    check_write(destination, length, 20); check_read(source, length, 21);
+    if (length && d != s && ((d > s && d - s < length) || (s > d && s - d < length)))
+        fatal(3, 22, d, s);
+    bytes_copy(destination, source, length); ++g_copies;
+    return destination;
+}
+static void *__cdecl checked_set(void *destination, int value, U32 length) {
+    if (!length) { ++g_sets; return destination; }
+    check_write(destination, length, 23);
+    bytes_fill(destination, (U8)value, length); ++g_sets;
+    return destination;
+}
+
+static I32 __cdecl seh_continue(void *record, void *frame, void *context, void *dispatcher) {
+    (void)record; (void)frame; (void)context; (void)dispatcher;
+    return 1; /* ExceptionContinueSearch; this driver never resumes native faults. */
+}
+static LONG CALLBACK fatal_exception(PEXCEPTION_POINTERS exception) {
+    fatal(6, exception->ExceptionRecord->ExceptionCode,
+          (U32)exception->ExceptionRecord->ExceptionAddress,
+          exception->ExceptionRecord->NumberParameters > 1 ? (U32)exception->ExceptionRecord->ExceptionInformation[1] : 0);
+}
+static void validate_seh(void) {
+    if (!g_seh_frame || !is_stack(g_seh_frame, 16) || seh_top() != (U32)g_seh_frame)
+        fatal(3, 30, seh_top(), (U32)g_seh_frame);
+    expect(g_seh_frame->handler, (U32)seh_continue, 0xF001);
+    expect(g_seh_frame->scope, 0, 0xF002);
+    expect(g_seh_frame->try_level, 0xFFFFFFFF, 0xF003);
+}
+static void __cdecl validate_setjmp(void *buffer, U32 count) {
+    if (count) fatal(3, 31, count, (U32)buffer);
+    check_write(buffer, 64, 32); validate_seh(); ++g_setjmp_calls;
+}
+__declspec(naked) static int __cdecl checked_setjmp(void *buffer, U32 count) {
+    __asm {
+        push dword ptr [esp+8]
+        push dword ptr [esp+8]
+        call validate_setjmp
+        add esp, 8
+        mov eax, NATIVE_SETJMP_ENTRY
+        jmp eax
+    }
+}
+__declspec(noreturn) static void __cdecl checked_longjmp(void *buffer, U32 status) {
+    check_read(buffer, 64, 33); validate_seh();
+    fatal(4, status, (U32)buffer, is_stack(buffer, 64) ? 2 : 1);
+}
+
+static U8 __fastcall stream_seek(FontStream *stream, void *unused, U32 low, U32 high) {
+    (void)unused;
+    if (stream != &g_stream || stream->magic != 0xF01757EA || stream->font != g_font)
+        fatal(3, 40, (U32)stream, 0);
+    if (high || low > stream->length) return 0;
+    stream->position = low;
+    return 1;
+}
+static U32 __fastcall stream_read(FontStream *stream, void *unused, void *destination, U32 length) {
+    (void)unused;
+    if (stream != &g_stream || stream->magic != 0xF01757EA || stream->font != g_font)
+        fatal(3, 41, (U32)stream, 0);
+    if (stream->position > stream->length || length > stream->length - stream->position)
+        fatal(3, 42, stream->position, length);
+    if (length) check_write(destination, length, 43);
+    bytes_copy(destination, stream->font + stream->position, length);
+    stream->position += length; ++g_reads; g_read_bytes += length;
+    return length;
+}
+static const void *const stream_vtable[13] = {
+    0,0,0,0,0,0,0,0,0,0,(const void *)stream_seek,0,(const void *)stream_read
+};
+
+typedef void (__cdecl *AllocatorSetter)(void *, void *, void *);
+typedef void *(__cdecl *MemoryConstructor)(int *);
+typedef void *(__cdecl *StreamConstructor)(void *, void *, void *, U32, int *);
+typedef int (__cdecl *FontClassifier)(void *, int *);
+typedef void *(__cdecl *FontConstructor)(void *, U16, U32, void *, void *, void *, int *);
+typedef void *(__cdecl *ScalerConstructor)(void *, void *, int *);
+typedef void (__cdecl *SetTransform)(void *, int, int, int, I32 *, int, int *);
+typedef void (__cdecl *RenderGlyph)(void *, U32, I32, I32, U32, U16, int *);
+typedef void (__cdecl *PurgeGlyph)(void *, int, int *);
+typedef void (__cdecl *DestroyObject)(void *, int *);
+typedef void (__cdecl *DestroyMemory)(void *);
+
+static void map_payload(void) {
+    U32 n, old;
+    for (n = 0; n < PAYLOAD_RESERVATION_COUNT; ++n) {
+        const NativeReservation *reservation = &payload_reservations[n];
+        void *p = VirtualAlloc((void *)reservation->address, reservation->size, MEM_RESERVE, PAGE_NOACCESS);
+        if (p != (void *)reservation->address) fatal(2, 3, reservation->address, GetLastError());
+    }
+    for (n = 0; n < PAYLOAD_MAP_COUNT; ++n) {
+        const NativeMap *map = &payload_maps[n];
+        void *p = VirtualAlloc((void *)map->address, map->size, MEM_COMMIT, PAGE_READWRITE);
+        if (p != (void *)map->address) fatal(2, 3, map->address, GetLastError());
+        bytes_copy(p, map->bytes, map->size);
+    }
+    *(U32 *)0x013CC430 = (U32)checked_longjmp;
+    *(U32 *)0x013CC440 = (U32)checked_setjmp;
+    *(U32 *)0x013CC478 = (U32)checked_set;
+    *(U32 *)0x013CC47C = (U32)checked_copy;
+    for (n = 0; n < PAYLOAD_MAP_COUNT; ++n) {
+        const NativeMap *map = &payload_maps[n];
+        if (!VirtualProtect((void *)map->address, map->size, map->protection, &old))
+            fatal(2, 4, map->address, GetLastError());
+    }
+    g_font = (U8 *)VirtualAlloc(0, FONT_BYTE_COUNT, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    if (!g_font) fatal(2, 5, GetLastError(), FONT_BYTE_COUNT);
+    bytes_copy(g_font, font_payload, FONT_BYTE_COUNT);
+    if (!VirtualProtect(g_font, FONT_BYTE_COUNT, PAGE_READONLY, &old)) fatal(2, 6, GetLastError(), 0);
+    if (!FlushInstructionCache((HANDLE)-1, 0, 0)) fatal(2, 7, GetLastError(), 0);
+    ((AllocatorSetter)0x008A6E60)((void *)owned_allocate, (void *)owned_free, (void *)owned_reallocate);
+}
+static void set_controls(void) {
+    __asm {
+        fninit
+        fldcw g_control_word
+        ldmxcsr g_mxcsr
+        cld
+    }
+}
+static void control_record(U32 *words) {
+    U16 cw = 0;
+    U32 mx = 0, flags = 0;
+    __asm {
+        fnstcw cw
+        stmxcsr mx
+        pushfd
+        pop eax
+        mov flags, eax
+    }
+    words[0] = cw; words[1] = mx; words[2] = flags & 0x400;
+    expect(cw, 0x037F, 0xF010); expect(mx & 0xFFC0, 0x1F80, 0xF011); expect(flags & 0x400, 0, 0xF012);
+}
+static void native_error(int error, U32 operation) {
+    if (error) fatal(5, operation, (U32)error, 0);
+}
+static int allowed_round(U32 pointer) {
+    U32 n;
+    for (n = 0; n < ROUND_TARGET_COUNT; ++n) if (round_targets[n] == pointer) return 1;
+    return 0;
+}
+static int allowed_cvt(U32 pointer) {
+    return pointer == 0x008CC230 || pointer == 0x008CC250 || pointer == 0x008CC2A0;
+}
+static void check_font(void *font) {
+    void *head = (void *)heap_u32(font, 0x50);
+    expect(heap_u32(font, 0x20), 0, 0x20); expect(heap_u32(font, 0x24), 0, 0x24);
+    expect(heap_u32(font, 0x28), 0, 0x28); expect(heap_u32(font, 0x38), 0, 0x38);
+    expect(heap_u32(font, 0xAC), 0, 0xAC);
+    expect(heap_u32(font, 4), 0x008CEA70, 4);
+    if (!heap_u32(font, 0x68)) fatal(5, 0x68, 0, 0);
+    expect(heap_u16(head, 0x38), 0, 0x5038); expect(heap_u16(head, 0x32), 12, 0x5032);
+    if (!is_live_heap((void *)heap_u32(font, 0x44), 0x158)) fatal(5, 0x44, 0, 0x158);
+}
+static void check_scaler(void *scaler, void *font, int transformed) {
+    expect(heap_u32(scaler, 0x184), (U32)font, 0x184);
+    expect(heap_u32(scaler, 0x20), 0, 0x1020); expect(heap_u32(scaler, 0x24), 0, 0x1024);
+    expect(heap_u32(scaler, 0x40), 0, 0x1040); expect(heap_u32(scaler, 0x44), 0, 0x1044);
+    if (transformed) {
+        expect(heap_u32(scaler, 0x128), 15, 0x128); expect(heap_u32(scaler, 0x12C), 15, 0x12C);
+        expect(heap_u32(scaler, 0x16C), 15, 0x16C); expect(heap_u32(scaler, 0x170), 15, 0x170);
+        expect(heap_u32(scaler, 0x17C), 0, 0x17C);
+    }
+}
+static void check_fpgm(void *font) {
+    void *hint = (void *)heap_u32(font, 0x44);
+    const U8 *table = (const U8 *)heap_u32(hint, 0xA8);
+    U32 n;
+    if (!is_live_heap(table, FONT_FUNCTION_CAPACITY * 8)) fatal(5, 0xFA8, (U32)table, 0);
+    for (n = 0; n < FONT_DEFINITION_COUNT; ++n) {
+        const NativeDefinition *expected = &font_definitions[n];
+        const U8 *actual = table + expected->index * 8;
+        expect(*(const U32 *)actual, expected->start, 0xFA0 + expected->index);
+        expect(*(const U16 *)(actual + 4), expected->length, 0xFB0 + expected->index);
+        expect(*(const U16 *)(actual + 6), 1, 0xFC0 + expected->index);
+    }
+}
+static void emit_hint_state(void *font) {
+    void *hint = (void *)heap_u32(font, 0x44);
+    U32 cvt_count = heap_u32(hint, 0xE4);
+    U32 cvt_pointer = heap_u32(hint, 0x20);
+    U32 storage_pointer = heap_u32(hint, 0x1C);
+    U32 fields[5];
+    expect(cvt_count, FONT_CVT_COUNT, 0xFE4);
+    if (!is_live_heap((void *)cvt_pointer, cvt_count * 4) ||
+        !is_live_heap((void *)storage_pointer, FONT_STORAGE_CAPACITY * 4)) fatal(5, 0xFD0, cvt_pointer, storage_pointer);
+    fields[0] = cvt_count; fields[1] = FONT_STORAGE_CAPACITY;
+    fields[2] = heap_u32(hint, 0x88); /* hint-state +70 */
+    fields[3] = heap_u32(hint, 0xB0); /* hint-state +98 */
+    fields[4] = heap_u8(hint, 0xE0) | ((U32)heap_u8(hint, 0xE1) << 8);
+    if (!allowed_round(fields[2]) || !allowed_cvt(fields[3])) fatal(5, 0xF071, fields[2], fields[3]);
+    emit(fields, sizeof(fields));
+    emit((void *)cvt_pointer, cvt_count * 4);
+    emit((void *)storage_pointer, FONT_STORAGE_CAPACITY * 4);
+}
+static void emit_glyph(void *scaler, void *font, U32 ordinal) {
+    U32 fields[15], controls[3];
+    I32 width = (I32)heap_u32(scaler, 0x10C), height = (I32)heap_u32(scaler, 0x110);
+    I32 pitch = (I32)heap_u32(scaler, 0x114);
+    U32 bitmap = heap_u32(scaler, 0x118), bytes;
+    if (width < 0 || height < 0 || pitch < 0 || width > 4096 || height > 4096 ||
+        pitch > 4096 || pitch < width || (height && (U32)pitch > ALLOCATION_LIMIT / (U32)height))
+        fatal(5, 0xB001, (U32)width, (U32)pitch);
+    bytes = (U32)pitch * (U32)height;
+    if (bytes && !is_live_heap((void *)bitmap, bytes)) fatal(5, 0xB002, bitmap, bytes);
+    check_guards(); check_font(font); check_scaler(scaler, font, 1); validate_seh();
+    expect(heap_u32(scaler, 0x28), 0, 0x1028);
+    fields[0] = GLYPH_MAGIC; fields[1] = g_context; fields[2] = ordinal; fields[3] = g_glyph;
+    fields[4] = (U32)width; fields[5] = (U32)height; fields[6] = (U32)pitch; fields[7] = bytes;
+    fields[8] = heap_u32(scaler, 0xE4); fields[9] = heap_u32(scaler, 0xE0);
+    fields[10] = heap_u32(scaler, 0xD0); fields[11] = heap_u32(font, 0xC8);
+    fields[12] = bitmap != 0; fields[13] = g_live; fields[14] = g_live_bytes;
+    control_record(controls);
+    emit(fields, sizeof(fields)); emit(controls, sizeof(controls)); emit_hint_state(font);
+    if (bytes) emit((void *)bitmap, bytes);
+}
+static void run_context(U32 first, U32 count) {
+    SourceSehFrame frame;
+    void *memory, *input, *font, *scaler;
+    int error = 0, classification;
+    I32 matrix[4] = {11 * 65536, 0, 0, 11 * 65536};
+    U32 n, fields[8], controls[3];
+    frame.previous = seh_top(); frame.handler = (U32)seh_continue; frame.scope = 0; frame.try_level = 0xFFFFFFFF;
+    g_seh_frame = &frame; set_seh_top((U32)&frame); validate_seh(); set_controls();
+    g_phase = 10;
+    memory = ((MemoryConstructor)0x008D08D0)(&error); native_error(error, 0x8D08D0);
+    if (!is_live_heap(memory, 0xB0)) fatal(5, 0xB0, (U32)memory, 0);
+    g_stream.vtable = stream_vtable; g_stream.font = g_font; g_stream.length = FONT_BYTE_COUNT;
+    g_stream.position = 0; g_stream.magic = 0xF01757EA;
+    input = ((StreamConstructor)0x008CBBC0)(memory, &g_stream, (void *)0x00890AF0, FONT_BYTE_COUNT, &error);
+    native_error(error, 0x8CBBC0);
+    if (!is_live_heap(input, 0x23C)) fatal(5, 0x23C, (U32)input, 0);
+    expect(heap_u32(input, 4), 0x00890AF0, 0x204);
+    expect(heap_u32(input, 8), (U32)&g_stream, 0x208);
+    g_phase = 11;
+    classification = ((FontClassifier)0x008B5F50)(input, &error); native_error(error, 0x8B5F50);
+    expect((U32)classification, 2, 0xC1A5);
+    g_phase = 12;
+    font = ((FontConstructor)0x008D02F0)(memory, (U16)classification, 0, input, 0, 0, &error);
+    native_error(error, 0x8D02F0); check_font(font); check_fpgm(font);
+    g_phase = 13;
+    scaler = ((ScalerConstructor)0x008BF1A0)(memory, font, &error); native_error(error, 0x8BF1A0);
+    if (!is_live_heap(scaler, 0xA34)) fatal(5, 0xA34, (U32)scaler, 0);
+    check_scaler(scaler, font, 0);
+    *(U16 *)((U8 *)font + 0x88) = 3; *(U16 *)((U8 *)font + 0x8A) = 1;
+    g_phase = 14;
+    ((SetTransform)0x008BF6E0)(scaler, 1, 96, 96, matrix, 1, &error);
+    native_error(error, 0x8BF6E0); check_font(font); check_scaler(scaler, font, 1);
+    expect(heap_u8((void *)heap_u32(font, 0x44), 0xE1), 0, 0xF0E1);
+    fields[0] = CONTEXT_MAGIC; fields[1] = g_context; fields[2] = first; fields[3] = count;
+    fields[4] = FONT_DEFINITION_COUNT; fields[5] = 15; fields[6] = 15; fields[7] = g_setjmp_calls;
+    control_record(controls);
+    emit(fields, sizeof(fields)); emit(controls, sizeof(controls)); emit_hint_state(font);
+    for (n = 0; n < count; ++n) {
+        U32 at = first + n;
+        g_glyph = g_glyphs[at]; g_phase = 20;
+        ((RenderGlyph)0x008C1310)(scaler, g_glyph, 0, 0, 3, 0x8B, &error);
+        native_error(error, 0x8C1310); emit_glyph(scaler, font, at);
+        g_phase = 21;
+        ((PurgeGlyph)0x008BFDF0)(scaler, 1, &error); native_error(error, 0x8BFDF0);
+        /* The original outer wrapper performs these stores after purge. */
+        *(U32 *)((U8 *)scaler + 0x118) = 0; *(U32 *)((U8 *)scaler + 0x11C) = 0;
+        check_guards(); validate_seh();
+    }
+    g_phase = 30;
+    ((DestroyObject)0x008C1600)(scaler, &error); native_error(error, 0x8C1600);
+    ((DestroyObject)0x008CEFB0)(font, &error); native_error(error, 0x8CEFB0);
+    ((DestroyObject)0x008CBCE0)(input, &error); native_error(error, 0x8CBCE0);
+    ((DestroyMemory)0x008D0C50)(memory);
+    check_guards(); validate_seh();
+    expect(g_live, 0, 0xF1A0); expect(g_live_bytes, 0, 0xF1A1);
+    set_seh_top(frame.previous); g_seh_frame = 0; ++g_context;
+}
+
+void __cdecl font_probe_main(void) {
+    U32 n, mode, count, header[12], final[15];
+    U8 extra;
+    DWORD done = 0;
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+    g_input = GetStdHandle(STD_INPUT_HANDLE); g_output = GetStdHandle(STD_OUTPUT_HANDLE);
+    g_heap = GetProcessHeap();
+    if (!g_heap || !AddVectoredExceptionHandler(1, fatal_exception)) fatal(2, 8, GetLastError(), 0);
+    if (!read_exact(g_request, sizeof(g_request))) fatal(1, 3, 0, sizeof(g_request));
+    if (g_request[0] != REQUEST_MAGIC) fatal(1, 4, g_request[0], REQUEST_MAGIC);
+    if (g_request[1] & ~0x1FFUL) fatal(1, 5, g_request[1], 0);
+    g_poison = g_request[1] & 0xFF; g_layout = (g_request[1] >> 8) & 1;
+    if (g_poison != 0 && g_poison != 0xA5) fatal(1, 6, g_poison, 0);
+    mode = g_request[2]; count = g_request[3];
+    if (mode > 1 || !count || count > 64) fatal(1, 7, mode, count);
+    if (!read_exact(g_glyphs, count * 4)) fatal(1, 8, 0, count);
+    for (n = 0; n < count; ++n) if (g_glyphs[n] >= FONT_GLYPH_COUNT) fatal(1, 9, n, g_glyphs[n]);
+    if (!ReadFile(g_input, &extra, 1, &done, 0)) fatal(1, 10, GetLastError(), 0);
+    if (done) fatal(1, 11, extra, 0);
+    g_phase = 1; map_payload();
+    header[0] = OUTPUT_MAGIC; header[1] = 1; header[2] = mode; header[3] = count;
+    header[4] = g_poison; header[5] = g_layout; header[6] = FONT_BYTE_COUNT;
+    header[7] = FONT_GLYPH_COUNT; header[8] = FONT_CVT_COUNT; header[9] = FONT_STORAGE_CAPACITY;
+    header[10] = FONT_DEFINITION_COUNT; header[11] = FONT_FUNCTION_CAPACITY;
+    emit(header, sizeof(header));
+    if (mode) run_context(0, count);
+    else for (n = 0; n < count; ++n) run_context(n, 1);
+    g_phase = 40;
+    final[0] = FINAL_MAGIC; final[1] = g_context; final[2] = g_alloc_calls; final[3] = g_free_calls;
+    final[4] = g_realloc_calls; final[5] = g_guard_checks; final[6] = g_peak; final[7] = g_setjmp_calls;
+    final[8] = g_reads; final[9] = g_read_bytes; final[10] = g_copies; final[11] = g_sets;
+    final[12] = g_live; final[13] = g_live_bytes; final[14] = 0;
+    emit(final, sizeof(final));
+    ExitProcess(0);
+}

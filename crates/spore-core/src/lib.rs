@@ -2,18 +2,86 @@
 //!
 //! This crate deliberately has no Bevy dependency. Anything that should be
 //! testable without a running renderer, or reused by a headless tool, belongs
-//! here. Nothing in this crate performs serialization and nothing here depends
-//! on the DBPF container format.
+//! here. Gameplay snapshots use bounded, versioned binary serialization. Resource
+//! parsers accept payload slices independently of the DBPF container format.
 
 use std::fmt;
 
 pub mod anim;
+pub mod anim_curve;
+pub mod anim_binding;
+pub mod anim_body_pose;
+pub mod anim_body_capabilities;
+pub mod anim_body_finalizer_fields;
+pub mod anim_body_optional_feet;
+pub mod anim_body_source;
+pub mod anim_body_source_anchors;
+pub mod anim_body_source_fields;
+pub mod anim_body_topology;
+pub mod anim_deform;
+pub mod anim_order;
+pub mod anim_palette;
+pub mod anim_quaternion;
+pub mod anim_rotation_curve;
+pub mod audio_event;
+pub mod bem;
+pub mod cell;
+pub mod cell_capability_curve;
+pub mod cell_capability_geometry;
+pub mod cell_capability_scalar;
+pub mod cell_definition;
+pub mod cell_globals;
+pub mod cell_flow_field;
+pub mod cell_movement;
+pub mod cell_movement_application;
+pub mod cell_movement_source;
+pub mod cell_movement_scaling;
+pub mod cell_part_geometry;
+pub mod cell_part_classification;
+pub mod cell_runtime_data;
+pub mod cell_runtime_curves;
+pub mod cell_runtime_modifiers;
+pub mod cell_swimming;
+pub mod civilization;
 pub mod blockdata;
+pub mod content_manifest;
+pub mod creature_data;
+pub mod creature_game;
+pub mod editor;
+pub mod gmdl;
+pub mod gmdl_skin;
 pub mod gmsh;
+pub mod hash_pairs;
+pub mod mesh;
+pub mod locale_table;
+pub mod native_crt_acos;
+pub mod native_sse;
+pub mod native_x87;
+pub mod material_links;
+pub mod part_capabilities;
 pub mod prop;
 pub mod raster;
 pub mod rw4;
+pub mod rw4_animation;
+pub mod shader_fragments;
+pub mod shader_binding;
+pub mod shader_codegen;
+pub mod shader_pack;
+pub mod shader_selection;
+pub mod skin;
+pub mod space;
+pub mod spui;
+pub mod spui_draw;
+pub mod spui_effect;
+pub mod spui_font;
+pub mod spui_font_outline;
+pub mod spui_font_scaling;
+pub mod spui_font_scaling_quotient;
+pub mod spui_font_hint_program;
+pub mod spui_glyph_atlas;
+pub mod spui_layout;
 pub mod string_table;
+pub mod tribe;
 
 /// One of the five stages of SPORE, in progression order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]

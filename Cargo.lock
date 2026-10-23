@@ -4458,7 +4458,9 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "dbpf",
+ "image",
  "spore-core",
+ "windows 0.61.3",
 ]
 
 [[package]]

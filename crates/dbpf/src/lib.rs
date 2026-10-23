@@ -6,16 +6,17 @@
 //! every layout decision is in `docs/dbpf-format.md`, and the analysis scripts
 //! that produced it are in `tools/`.
 //!
-//! Nothing here guesses at the on-disk format. Where a layout is not
-//! established, the reader returns an explicit error rather than inventing one:
-//! see [`DbpfError::UnsupportedIndexLayout`], which is what the three packages
-//! documented in `docs/dbpf-format.md` section 6 will produce.
+//! `native_index` provides the canonical flag-driven keys/metadata recovered
+//! from the original reader. The earlier `RecordShape`/`ResourceKey` API is a
+//! historical compatibility view; its group labels are superseded. See
+//! `re/archive-index-native.md` before using it for native resource identity.
 
 use std::fmt;
 use std::path::{Path, PathBuf};
 
 pub mod header;
 pub mod index;
+pub mod native_index;
 pub mod refpack;
 
 pub use header::{DbpfHeader, HEADER_SIZE};
@@ -38,7 +39,9 @@ pub const INDEX_RECORD_SIZE: usize = 28;
 pub const INDEX_PREFIX_SIZE: usize = 4;
 pub const INDEX_TRAILER_SIZE: usize = 4;
 
-/// A DBPF resource key: the triple that uniquely identifies a resource.
+/// Historical inspection key, retained for compatibility.
+/// Its combined instance spelling and old shape-derived group field must not
+/// be treated as native identity; use `native_index::NativeResourceKey`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ResourceKey {
     pub type_id: u32,
@@ -247,7 +250,135 @@ impl DbpfFile {
         // Coded payloads carry their own RefPack size header. The declared size
         // is checked against the index record, which is a free consistency test:
         // on real data the two agree for every resource sampled.
-        let out = decompress(stored, Some(entry.decompressed_size as usize), true).map_err(
+        let out = decompress(&stored, Some(entry.decompressed_size as usize), true).map_err(
+            |source| DbpfError::Decompression {
+                key: entry.key,
+                source,
+            },
+        )?;
+        Ok(out.data)
+    }
+}
+
+
+/// A package's index without its payload.
+///
+/// `DbpfFile::open` reads the whole file, which is fine for one package and hopeless
+/// for a directory of them: a retail install is 5.75 GB across 82 packages, and a
+/// model's texture can live in any of them. This reads the header and the index block
+/// only, then seeks to a resource when one is actually needed.
+///
+/// Measured: `Spore_Graphics.package` is 995 MB on disk and its index is 1.2 MB, so a
+/// cross-package lookup costs a few hundred kilobytes of I/O per package instead of a
+/// gigabyte.
+pub struct PackageIndex {
+    path: PathBuf,
+    header: DbpfHeader,
+    shape: RecordShape,
+    entries: Vec<ResourceEntry>,
+    file_len: u64,
+}
+
+impl PackageIndex {
+    /// Read the header and index block of a package.
+    pub fn open(path: impl AsRef<Path>) -> Result<Self, DbpfError> {
+        use std::io::{Read, Seek, SeekFrom};
+
+        let path = path.as_ref().to_path_buf();
+        let mut file = std::fs::File::open(&path)?;
+        let file_len = file.metadata()?.len();
+
+        let mut head = [0u8; HEADER_SIZE];
+        file.read_exact(&mut head)?;
+        let header = DbpfHeader::parse(&head)?;
+        if header.version_0x04 != 3 {
+            return Err(DbpfError::UnsupportedVersion {
+                major: header.version_0x04,
+                minor: header.version_0x08,
+            });
+        }
+
+        let mut block = vec![0u8; header.index_size as usize];
+        file.seek(SeekFrom::Start(u64::from(header.index_offset)))?;
+        file.read_exact(&mut block)?;
+
+        let (shape, entries) = index::detect_with_len(
+            &block,
+            0,
+            header.index_size,
+            header.index_entry_count,
+            file_len as usize,
+        )?;
+        Ok(Self {
+            path,
+            header,
+            shape,
+            entries,
+            file_len,
+        })
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn header(&self) -> &DbpfHeader {
+        &self.header
+    }
+
+    pub fn shape(&self) -> RecordShape {
+        self.shape
+    }
+
+    pub fn entries(&self) -> &[ResourceEntry] {
+        &self.entries
+    }
+
+    pub fn file_len(&self) -> u64 {
+        self.file_len
+    }
+
+    /// Historical combined scope/low lookup. The shape-derived group field is
+    /// ignored because it is not native group identity. New native consumers
+    /// should use `native_index::NativeIndex::find_unique` with all three words.
+    pub fn find_instance(&self, type_id: u32, instance_id: u64) -> Option<&ResourceEntry> {
+        self.entries
+            .iter()
+            .find(|e| e.key.type_id == type_id && e.key.instance_id == instance_id)
+    }
+
+    /// Find a resource by instance alone, for a key whose type is 0.
+    ///
+    /// A type of 0 means "unspecified", not "absent": one measured example is
+    /// `0x00000000BE37F695`, which is an RW4 in `Spore_Graphics`. Matching the
+    /// instance alone resolves it; matching type 0 does not.
+    pub fn find_any_type(&self, instance_id: u64) -> Option<&ResourceEntry> {
+        self.entries
+            .iter()
+            .find(|e| e.key.instance_id == instance_id)
+    }
+
+    /// Read one resource by seeking, then decompress it if it is coded.
+    pub fn read(&self, entry: &ResourceEntry) -> Result<Vec<u8>, DbpfError> {
+        use std::io::{Read, Seek, SeekFrom};
+
+        let end = u64::from(entry.offset) + u64::from(entry.stored_size);
+        if end > self.file_len {
+            return Err(DbpfError::ResourceOutOfRange {
+                key: entry.key,
+                offset: entry.offset,
+                end,
+                file_len: self.file_len as usize,
+            });
+        }
+        let mut file = std::fs::File::open(&self.path)?;
+        file.seek(SeekFrom::Start(u64::from(entry.offset)))?;
+        let mut stored = vec![0u8; entry.stored_size as usize];
+        file.read_exact(&mut stored)?;
+        if !entry.is_coded() {
+            return Ok(stored);
+        }
+        let out = decompress(&stored, Some(entry.decompressed_size as usize), true).map_err(
             |source| DbpfError::Decompression {
                 key: entry.key,
                 source,
@@ -263,8 +394,7 @@ impl DbpfFile {
 /// measured, differing in record size and in field order. `index::detect` picks the
 /// shape that consumes the index block exactly and whose records chain contiguously
 /// when sorted by offset. See `docs/dbpf-format.md` section 6.
-fn parse_index(
-    bytes: &[u8],
+fn parse_index(    bytes: &[u8],
     header: &DbpfHeader,
 ) -> Result<(RecordShape, Vec<ResourceEntry>), DbpfError> {
     index::detect(
@@ -424,9 +554,38 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// A package holding exactly one resource. Contiguity needs two records, so
+    /// this used to be refused even though the 28-byte shape fits the 36-byte
+    /// block exactly. Retail installs contain such packages (`Locale/en-us/UI`).
     #[test]
-    fn index_that_no_shape_can_consume_is_refused() {
-        // 4 entries in a 100-byte block. No candidate fits: the shapes need
+    fn single_entry_package_is_accepted() {
+        let mut buf = synthetic_header(1);
+        buf.extend_from_slice(b"ABCD"); // one 4-byte raw payload at 0x60
+        let index_offset = buf.len() as u32; // 0x64
+        let index_size = (INDEX_PREFIX_SIZE + INDEX_RECORD_SIZE + INDEX_TRAILER_SIZE) as u32;
+        buf[0x2C..0x30].copy_from_slice(&index_size.to_le_bytes());
+        buf[0x40..0x44].copy_from_slice(&index_offset.to_le_bytes());
+
+        buf.extend_from_slice(&4u32.to_le_bytes()); // prefix
+        buf.extend_from_slice(&0x0001_FFFFu32.to_le_bytes()); // group
+        buf.extend_from_slice(&0x2F7D_0004u32.to_le_bytes()); // type
+        buf.extend_from_slice(&0u32.to_le_bytes()); // instance high
+        buf.extend_from_slice(&1u32.to_le_bytes()); // instance low
+        buf.extend_from_slice(&0x60u32.to_le_bytes()); // offset
+        buf.extend_from_slice(&(4u32 | 0x8000_0000).to_le_bytes()); // stored
+        buf.extend_from_slice(&4u32.to_le_bytes()); // decompressed
+        buf.extend_from_slice(&0x0001_FFFFu32.to_le_bytes()); // trailer
+
+        let path = std::env::temp_dir().join("rustspore_dbpf_single_entry.package");
+        std::fs::write(&path, &buf).expect("write synthetic package");
+        let file = DbpfFile::open(&path).expect("single-entry package should open");
+        assert_eq!(file.entries().len(), 1);
+        assert_eq!(file.resource_data(&file.entries()[0]).expect("payload"), b"ABCD");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn index_that_no_shape_can_consume_is_refused() {        // 4 entries in a 100-byte block. No candidate fits: the shapes need
         // 120 (28-byte), 108 (24-byte) or 96 (20-byte) bytes for 4 records.
         let mut buf = synthetic_header(4);
         buf[0x2C..0x30].copy_from_slice(&100u32.to_le_bytes());
@@ -440,5 +599,49 @@ mod tests {
             }
             other => panic!("expected UnsupportedIndexLayout, got {other:?}"),
         }
+    }
+
+    /// The index-only reader must agree with the full reader on the same file: same
+    /// entries, same payloads. It exists so a directory of packages can be searched
+    /// without holding 5.75 GB of game data in memory.
+    #[test]
+    fn package_index_matches_full_open() {
+        let path = std::env::temp_dir().join("rustspore_dbpf_index_only.package");
+        std::fs::write(&path, synthetic_package()).expect("write synthetic package");
+
+        let full = DbpfFile::open(&path).expect("open full");
+        let index = PackageIndex::open(&path).expect("open index only");
+
+        assert_eq!(index.entries().len(), full.entries().len());
+        assert_eq!(index.shape(), full.record_shape());
+        assert_eq!(index.file_len(), full.len() as u64);
+        for (a, b) in index.entries().iter().zip(full.entries()) {
+            assert_eq!(a.key, b.key);
+            assert_eq!(a.offset, b.offset);
+            assert_eq!(a.stored_size, b.stored_size);
+            assert_eq!(
+                index.read(a).expect("index read"),
+                full.resource_data(b).expect("full read")
+            );
+        }
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// A prop key carries a type and an instance but no group, so lookup ignores it.
+    #[test]
+    fn package_index_finds_by_instance_ignoring_group() {
+        let path = std::env::temp_dir().join("rustspore_dbpf_find_instance.package");
+        std::fs::write(&path, synthetic_package()).expect("write synthetic package");
+
+        let index = PackageIndex::open(&path).expect("open index only");
+        let found = index
+            .find_instance(0x00B1_B104, 2)
+            .expect("second resource by instance");
+        assert_eq!(found.key.group_id, 0x0001_FFFF);
+        assert_eq!(index.read(found).expect("read"), b"EFGH");
+        assert!(index.find_instance(0x00B1_B104, 99).is_none());
+
+        let _ = std::fs::remove_file(&path);
     }
 }

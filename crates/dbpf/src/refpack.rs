@@ -50,6 +50,11 @@ pub enum RefPackError {
     /// The stream declares an output size the caller did not expect.
     #[error("RefPack stream declares {declared} output bytes, caller expected {expected}")]
     SizeMismatch { declared: usize, expected: usize },
+
+    /// The stream ended (end-of-stream marker or input exhausted) before
+    /// producing the number of bytes the stream declared.
+    #[error("RefPack stream produced {produced} of {declared} declared output bytes")]
+    Incomplete { produced: usize, declared: usize },
 }
 
 /// Decompress a RefPack stream.
@@ -138,6 +143,16 @@ pub fn decompress(
                 break;
             }
         }
+    }
+
+    // The declared size is the contract this codec is validated against: every
+    // real resource decompresses to exactly what its stream declares. An end
+    // marker that arrives early must not be reported as success.
+    if out.len() != limit {
+        return Err(RefPackError::Incomplete {
+            produced: out.len(),
+            declared: limit,
+        });
     }
 
     Ok(RefPackOutput {
@@ -256,12 +271,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn end_of_stream_marker_with_no_literals_produces_nothing() {
-        // 0xFF is a 1-byte command whose length field exceeds 0x70, so it is the
-        // end-of-stream marker, and its low two bits (3) ask for 3 literals.
-        let data = [0xFCu8, b'a', b'b', b'c'];
+    fn end_of_stream_marker_emits_its_trailing_literals() {
+        // 0xFF: literal run length = (0x1F * 4) + 4 = 128, which exceeds 0x70, so
+        // this is the end-of-stream marker. Its low two bits (3) request 3 more
+        // literals, which the marker emits before stopping.
+        let data = [0xFFu8, b'a', b'b', b'c'];
         let out = decompress(&data, Some(3), false).expect("should decode");
         assert_eq!(out.data, b"abc");
+    }
+
+    #[test]
+    fn end_of_stream_marker_with_no_trailing_literals_produces_nothing() {
+        // 0xFC has low two bits 0, so the marker emits no literals.
+        let data = [0xFCu8];
+        let out = decompress(&data, Some(0), false).expect("should decode");
+        assert!(out.data.is_empty());
+    }
+
+    #[test]
+    fn end_marker_before_declared_size_is_incomplete() {
+        // 0xFC ends the stream immediately, but the caller expects 3 bytes.
+        // Reporting success here would hide a truncated resource.
+        let data = [0xFCu8, b'a', b'b', b'c'];
+        match decompress(&data, Some(3), false) {
+            Err(RefPackError::Incomplete {
+                produced: 0,
+                declared: 3,
+            }) => {}
+            other => panic!("expected Incomplete, got {other:?}"),
+        }
     }
 
     #[test]

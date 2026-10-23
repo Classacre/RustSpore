@@ -1,6 +1,16 @@
 # Rust build output
 /target
 
+# Build and test scratch output
+*.log
+
+# Local Python analysis caches
+__pycache__/
+*.pyc
+
 # User-supplied game data. Nothing under here is redistributed.
 assets/extracted/
 *.package
+
+# Local extracted textures and validation captures; preserve outside Git.
+/re/data/skins/*.png

@@ -69,6 +69,15 @@ impl std::error::Error for GmshError {}
 pub struct GmshMesh {
     /// Vertex positions (float3 XYZ).
     pub positions: Vec<Vec3>,
+    /// Per-vertex normals, when a normal section is present.
+    ///
+    /// Two encodings exist in the install: float3 on 672 of 2,756 resources and
+    /// four signed bytes on 2,073 of them. Both are decoded to the same type.
+    pub normals: Option<Vec<Vec3>>,
+    /// Per-vertex tangents, when present (float3, 670 resources).
+    pub tangents: Option<Vec<Vec3>>,
+    /// Per-vertex texture coordinates (float2, 2,533 of 2,756 resources).
+    pub uvs: Option<Vec<[f32; 2]>>,
     /// Number of sections declared in the header.
     pub section_count: u16,
     /// Attribute sections (magic, stride, raw data).
@@ -81,6 +90,53 @@ pub struct GmshMesh {
     pub total_size: usize,
 }
 
+/// Attribute section magics that carry data the renderer needs.
+///
+/// The four bytes are `[semantic, set, element type, index]`. The semantic numbers
+/// are not D3DDECLUSAGE: `2` is the normal, which D3D calls `3`. The assignment
+/// below was established by measurement (`tools/gmsh_semantics.py`), not by naming.
+pub const MAGIC_NORMAL_F32: [u8; 4] = [0x02, 0x00, 0x03, 0x01];
+pub const MAGIC_NORMAL_PACKED: [u8; 4] = [0x02, 0x00, 0x07, 0x01];
+pub const MAGIC_TANGENT_F32: [u8; 4] = [0x03, 0x00, 0x03, 0x01];
+pub const MAGIC_UV_F32: [u8; 4] = [0x08, 0x00, 0x02, 0x02];
+
+fn read_f32(data: &[u8], at: usize) -> f32 {
+    f32::from_le_bytes([data[at], data[at + 1], data[at + 2], data[at + 3]])
+}
+
+fn read_vec3s(data: &[u8], stride: usize) -> Vec<Vec3> {
+    if stride < 12 {
+        return Vec::new();
+    }
+    data.chunks_exact(stride)
+        .map(|c| Vec3::new(read_f32(c, 0), read_f32(c, 4), read_f32(c, 8)))
+        .collect()
+}
+
+fn read_vec2s(data: &[u8], stride: usize) -> Vec<[f32; 2]> {
+    if stride < 8 {
+        return Vec::new();
+    }
+    data.chunks_exact(stride)
+        .map(|c| [read_f32(c, 0), read_f32(c, 4)])
+        .collect()
+}
+
+/// Unpack four signed bytes to a unit vector: `b / 127.5 - 1`.
+///
+/// The arithmetic is done in `f64` and then rounded once to `f32`, which is what the
+/// Python reference does. Doing it in `f32` differs in the last bit on some values,
+/// and the digest comparison against Python caught exactly that.
+fn read_packed_normals(data: &[u8], stride: usize) -> Vec<Vec3> {
+    if stride < 4 {
+        return Vec::new();
+    }
+    let unpack = |b: u8| -> f32 { (b as f64 / 127.5 - 1.0) as f32 };
+    data.chunks_exact(stride)
+        .map(|c| Vec3::new(unpack(c[0]), unpack(c[1]), unpack(c[2])))
+        .collect()
+}
+
 /// One attribute section from a gmsh resource.
 #[derive(Debug, Clone)]
 pub struct GmshAttribute {
@@ -90,6 +146,14 @@ pub struct GmshAttribute {
     pub stride: u16,
     /// Raw attribute data.
     pub data: Vec<u8>,
+}
+
+/// The index section magic is normally `15 00 06 08`. A variant uses
+/// `14 00 06 08` (first byte 0x14 instead of 0x15) with an otherwise identical
+/// v1 index header. Both are accepted; the variant accounts for the last
+/// previously failing gmsh resource.
+fn is_index_magic(m: &[u8]) -> bool {
+    m == b"\x15\x00\x06\x08" || m == b"\x14\x00\x06\x08"
 }
 
 /// Parse a gmsh mesh resource.
@@ -121,6 +185,9 @@ pub fn parse(data: &[u8]) -> Result<GmshMesh, GmshError> {
     // Attribute sections and index section
     let mut offset = pos_end;
     let mut attributes = Vec::new();
+    let mut normals = None;
+    let mut tangents = None;
+    let mut uvs = None;
     let mut indices = None;
     let mut matrix_count = 0;
     let mut parsed_sections = 1; // position already counted
@@ -128,8 +195,8 @@ pub fn parse(data: &[u8]) -> Result<GmshMesh, GmshError> {
     while offset < data.len() && parsed_sections < section_count as usize {
         let remaining = data.len() - offset;
 
-        // Check for index section magic
-        if remaining >= 4 && &data[offset..offset + 4] == b"\x15\x00\x06\x08" {
+        // Check for index section magic (0x15 normal, 0x14 variant)
+        if remaining >= 4 && is_index_magic(&data[offset..offset + 4]) {
             let (idx, mcount) = parse_index_section(data, offset, vcount)?;
             indices = idx;
             matrix_count = mcount;
@@ -165,12 +232,30 @@ pub fn parse(data: &[u8]) -> Result<GmshMesh, GmshError> {
             data: data[offset + 10..data_end].to_vec(),
         });
 
+        let payload = &data[offset + 10..data_end];
+        match magic {
+            // Float3 normals, unit length on 100% of samples.
+            MAGIC_NORMAL_F32 => normals = Some(read_vec3s(payload, attr_stride)),
+            // Packed normals: four bytes mapped to [-1, 1]. Measured unit length on
+            // 100% of samples and mean |dot| 0.710 against geometric normals.
+            MAGIC_NORMAL_PACKED => normals = Some(read_packed_normals(payload, attr_stride)),
+            // Float3 tangents, also unit length; mean |dot| 0.336 with the normals,
+            // as expected for a perpendicular basis vector.
+            MAGIC_TANGENT_F32 => tangents = Some(read_vec3s(payload, attr_stride)),
+            // Float2 texture coordinates. Present on 91.9% of gmsh resources.
+            MAGIC_UV_F32 => uvs = Some(read_vec2s(payload, attr_stride)),
+            _ => {}
+        }
+
         offset = data_end;
         parsed_sections += 1;
     }
 
     Ok(GmshMesh {
         positions,
+        normals,
+        tangents,
+        uvs,
         section_count,
         attributes,
         indices,
@@ -181,6 +266,10 @@ pub fn parse(data: &[u8]) -> Result<GmshMesh, GmshError> {
 
 /// Parse the index section starting at `offset`.
 /// Returns (indices, matrix_count).
+///
+/// `vcount` is the mesh's vertex count. Every index must address a vertex below
+/// it; the Python validator makes the same check, and it is what distinguishes a
+/// correctly located index section from a coincidentally plausible one.
 fn parse_index_section(
     data: &[u8],
     offset: usize,
@@ -227,6 +316,9 @@ fn parse_index_section(
             let base = data_off + j * 2;
             idx.push(u16::from_le_bytes([data[base], data[base + 1]]));
         }
+        if vcount > 0 && idx.iter().any(|&i| i as usize >= vcount) {
+            return Err(GmshError::IndexError);
+        }
         Ok((Some(idx), 0))
     } else if stride == 48 {
         // 3x4 transformation matrices, then v1-style index header
@@ -259,6 +351,9 @@ fn parse_index_section(
         for j in 0..foot_count {
             let base = idx_off + j * 2;
             idx.push(u16::from_le_bytes([data[base], data[base + 1]]));
+        }
+        if vcount > 0 && idx.iter().any(|&i| i as usize >= vcount) {
+            return Err(GmshError::IndexError);
         }
         Ok((Some(idx), count))
     } else {
@@ -307,9 +402,10 @@ mod tests {
         data.extend_from_slice(&0u32.to_be_bytes()); // zeros
         data.extend_from_slice(&1u16.to_be_bytes());
         data.extend_from_slice(&0u16.to_be_bytes());
-        data.extend_from_slice(&36u16.to_be_bytes()); // count
+        data.extend_from_slice(&12u16.to_be_bytes()); // count
         data.extend_from_slice(&2u16.to_be_bytes()); // stride=2
-        for i in 0..36 {
+        // 4 triangles. Every index must address one of the 14 declared vertices.
+        for i in 0..12 {
             data.extend_from_slice(&(i as u16).to_le_bytes());
         }
 
@@ -363,12 +459,12 @@ mod tests {
 
         // v1-style index header in footer
         data.extend_from_slice(&1u32.to_be_bytes()); // version=1
-        data.extend_from_slice(&36u32.to_be_bytes()); // index count
+        data.extend_from_slice(&12u32.to_be_bytes()); // index count
         data.extend_from_slice(&2u16.to_be_bytes()); // stride=2
         data.extend_from_slice(&0u16.to_be_bytes()); // flags=0
 
-        // 36 u16 LE indices
-        for i in 0..36 {
+        // 12 u16 LE indices, all inside the 14 declared vertices
+        for i in 0..12 {
             data.extend_from_slice(&(i as u16).to_le_bytes());
         }
 
@@ -395,16 +491,90 @@ mod tests {
         let data = build_test_gmsh_v1();
         let mesh = parse(&data).unwrap();
         let indices = mesh.indices.unwrap();
-        assert_eq!(indices.len(), 36);
+        assert_eq!(indices.len(), 12);
         for (i, &idx) in indices.iter().enumerate() {
             assert_eq!(idx, i as u16);
         }
         assert_eq!(mesh.matrix_count, 0);
     }
 
+    /// The variant index magic `14 00 06 08` must be accepted like `15 00 06 08`.
     #[test]
-    fn parse_v1_positions() {
-        let data = build_test_gmsh_v1();
+    fn parse_variant_index_magic_0x14() {
+        let mut data = build_test_gmsh_v1();
+        let pos = data
+            .windows(4)
+            .position(|w| w == b"\x15\x00\x06\x08")
+            .expect("index magic present");
+        data[pos] = 0x14;
+        let mesh = parse(&data).unwrap();
+        let indices = mesh.indices.expect("indices decoded");
+        assert_eq!(indices.len(), 12);
+        for (i, &idx) in indices.iter().enumerate() {
+            assert_eq!(idx, i as u16);
+        }
+    }
+
+    /// Both normal encodings and the UV section must land in typed fields.
+    #[test]
+    fn typed_attributes() {
+        let mut d = build_test_gmsh_v1();
+        // Insert attribute sections just before the index magic.
+        let idx_at = d
+            .windows(4)
+            .position(|w| w == b"\x15\x00\x06\x08")
+            .expect("index magic present");
+        let mut attrs = Vec::new();
+
+        // Float3 normals: 14 unit +Z vectors.
+        attrs.extend_from_slice(&MAGIC_NORMAL_F32);
+        attrs.extend_from_slice(&14u32.to_be_bytes());
+        attrs.extend_from_slice(&12u16.to_be_bytes());
+        for _ in 0..14 {
+            attrs.extend_from_slice(&0.0f32.to_le_bytes());
+            attrs.extend_from_slice(&0.0f32.to_le_bytes());
+            attrs.extend_from_slice(&1.0f32.to_le_bytes());
+        }
+
+        // Float2 UVs: u = i / 14, v = 0.5.
+        attrs.extend_from_slice(&MAGIC_UV_F32);
+        attrs.extend_from_slice(&14u32.to_be_bytes());
+        attrs.extend_from_slice(&8u16.to_be_bytes());
+        for i in 0..14 {
+            attrs.extend_from_slice(&(i as f32 / 14.0).to_le_bytes());
+            attrs.extend_from_slice(&0.5f32.to_le_bytes());
+        }
+
+        let mut out = d[..idx_at].to_vec();
+        out.extend_from_slice(&attrs);
+        out.extend_from_slice(&d[idx_at..]);
+        // One extra attribute section on top of the three the fixture declares.
+        out[12..14].copy_from_slice(&5u16.to_be_bytes());
+
+        let mesh = parse(&out).unwrap();
+        let n = mesh.normals.expect("normals decoded");
+        assert_eq!(n.len(), 14);
+        assert!((n[3].z - 1.0).abs() < 1e-6);
+        let uv = mesh.uvs.expect("uvs decoded");
+        assert_eq!(uv.len(), 14);
+        assert!((uv[7][0] - 0.5).abs() < 1e-6);
+        assert_eq!(mesh.indices.expect("indices").len(), 12);
+    }
+
+    /// The packed normal encoding maps four bytes to [-1, 1] with `b / 127.5 - 1`.
+    #[test]
+    fn packed_normals_are_signed_bytes() {
+        // 255 -> +1, 0 -> -1, 128 -> 0.00392, so this is roughly (1, -1, 0).
+        let data = [255u8, 0, 128, 0];
+        let v = read_packed_normals(&data, 4);
+        assert_eq!(v.len(), 1);
+        assert!((v[0].x - 1.0).abs() < 1e-6);
+        assert!((v[0].y + 1.0).abs() < 1e-6);
+        assert!(v[0].z.abs() < 0.01);
+    }
+
+    #[test]
+    fn parse_v1_positions() {        let data = build_test_gmsh_v1();
         let mesh = parse(&data).unwrap();
         for (i, pos) in mesh.positions.iter().enumerate() {
             let expected = (i as f32) * 0.1;
@@ -420,7 +590,7 @@ mod tests {
         let mesh = parse(&data).unwrap();
         assert_eq!(mesh.positions.len(), 14);
         let indices = mesh.indices.unwrap();
-        assert_eq!(indices.len(), 36);
+        assert_eq!(indices.len(), 12);
         for (i, &idx) in indices.iter().enumerate() {
             assert_eq!(idx, i as u16);
         }

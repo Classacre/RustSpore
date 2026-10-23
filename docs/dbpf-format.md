@@ -1,5 +1,13 @@
 # The DBPF container format, as measured in SPORE
 
+**2026-10-23 correction:** The original index reader now establishes common
+header fields and current-record compression metadata. The historical group,
+64-bit instance and wide prefix/trailer labels below are superseded by
+`../re/archive-index-native.md`. Payload offsets and sizes remain verified.
+Use `dbpf::native_index` for canonical native keys; the older shape API remains
+a compatibility view. Fresh agreement covers all 82 packages / 158,720 records
+and complete payload decoding, rather than the initial 13-package investigation.
+
 Status: verified against the shipped game data on 2026-10-16.
 Evidence grades: `[MEASURED]` observed directly in bytes, `[INFERRED]` reasoned from
 measurements, `[UNKNOWN]` not established.
@@ -231,8 +239,10 @@ under the 28-byte record shape. **That gap is now closed.**
 ### 6.1 Every package fits exactly
 
 `[MEASURED]` `tools/dbpf_variants.py` searches for a `(prefix P, record size R)` pair that
-consumes the index block exactly: `P + N*R == index_size`. **All 13 of 13 packages have
-such a pair.** There is no package left without an exact fit.
+consumes the index block exactly: `P + N*R == index_size`. **All 13 of 13 top-level packages
+have such a pair**, and the Rust reader opens **all 82 packages in the install** (the extra
+ones are locale and booster-pack archives) using the same three shapes. There is no package
+left without an exact fit.
 
 | Package group | P | R | Trailer T | P + R + T |
 |---|---|---|---|---|
@@ -247,6 +257,14 @@ such a pair.** There is no package left without an exact fit.
 fixed 36-byte region which happens to contain the first record plus its surrounding
 metadata. This is a plausible reading of the arithmetic, not an established fact. The
 number 36 has no confirmed meaning.
+
+`[MEASURED]` **The exact fit is necessary but not sufficient to pick a shape, and it is
+also not always sufficient on its own to accept one.** The arbiter is storage contiguity
+(`offset_i + stored_size_i == offset_{i+1}`), because payloads are packed. But contiguity
+needs at least two records: a package holding a single resource scores 0 by construction.
+`Locale/en-us/UI.package` in a retail install is exactly that, and the Rust reader refused
+it until the fit itself was allowed to decide when `N == 1`. The layout was never in doubt;
+the test was.
 
 ### 6.2 How each variant was confirmed
 
@@ -373,8 +391,9 @@ of packages.
 
 Settled by measurement: the header fields at 0x24, 0x2C and 0x40; the index block layout;
 the 28-byte record layout and all seven field roles; the raw-versus-coded rule; the
-RefPack codec, validated on 800 resources against two independent size sources.
+RefPack codec, validated on **101,312 coded resources across all 82 packages in one retail
+install** by the Rust reader (`rustspore --verify`), every one decompressing to the size
+the index declares.
 
-Open: the meaning of the 4-byte index prefix and trailer; the index layout of the three
-packages in section 6; the internal structure of the proprietary payload types (prop,
-RW4, gmsh, anim, cell); whether `0x00B1B104` is exactly "prop" as the community says.
+Open: the meaning of the 4-byte index prefix and trailer; the internal structure of the
+proprietary payload types; whether `0x00B1B104` is exactly "prop" as the community says.

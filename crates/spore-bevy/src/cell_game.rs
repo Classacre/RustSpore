@@ -1,0 +1,1083 @@
+//! Playable Cell-stage vertical slice with deterministic simulation and GPU visuals.
+//! Retail content, editors and cross-stage progression are separate milestone gates.
+
+use bevy::{
+    camera::ScalingMode,
+    prelude::*,
+    render::{
+        renderer::RenderAdapterInfo,
+        view::screenshot::{save_to_disk, Screenshot},
+    },
+};
+use spore_core::cell::{
+    CellBehavior, CellInput, CellSnapshot, CellState, CellWorld, Diet, FoodKind,
+};
+use spore_core::editor::{Creation, CreationKind, EditorSnapshot, MAX_SAVE_BYTES};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
+
+#[derive(Resource)]
+struct Game {
+    world: CellWorld,
+    seed: u64,
+    diet: Diet,
+    paused: bool,
+    elapsed: f64,
+    notice: String,
+    rebuild: bool,
+    save_path: PathBuf,
+    shot: Option<PathBuf>,
+    demo_seconds: Option<f64>,
+    capture_frame: Option<u64>,
+    frames: u64,
+}
+
+#[derive(Resource)]
+struct Art {
+    circle: Handle<Mesh>,
+    ring: Handle<Mesh>,
+    leaf: Handle<Mesh>,
+    line: Handle<Mesh>,
+    player: Handle<ColorMaterial>,
+    predator: Handle<ColorMaterial>,
+    prey: Handle<ColorMaterial>,
+    plant: Handle<ColorMaterial>,
+    meat: Handle<ColorMaterial>,
+    membrane: Handle<ColorMaterial>,
+    nucleus: Handle<ColorMaterial>,
+    white: Handle<ColorMaterial>,
+    dark: Handle<ColorMaterial>,
+    rock: Handle<ColorMaterial>,
+}
+
+#[derive(Resource, Default)]
+struct SceneObjects(HashMap<(u8, u32), Entity>);
+#[derive(Resource, Default)]
+struct AuthoredArt {
+    creation: Option<Creation>,
+    mesh: Option<Handle<Mesh>>,
+    material: Option<Handle<ColorMaterial>>,
+}
+#[derive(Component)]
+struct Hud;
+#[derive(Component)]
+struct Banner;
+#[derive(Component)]
+struct Meter(u8);
+
+pub fn run(args: &[String]) -> Result<(), String> {
+    let mut seed = 14;
+    let mut diet = Diet::Herbivore;
+    let mut explicit_diet = false;
+    let mut creation_path = None;
+    let mut shot = None;
+    let mut demo_seconds = None;
+    let mut save_path = std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("RustSpore")
+        .join("saves")
+        .join("cell.rsp");
+    let mut i = 0;
+    while i < args.len() {
+        let value = || {
+            args.get(i + 1)
+                .ok_or_else(|| format!("{} requires a value", args[i]))
+        };
+        match args[i].as_str() {
+            "--seed" => seed = value()?.parse().map_err(|_| "invalid seed".to_string())?,
+            "--diet" => {
+                explicit_diet = true;
+                diet = match value()?.as_str() {
+                    "herbivore" => Diet::Herbivore,
+                    "carnivore" => Diet::Carnivore,
+                    "omnivore" => Diet::Omnivore,
+                    _ => return Err("diet must be herbivore, carnivore or omnivore".into()),
+                }
+            }
+            "--creation" => creation_path = Some(PathBuf::from(value()?)),
+            "--shot" => shot = Some(PathBuf::from(value()?)),
+            "--demo" => {
+                let seconds: f64 = value()?
+                    .parse()
+                    .map_err(|_| "invalid demo duration".to_string())?;
+                if !seconds.is_finite() || seconds <= 0.0 || seconds > 600.0 {
+                    return Err("demo duration must be in (0, 600] seconds".into());
+                }
+                demo_seconds = Some(seconds);
+            }
+            "--save-file" => save_path = PathBuf::from(value()?),
+            arg => return Err(format!("unknown Cell option {arg}")),
+        }
+        i += 2;
+    }
+    let world = configured_world(seed, diet, explicit_diet, creation_path.as_deref())?;
+    diet = world.player.diet;
+    if shot.as_ref().is_some_and(|path| path.exists()) {
+        return Err("screenshot already exists; choose a new output path".into());
+    }
+    if let Some(parent) = shot
+        .as_ref()
+        .and_then(|path| path.parent())
+        .filter(|p| !p.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    App::new()
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                title: "RustSpore | Cell".into(),
+                resolution: (1280, 800).into(),
+                ..default()
+            }),
+            ..default()
+        }))
+        .insert_resource(ClearColor(Color::srgb(0.012, 0.032, 0.046)))
+        .insert_resource(Game {
+            world,
+            seed,
+            diet,
+            paused: false,
+            elapsed: 0.0,
+            notice: String::new(),
+            rebuild: true,
+            save_path,
+            shot,
+            demo_seconds,
+            capture_frame: None,
+            frames: 0,
+        })
+        .init_resource::<SceneObjects>()
+        .init_resource::<AuthoredArt>()
+        .add_systems(Startup, setup)
+        .add_systems(Update, (drive, sync_scene, update_hud, capture).chain())
+        .run();
+    Ok(())
+}
+
+pub(crate) fn read_creation(path: &std::path::Path) -> Result<Creation, String> {
+    use std::io::Read;
+    let file = std::fs::File::open(path).map_err(|error| error.to_string())?;
+    let mut bytes = Vec::new();
+    file.take(MAX_SAVE_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| error.to_string())?;
+    if bytes.len() > MAX_SAVE_BYTES {
+        return Err("creation exceeds the bounded save limit".into());
+    }
+    EditorSnapshot::from_bytes(&bytes)
+        .map(|snapshot| snapshot.creation)
+        .map_err(|error| error.to_string())
+}
+fn configured_world(
+    seed: u64,
+    diet: Diet,
+    explicit_diet: bool,
+    path: Option<&std::path::Path>,
+) -> Result<CellWorld, String> {
+    let Some(path) = path else {
+        return Ok(CellWorld::new(seed, diet));
+    };
+    let creation = read_creation(path)?;
+    if creation.kind != CreationKind::Cell {
+        return Err("Cell gameplay requires a Cell creation".into());
+    }
+    let authored_diet = match creation
+        .gameplay_loadout()
+        .map_err(|error| error.to_string())?
+    {
+        spore_core::editor::GameplayLoadout::Cell(loadout) => loadout.diet,
+        _ => return Err("Cell gameplay requires a Cell creation".into()),
+    };
+    let mut world = CellWorld::new(seed, authored_diet);
+    world
+        .apply_creation(creation)
+        .map_err(|error| error.to_string())?;
+    if explicit_diet && world.player.diet != diet {
+        return Err(
+            "--diet contradicts the authored mouth; edit the creation or omit --diet".into(),
+        );
+    }
+    crate::editor::creation_mesh(world.creation.as_ref().unwrap(), true)?;
+    Ok(world)
+}
+
+fn setup(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    adapter: Res<RenderAdapterInfo>,
+) {
+    println!(
+        "CELL_GPU name={:?} backend={:?} type={:?}",
+        adapter.name, adapter.backend, adapter.device_type
+    );
+    commands.spawn((
+        Camera2d,
+        Projection::Orthographic(OrthographicProjection {
+            scaling_mode: ScalingMode::FixedVertical {
+                viewport_height: 76.0,
+            },
+            ..OrthographicProjection::default_2d()
+        }),
+    ));
+    let circle = meshes.add(Circle::new(1.0));
+    let line = meshes.add(Rectangle::new(1.0, 1.0));
+    let ring = meshes.add(Annulus::new(0.96, 1.04));
+    let leaf = meshes.add(RegularPolygon::new(1.0, 3));
+    let bg = materials.add(Color::srgb(0.025, 0.092, 0.108));
+    let border = materials.add(Color::srgb(0.06, 0.19, 0.20));
+    commands.spawn((
+        Mesh2d(line.clone()),
+        MeshMaterial2d(border),
+        Transform::from_xyz(0.0, 0.0, -9.0).with_scale(Vec3::new(82.0, 58.0, 1.0)),
+    ));
+    commands.spawn((
+        Mesh2d(line.clone()),
+        MeshMaterial2d(bg),
+        Transform::from_xyz(0.0, 0.0, -8.0).with_scale(Vec3::new(80.0, 56.0, 1.0)),
+    ));
+    let speck = materials.add(Color::srgba(0.19, 0.45, 0.43, 0.12));
+    for i in 0..110 {
+        let x = ((i * 139 + 17) % 791) as f32 / 10.0 - 39.5;
+        let y = ((i * 83 + 31) % 551) as f32 / 10.0 - 27.5;
+        commands.spawn((
+            Mesh2d(circle.clone()),
+            MeshMaterial2d(speck.clone()),
+            Transform::from_xyz(x, y, -6.0).with_scale(Vec3::splat(0.04 + (i % 5) as f32 * 0.024)),
+        ));
+    }
+    commands.insert_resource(Art {
+        circle,
+        ring,
+        leaf,
+        line,
+        player: materials.add(Color::srgb(0.16, 0.80, 0.68)),
+        predator: materials.add(Color::srgb(0.93, 0.35, 0.23)),
+        prey: materials.add(Color::srgb(0.50, 0.45, 0.77)),
+        plant: materials.add(Color::srgb(0.62, 0.90, 0.34)),
+        meat: materials.add(Color::srgb(0.96, 0.55, 0.44)),
+        membrane: materials.add(Color::srgba(0.61, 1.0, 0.88, 0.70)),
+        nucleus: materials.add(Color::srgba(0.02, 0.28, 0.30, 0.76)),
+        white: materials.add(Color::srgb(0.92, 0.98, 0.90)),
+        dark: materials.add(Color::srgb(0.018, 0.055, 0.064)),
+        rock: materials.add(Color::srgb(0.16, 0.25, 0.27)),
+    });
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                top: px(16),
+                left: px(26),
+                right: px(26),
+                height: px(78),
+                padding: UiRect::all(px(12)),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::SpaceBetween,
+                column_gap: px(16),
+                border_radius: BorderRadius::all(px(12)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.015, 0.045, 0.06, 0.92)),
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                Text::new("CELL"),
+                TextFont {
+                    font_size: 25.0,
+                    ..default()
+                },
+                TextColor(Color::srgb(0.62, 0.95, 0.83)),
+            ));
+            parent.spawn((
+                Text::new(""),
+                TextFont {
+                    font_size: 14.0,
+                    ..default()
+                },
+                TextColor(Color::srgb(0.84, 0.91, 0.89)),
+                Node {
+                    width: px(280),
+                    ..default()
+                },
+                Hud,
+            ));
+            for (i, label, colour) in [
+                (0, "HEALTH", Color::srgb(0.34, 0.85, 0.66)),
+                (1, "ENERGY", Color::srgb(0.36, 0.65, 0.94)),
+                (2, "GROWTH", Color::srgb(0.91, 0.77, 0.36)),
+            ] {
+                parent
+                    .spawn(Node {
+                        width: px(175),
+                        flex_direction: FlexDirection::Column,
+                        row_gap: px(8),
+                        ..default()
+                    })
+                    .with_children(|group| {
+                        group.spawn((
+                            Text::new(label),
+                            TextFont {
+                                font_size: 11.0,
+                                ..default()
+                            },
+                            TextColor(Color::srgb(0.56, 0.71, 0.71)),
+                        ));
+                        group
+                            .spawn((
+                                Node {
+                                    width: percent(100),
+                                    height: px(6),
+                                    ..default()
+                                },
+                                BackgroundColor(Color::srgb(0.08, 0.17, 0.19)),
+                            ))
+                            .with_children(|bar| {
+                                bar.spawn((
+                                    Node {
+                                        width: percent(100),
+                                        height: percent(100),
+                                        ..default()
+                                    },
+                                    BackgroundColor(colour),
+                                    Meter(i),
+                                ));
+                            });
+                    });
+            }
+        });
+    commands.spawn((Text::new("W/S swim   A/D turn   Shift boost   Space bite   P pause\nR restart   1/2/3 diet   F5 save   F9 load   Esc exit"), TextFont { font_size: 14.0, ..default() }, TextColor(Color::srgb(0.61, 0.77, 0.77)), Node { position_type: PositionType::Absolute, left: px(28), bottom: px(22), ..default() }));
+    commands.spawn((
+        Text::new(""),
+        TextFont {
+            font_size: 28.0,
+            ..default()
+        },
+        TextColor(Color::srgb(0.98, 0.92, 0.71)),
+        Node {
+            position_type: PositionType::Absolute,
+            top: percent(40),
+            left: percent(37),
+            ..default()
+        },
+        Banner,
+    ));
+}
+
+fn keyboard_input(keys: &ButtonInput<KeyCode>) -> CellInput {
+    let axis =
+        |positive, negative| (keys.pressed(positive) as i8 - keys.pressed(negative) as i8) as f32;
+    CellInput {
+        thrust: axis(KeyCode::KeyW, KeyCode::KeyS),
+        turn: axis(KeyCode::KeyA, KeyCode::KeyD),
+        boost: keys.pressed(KeyCode::ShiftLeft),
+        bite: keys.pressed(KeyCode::Space),
+    }
+}
+
+pub(crate) fn write_save(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        std::fs::create_dir_all(parent)?;
+    }
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temporary = path.with_extension(format!("tmp-{}-{nonce}", std::process::id()));
+    let result = (|| {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        drop(file);
+        std::fs::rename(&temporary, path)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    result
+}
+
+pub(crate) fn read_save(path: &std::path::Path) -> std::io::Result<Vec<u8>> {
+    use std::io::Read;
+    let file = std::fs::File::open(path)?;
+    let mut bytes = Vec::new();
+    file.take(16 * 1024 * 1024 + 1).read_to_end(&mut bytes)?;
+    if bytes.len() > 16 * 1024 * 1024 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "save exceeds 16 MiB limit",
+        ));
+    }
+    Ok(bytes)
+}
+
+fn drive(time: Res<Time>, mut keys: ResMut<ButtonInput<KeyCode>>, mut game: ResMut<Game>) {
+    if keys.just_pressed(KeyCode::Escape) {
+        std::process::exit(0);
+    }
+    if keys.just_pressed(KeyCode::KeyP) {
+        game.paused = !game.paused;
+    }
+    let new_diet = if keys.just_pressed(KeyCode::Digit1) {
+        Some(Diet::Herbivore)
+    } else if keys.just_pressed(KeyCode::Digit2) {
+        Some(Diet::Carnivore)
+    } else if keys.just_pressed(KeyCode::Digit3) {
+        Some(Diet::Omnivore)
+    } else {
+        None
+    };
+    if new_diet.is_some() && game.world.creation.is_some() {
+        game.notice = "Edit mouth in studio to change diet".into();
+    }
+    if keys.just_pressed(KeyCode::KeyR) || (new_diet.is_some() && game.world.creation.is_none()) {
+        if let Some(diet) = new_diet.filter(|_| game.world.creation.is_none()) {
+            game.diet = diet;
+        }
+        if game.world.creation.is_some() {
+            game.world.restart();
+        } else {
+            game.world = CellWorld::new(game.seed, game.diet);
+        }
+        game.paused = false;
+        game.rebuild = true;
+        game.notice.clear();
+    }
+    if keys.just_pressed(KeyCode::F5) {
+        let result = game
+            .world
+            .snapshot()
+            .to_bytes()
+            .map_err(|e| e.to_string())
+            .and_then(|saved| write_save(&game.save_path, &saved).map_err(|e| e.to_string()));
+        game.notice = match result {
+            Ok(()) => "Saved".into(),
+            Err(e) => format!("Save failed: {e}"),
+        };
+    }
+    if keys.just_pressed(KeyCode::F9) {
+        let result = read_save(&game.save_path)
+            .map_err(|e| e.to_string())
+            .and_then(|bytes| CellSnapshot::from_bytes(&bytes).map_err(|e| e.to_string()))
+            .and_then(|snapshot| CellWorld::from_snapshot(snapshot).map_err(|e| e.to_string()))
+            .and_then(|world| {
+                if let Some(creation) = &world.creation {
+                    crate::editor::creation_mesh(creation, true)?;
+                }
+                Ok(world)
+            });
+        match result {
+            Ok(world) => {
+                game.seed = world.seed();
+                game.diet = world.player.diet;
+                game.world = world;
+                game.paused = false;
+                game.rebuild = true;
+                game.notice = "Loaded".into();
+            }
+            Err(e) => game.notice = format!("Load failed: {e}"),
+        }
+    }
+    let dt = time.delta_secs_f64().min(0.1);
+    game.elapsed += dt;
+    if game.demo_seconds.is_some() {
+        for key in [
+            KeyCode::KeyW,
+            KeyCode::KeyS,
+            KeyCode::KeyA,
+            KeyCode::KeyD,
+            KeyCode::Space,
+            KeyCode::ShiftLeft,
+        ] {
+            keys.release(key);
+        }
+        let player = &game.world.player;
+        let desired = game
+            .world
+            .food
+            .iter()
+            .filter(|food| {
+                game.world.can_perceive(food.position)
+                    && matches!(
+                        (game.diet, food.kind),
+                        (Diet::Omnivore, _)
+                            | (Diet::Herbivore, FoodKind::Plant)
+                            | (Diet::Carnivore, FoodKind::Meat)
+                    )
+            })
+            .min_by(|a, b| {
+                let distance = |p: spore_core::cell::CellVec2| {
+                    (p.x - player.position.x).powi(2) + (p.y - player.position.y).powi(2)
+                };
+                distance(a.position).total_cmp(&distance(b.position))
+            })
+            .map(|food| {
+                (food.position.y - player.position.y).atan2(food.position.x - player.position.x)
+            })
+            .unwrap_or(player.heading);
+        let error = (desired - player.heading + std::f32::consts::PI)
+            .rem_euclid(std::f32::consts::TAU)
+            - std::f32::consts::PI;
+        if error.abs() > 0.06 {
+            keys.press(if error > 0.0 {
+                KeyCode::KeyA
+            } else {
+                KeyCode::KeyD
+            });
+        }
+        if error.abs() < 0.6 {
+            keys.press(KeyCode::KeyW);
+        }
+        keys.press(KeyCode::Space);
+    }
+    if !game.paused && game.capture_frame.is_none() {
+        game.world.advance(dt, keyboard_input(&keys));
+    }
+}
+
+fn add_actor(commands: &mut Commands, art: &Art, player: bool, dangerous: bool) -> Entity {
+    let colour = if player {
+        art.player.clone()
+    } else if dangerous {
+        art.predator.clone()
+    } else {
+        art.prey.clone()
+    };
+    commands
+        .spawn((Transform::default(), Visibility::Visible))
+        .with_children(|parent| {
+            parent.spawn((
+                Mesh2d(art.circle.clone()),
+                MeshMaterial2d(colour),
+                Transform::default().with_scale(Vec3::new(1.05, 0.85, 1.0)),
+            ));
+            parent.spawn((
+                Mesh2d(art.ring.clone()),
+                MeshMaterial2d(art.membrane.clone()),
+                Transform::from_xyz(0.0, 0.0, 0.05).with_scale(Vec3::new(1.05, 0.85, 1.0)),
+            ));
+            parent.spawn((
+                Mesh2d(art.circle.clone()),
+                MeshMaterial2d(art.nucleus.clone()),
+                Transform::from_xyz(-0.10, 0.0, 0.10).with_scale(Vec3::new(0.48, 0.43, 1.0)),
+            ));
+            for side in [-1.0, 1.0] {
+                parent.spawn((
+                    Mesh2d(art.circle.clone()),
+                    MeshMaterial2d(art.white.clone()),
+                    Transform::from_xyz(0.55, 0.31 * side, 0.14).with_scale(Vec3::splat(0.17)),
+                ));
+                parent.spawn((
+                    Mesh2d(art.circle.clone()),
+                    MeshMaterial2d(art.dark.clone()),
+                    Transform::from_xyz(0.63, 0.31 * side, 0.16).with_scale(Vec3::splat(0.075)),
+                ));
+                parent.spawn((
+                    Mesh2d(art.line.clone()),
+                    MeshMaterial2d(art.membrane.clone()),
+                    Transform::from_xyz(-1.20, 0.22 * side, 0.02)
+                        .with_rotation(Quat::from_rotation_z(-0.2 * side))
+                        .with_scale(Vec3::new(0.75, 0.075, 1.0)),
+                ));
+            }
+            parent.spawn((
+                Mesh2d(art.leaf.clone()),
+                MeshMaterial2d(art.white.clone()),
+                Transform::from_xyz(1.0, 0.0, 0.12)
+                    .with_rotation(Quat::from_rotation_z(-std::f32::consts::FRAC_PI_2))
+                    .with_scale(Vec3::new(0.24, 0.32, 1.0)),
+            ));
+        })
+        .id()
+}
+
+fn sync_scene(
+    mut commands: Commands,
+    art: Res<Art>,
+    mut objects: ResMut<SceneObjects>,
+    mut game: ResMut<Game>,
+    mut transforms: Query<&mut Transform>,
+    mut authored: ResMut<AuthoredArt>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    if authored.creation != game.world.creation {
+        if let Some(mesh) = authored.mesh.take() {
+            meshes.remove(mesh.id());
+        }
+        if let Some(creation) = &game.world.creation {
+            match crate::editor::creation_mesh(creation, true) {
+                Ok(mesh) => authored.mesh = Some(meshes.add(mesh)),
+                Err(error) => {
+                    game.notice = format!("Creation visual failed: {error}");
+                }
+            }
+            if authored.material.is_none() {
+                authored.material = Some(materials.add(Color::WHITE));
+            }
+        }
+        authored.creation = game.world.creation.clone();
+        game.rebuild = true;
+    }
+    if game.rebuild {
+        for (_, entity) in objects.0.drain() {
+            commands.entity(entity).despawn();
+        }
+        game.rebuild = false;
+    }
+    let mut live = HashSet::new();
+    for (is_player, actor) in std::iter::once((true, &game.world.player))
+        .chain(game.world.enemies.iter().map(|a| (false, a)))
+    {
+        if !is_player && !game.world.can_perceive(actor.position) {
+            continue;
+        }
+        let key = (0, actor.id);
+        live.insert(key);
+        let entity = *objects.0.entry(key).or_insert_with(|| {
+            if is_player {
+                if let (Some(mesh), Some(material)) = (&authored.mesh, &authored.material) {
+                    return commands
+                        .spawn((
+                            Mesh2d(mesh.clone()),
+                            MeshMaterial2d(material.clone()),
+                            Transform::default(),
+                        ))
+                        .id();
+                }
+            }
+            add_actor(
+                &mut commands,
+                &art,
+                is_player,
+                actor.behavior == CellBehavior::Predator,
+            )
+        });
+        let t = Transform::from_xyz(actor.position.x, actor.position.y, 2.0)
+            .with_rotation(Quat::from_rotation_z(actor.heading))
+            .with_scale(Vec3::splat(actor.radius()));
+        if let Ok(mut transform) = transforms.get_mut(entity) {
+            *transform = t;
+        } else {
+            commands.entity(entity).insert(t);
+        }
+    }
+    for food in &game.world.food {
+        if !game.world.can_perceive(food.position) {
+            continue;
+        }
+        let key = (1, food.id);
+        live.insert(key);
+        let entity = *objects.0.entry(key).or_insert_with(|| {
+            commands
+                .spawn((
+                    Mesh2d(art.leaf.clone()),
+                    MeshMaterial2d(if food.kind == FoodKind::Plant {
+                        art.plant.clone()
+                    } else {
+                        art.meat.clone()
+                    }),
+                    Transform::default(),
+                ))
+                .id()
+        });
+        let t = Transform::from_xyz(food.position.x, food.position.y, 1.0)
+            .with_rotation(Quat::from_rotation_z(food.id as f32 * 0.73))
+            .with_scale(Vec3::splat(food.radius()));
+        if let Ok(mut transform) = transforms.get_mut(entity) {
+            *transform = t;
+        } else {
+            commands.entity(entity).insert(t);
+        }
+    }
+    for obstacle in &game.world.obstacles {
+        let key = (2, obstacle.id);
+        live.insert(key);
+        let entity = *objects.0.entry(key).or_insert_with(|| {
+            commands
+                .spawn((
+                    Mesh2d(art.circle.clone()),
+                    MeshMaterial2d(art.rock.clone()),
+                    Transform::default(),
+                ))
+                .id()
+        });
+        let t = Transform::from_xyz(obstacle.position.x, obstacle.position.y, 0.0)
+            .with_scale(Vec3::splat(obstacle.radius));
+        if let Ok(mut transform) = transforms.get_mut(entity) {
+            *transform = t;
+        } else {
+            commands.entity(entity).insert(t);
+        }
+    }
+    objects.0.retain(|key, entity| {
+        if live.contains(key) {
+            true
+        } else {
+            commands.entity(*entity).despawn();
+            false
+        }
+    });
+}
+
+fn update_hud(
+    game: Res<Game>,
+    mut texts: Query<&mut Text, (With<Hud>, Without<Banner>)>,
+    mut banners: Query<&mut Text, (With<Banner>, Without<Hud>)>,
+    mut meters: Query<(&Meter, &mut Node)>,
+) {
+    for mut text in &mut texts {
+        text.0 = format!(
+            "{:?}  |  {} nutrients\nMass {:.1}  |  {} rivals\n{}",
+            game.diet,
+            game.world.eaten,
+            game.world.player.mass,
+            game.world.enemies.len(),
+            if game.notice.is_empty() {
+                game.world
+                    .creation
+                    .as_ref()
+                    .map(|creation| {
+                        format!(
+                            "{} | awareness {:.0}m",
+                            creation.name.chars().take(12).collect::<String>(),
+                            game.world.perception_radius()
+                        )
+                    })
+                    .unwrap_or_default()
+            } else {
+                game.notice.chars().take(38).collect()
+            }
+        );
+    }
+    for (meter, mut node) in &mut meters {
+        node.width = percent(
+            100.0
+                * match meter.0 {
+                    0 => game.world.player.health / game.world.player.max_health,
+                    1 => game.world.player.energy,
+                    _ => game.world.progress(),
+                }
+                .clamp(0.0, 1.0),
+        );
+    }
+    for mut text in &mut banners {
+        text.0 = if game.paused {
+            "PAUSED\nP to return".into()
+        } else {
+            match game.world.state {
+                CellState::Playing => String::new(),
+                CellState::Evolved => "READY TO EVOLVE\nR to swim again".into(),
+                CellState::Dead => "THE TIDE MOVES ON\nR to try again".into(),
+            }
+        };
+    }
+}
+
+fn capture(mut commands: Commands, mut game: ResMut<Game>) {
+    game.frames += 1;
+    let duration = game.demo_seconds.unwrap_or(1.5);
+    if game.capture_frame.is_none()
+        && game.elapsed >= duration
+        && (game.shot.is_some() || game.demo_seconds.is_some())
+    {
+        if let Some(path) = &game.shot {
+            commands
+                .spawn(Screenshot::primary_window())
+                .observe(save_to_disk(path.clone()));
+        }
+        game.capture_frame = Some(game.frames);
+        println!("CELL_RESULT state={:?} tick={} eaten={} kills={} progress={:.6} health={:.3} x={:.4} y={:.4}", game.world.state, game.world.tick, game.world.eaten, game.world.kills, game.world.progress(), game.world.player.health, game.world.player.position.x, game.world.player.position.y);
+    }
+    if let Some(frame) = game.capture_frame {
+        if game.frames > frame + 10 && game.shot.as_ref().is_none_or(|path| path.exists()) {
+            std::process::exit(0);
+        }
+        if game.frames > frame + 600 {
+            eprintln!("Cell screenshot capture failed");
+            std::process::exit(1);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn keyboard_mapping_controls_the_same_simulation_input_as_gameplay() {
+        let mut keys = ButtonInput::default();
+        keys.press(KeyCode::KeyW);
+        keys.press(KeyCode::KeyD);
+        keys.press(KeyCode::Space);
+        keys.press(KeyCode::ShiftLeft);
+        let input = keyboard_input(&keys);
+        assert_eq!(input.thrust, 1.0);
+        assert_eq!(input.turn, -1.0);
+        assert!(input.bite && input.boost);
+        keys.press(KeyCode::KeyS);
+        keys.press(KeyCode::KeyA);
+        let input = keyboard_input(&keys);
+        assert_eq!(input.thrust, 0.0);
+        assert_eq!(input.turn, 0.0);
+    }
+
+    #[test]
+    fn save_file_replacement_roundtrips_and_keeps_old_data_on_failed_destination() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let folder = std::env::temp_dir().join(format!(
+            "rustspore-cell-save-{}-{nonce}",
+            std::process::id()
+        ));
+        let path = folder.join("cell.rsp");
+        let world = CellWorld::new(42, Diet::Carnivore);
+        let bytes = world.snapshot().to_bytes().unwrap();
+        write_save(&path, b"previous").unwrap();
+        write_save(&path, &bytes).unwrap();
+        let loaded = CellWorld::from_snapshot(
+            CellSnapshot::from_bytes(&std::fs::read(&path).unwrap()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(loaded.seed(), 42);
+        assert_eq!(loaded.player.diet, Diet::Carnivore);
+        assert!(write_save(&path.join("invalid"), b"must not overwrite").is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_dir(folder).unwrap();
+    }
+
+    #[test]
+    fn gameplay_controls_pause_restart_save_load_and_failed_load() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let folder = std::env::temp_dir().join(format!(
+            "rustspore-cell-controls-{}-{nonce}",
+            std::process::id()
+        ));
+        let path = folder.join("cell.rsp");
+        let mut app = App::new();
+        app.insert_resource(Time::<()>::default())
+            .insert_resource(ButtonInput::<KeyCode>::default())
+            .insert_resource(Game {
+                world: CellWorld::new(14, Diet::Herbivore),
+                seed: 14,
+                diet: Diet::Herbivore,
+                paused: false,
+                elapsed: 0.,
+                notice: String::new(),
+                rebuild: true,
+                save_path: path.clone(),
+                shot: None,
+                demo_seconds: None,
+                capture_frame: None,
+                frames: 0,
+            })
+            .add_systems(Update, drive);
+        let step = |app: &mut App, seconds: f64, pressed: &[KeyCode]| {
+            let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.reset_all();
+            for key in pressed {
+                keys.press(*key);
+            }
+            drop(keys);
+            app.world_mut()
+                .resource_mut::<Time>()
+                .advance_by(std::time::Duration::from_secs_f64(seconds));
+            app.update();
+        };
+        step(&mut app, 0.1, &[KeyCode::KeyW]);
+        let moved = app.world().resource::<Game>().world.clone();
+        assert!(moved.player.position.x > 0.0 && moved.tick > 0);
+        step(&mut app, 0.1, &[KeyCode::KeyP, KeyCode::KeyW]);
+        assert_eq!(app.world().resource::<Game>().world, moved);
+        step(&mut app, 0., &[KeyCode::KeyP]);
+        step(&mut app, 0., &[KeyCode::F5]);
+        let saved = app
+            .world()
+            .resource::<Game>()
+            .world
+            .snapshot()
+            .to_bytes()
+            .unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), saved);
+        step(&mut app, 0.1, &[KeyCode::KeyW]);
+        assert_ne!(app.world().resource::<Game>().world.tick, moved.tick);
+        step(&mut app, 0., &[KeyCode::F9]);
+        assert_eq!(
+            app.world()
+                .resource::<Game>()
+                .world
+                .snapshot()
+                .to_bytes()
+                .unwrap(),
+            saved
+        );
+        step(&mut app, 0., &[KeyCode::Digit2]);
+        assert_eq!(
+            app.world().resource::<Game>().world.player.diet,
+            Diet::Carnivore
+        );
+        step(&mut app, 0., &[KeyCode::F9]);
+        step(&mut app, 0., &[KeyCode::KeyR]);
+        assert_eq!(
+            app.world().resource::<Game>().world,
+            CellWorld::new(14, Diet::Herbivore)
+        );
+        std::fs::write(&path, b"broken save").unwrap();
+        let before = app.world().resource::<Game>().world.clone();
+        step(&mut app, 0., &[KeyCode::F9]);
+        let game = app.world().resource::<Game>();
+        assert_eq!(game.world, before);
+        assert!(game.notice.starts_with("Load failed:"));
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_dir(folder).unwrap();
+    }
+
+    fn authored_creation() -> Creation {
+        use spore_core::editor::{AuthoredPart, PartArchetype};
+        let mut creation = Creation::new(CreationKind::Cell, "Painted swimmer", 100).unwrap();
+        for (id, kind) in [
+            (2, PartArchetype::CarnivoreMouth),
+            (3, PartArchetype::Flagellum),
+            (4, PartArchetype::Eye),
+        ] {
+            creation
+                .parts
+                .push(AuthoredPart::new(id, format!("Part {id}"), kind, Some(1)));
+        }
+        creation.palette[0] = [0.8, 0.2, 0.4];
+        creation
+    }
+
+    #[test]
+    fn authored_app_save_load_restart_preserves_appearance_stats_and_mouth_diet() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let folder = std::env::temp_dir().join(format!(
+            "rustspore-cell-authored-{}-{nonce}",
+            std::process::id()
+        ));
+        let path = folder.join("cell.rsp");
+        let creation = authored_creation();
+        let mut world = CellWorld::new(77, Diet::Carnivore);
+        world.apply_creation(creation.clone()).unwrap();
+        let expected = world.loadout.clone();
+        let mut app = App::new();
+        app.insert_resource(Time::<()>::default())
+            .insert_resource(ButtonInput::<KeyCode>::default())
+            .insert_resource(Game {
+                world,
+                seed: 77,
+                diet: Diet::Carnivore,
+                paused: false,
+                elapsed: 0.,
+                notice: String::new(),
+                rebuild: true,
+                save_path: path.clone(),
+                shot: None,
+                demo_seconds: None,
+                capture_frame: None,
+                frames: 0,
+            })
+            .add_systems(Update, drive);
+        let step = |app: &mut App, keys: &[KeyCode]| {
+            let mut input = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            input.reset_all();
+            for key in keys {
+                input.press(*key);
+            }
+            drop(input);
+            app.update();
+        };
+        step(&mut app, &[KeyCode::F5]);
+        {
+            let mut game = app.world_mut().resource_mut::<Game>();
+            game.world = CellWorld::new(999, Diet::Herbivore);
+            game.seed = 999;
+            game.diet = Diet::Herbivore;
+        }
+        step(&mut app, &[KeyCode::F9]);
+        assert_eq!(
+            app.world().resource::<Game>().world.creation,
+            Some(creation.clone())
+        );
+        assert_eq!(app.world().resource::<Game>().world.loadout, expected);
+        step(&mut app, &[KeyCode::KeyR]);
+        assert_eq!(
+            app.world().resource::<Game>().world.creation,
+            Some(creation.clone())
+        );
+        assert_eq!(app.world().resource::<Game>().world.loadout, expected);
+        assert_eq!(app.world().resource::<Game>().world.seed(), 77);
+        step(&mut app, &[KeyCode::Digit1]);
+        let game = app.world().resource::<Game>();
+        assert_eq!(game.world.creation, Some(creation));
+        assert_eq!(game.diet, Diet::Carnivore);
+        assert!(game.notice.contains("mouth"));
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_dir(folder).unwrap();
+    }
+
+    #[test]
+    fn creation_cli_rejects_invalid_wrong_kind_and_conflicting_diet_before_opening_gpu() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "rustspore-cell-cli-{}-{nonce}.rsc",
+            std::process::id()
+        ));
+        std::fs::write(&path, b"invalid").unwrap();
+        let args = vec!["--creation".into(), path.to_string_lossy().into_owned()];
+        assert!(run(&args).is_err());
+        std::fs::write(
+            &path,
+            EditorSnapshot {
+                version: 1,
+                revision: 1,
+                creation: Creation::new(CreationKind::Creature, "Wrong kind", 100).unwrap(),
+            }
+            .to_bytes()
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(run(&args).unwrap_err().contains("Cell creation"));
+        std::fs::write(
+            &path,
+            EditorSnapshot {
+                version: 1,
+                revision: 1,
+                creation: authored_creation(),
+            }
+            .to_bytes()
+            .unwrap(),
+        )
+        .unwrap();
+        let mut conflict = args.clone();
+        conflict.extend(["--diet".into(), "herbivore".into()]);
+        assert!(run(&conflict).unwrap_err().contains("contradicts"));
+        let world = configured_world(14, Diet::Herbivore, false, Some(&path)).unwrap();
+        assert_eq!(world.player.diet, Diet::Carnivore);
+        assert!(world
+            .food
+            .iter()
+            .take(8)
+            .all(|food| food.kind == FoodKind::Meat));
+        std::fs::write(&path, vec![0; MAX_SAVE_BYTES + 1]).unwrap();
+        assert!(run(&args).unwrap_err().contains("bounded"));
+        std::fs::remove_file(path).unwrap();
+    }
+}

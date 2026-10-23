@@ -1,5 +1,9 @@
 //! Resource index layout detection.
 //!
+//! Historical compatibility view: its group/prefix/trailer labels do not
+//! describe native resource identity. See `native_index` for the flag-driven
+//! reader recovered from8DAFE0 and `re/archive-index-native.md` for the correction.
+//!
 //! The record shape is **not** constant across retail packages. Three variants were
 //! measured in one install, and they differ in record size, in where the prefix and
 //! trailer sit, and in field order. See `docs/dbpf-format.md` section 6 for the evidence.
@@ -168,6 +172,22 @@ pub fn detect(
     index_size: u32,
     count: u32,
 ) -> Result<(RecordShape, Vec<ResourceEntry>), DbpfError> {
+    detect_with_len(bytes, index_offset, index_size, count, bytes.len())
+}
+
+/// As [`detect`], for a buffer that holds only the index block.
+///
+/// Resource offsets are absolute file offsets, so the contiguity score needs the
+/// real file length rather than the length of the slice being parsed. Passing the
+/// slice's own length scores every candidate as out of range and rejects layouts
+/// that are perfectly valid.
+pub fn detect_with_len(
+    bytes: &[u8],
+    index_offset: u32,
+    index_size: u32,
+    count: u32,
+    file_len: usize,
+) -> Result<(RecordShape, Vec<ResourceEntry>), DbpfError> {
     let mut best: Option<(f64, RecordShape, Vec<ResourceEntry>)> = None;
 
     for shape in RecordShape::CANDIDATES {
@@ -177,7 +197,7 @@ pub fn detect(
         let Some(entries) = parse_records(bytes, index_offset, count, shape) else {
             continue;
         };
-        let score = contiguity_score(&entries, bytes.len() as u64);
+        let score = contiguity_score(&entries, file_len as u64);
         let better = match &best {
             None => true,
             Some((best_score, _, _)) => score > *best_score,
@@ -188,7 +208,13 @@ pub fn detect(
     }
 
     match best {
-        Some((score, shape, entries)) if score > 0.0 => Ok((shape, entries)),
+        // Contiguity is the arbiter between shapes that all fit the block, but it
+        // is undefined for a single record: a one-resource package would score 0.0
+        // and be rejected even when the shape fits the block exactly. Fall back to
+        // the fit itself in that case.
+        Some((score, shape, entries)) if score > 0.0 || entries.len() < 2 => {
+            Ok((shape, entries))
+        }
         _ => Err(DbpfError::UnsupportedIndexLayout {
             count,
             needed: RecordShape::CANDIDATES[0].block_size(count),
