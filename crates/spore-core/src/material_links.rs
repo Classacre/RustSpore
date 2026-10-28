@@ -131,7 +131,7 @@ pub struct CompiledState {
     pub payload: Vec<u8>,
 }
 impl CompiledState {
-    /// Decode the variable layout measured in all installed material libraries.
+    /// Decode supported variable layouts, including the bounded opaque 0x8 region.
     /// Other flag combinations remain explicitly unsupported; `payload` still
     /// retains their bytes. Saved raster words are not live resource pointers.
     pub fn bindings(&self) -> Result<CompiledBindings, MaterialError> {
@@ -175,8 +175,9 @@ pub struct StateGroup {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TextureStage {
     pub stage: u32,
-    /// All source libraries use 0x00400000 for a texture injection slot or
-    /// 0xFFFFFFFF for an absent raster. Neither value is a texture resource ID.
+    /// Material libraries use 0x00400000 as an injection slot and
+    /// 0xFFFFFFFF as absent. Embedded RW4 states can contain other saved
+    /// words; their interpretation and runtime pointer fixup are separate.
     pub raster_reference: u32,
     pub list_a_flags: u32,
     pub list_a: Vec<StateValue>,
@@ -284,7 +285,7 @@ fn bindings(state: &CompiledState) -> Result<CompiledBindings, MaterialError> {
             }
         }
     }
-    if state.soft_dirty & !0x108034 != 0 || state.hard_delta != 0 {
+    if state.soft_dirty & !0x10803c != 0 || state.hard_delta != 0 {
         return Err(MaterialError::UnsupportedBindingFlags);
     }
     let mut r = Reader { data: &state.payload, at: 0 };
@@ -293,6 +294,25 @@ fn bindings(state: &CompiledState) -> Result<CompiledBindings, MaterialError> {
         let b = r.data.get(12..14).ok_or(MaterialError::Truncated)?;
         let count = usize::from(u16::from_le_bytes(b.try_into().unwrap()));
         prefix.push(BindingRegion { flag: 0x100000, bytes: r.take(12 * (count + 2))? });
+    }
+    if state.soft_dirty & 0x8 != 0 {
+        // 11EE650 and 11EE810 advance past each eight-byte header and,
+        // for nonzero tags, a four-byte body when the third u16 is zero,
+        // otherwise the sum of the second and third u16 fields. The full
+        // terminator header is included; contents remain uninterpreted.
+        let start = r.at;
+        let mut count = 0;
+        loop {
+            let header = r.take(8)?;
+            let tag = u16::from_le_bytes([header[0], header[1]]);
+            if tag == 0 { break; }
+            if count == MAX_RECORDS { return Err(MaterialError::TooManyRecords); }
+            count += 1;
+            let a = usize::from(u16::from_le_bytes([header[2], header[3]]));
+            let b = usize::from(u16::from_le_bytes([header[4], header[5]]));
+            r.take(if b == 0 { 4 } else { a + b })?;
+        }
+        prefix.push(BindingRegion { flag: 0x8, bytes: r.data[start..r.at].to_vec() });
     }
     for (flag, size) in [(0x10, 16), (0x20, 12), (0x8000, 17)] {
         if state.soft_dirty & flag != 0 {
@@ -612,6 +632,41 @@ mod tests {
         assert_eq!(b.textures[1].list_a, vec![StateValue { state: 9, value: 123 }]);
         assert_eq!(b.textures[1].list_b[1], StateValue { state: 6, value: 2 });
         assert_eq!(b.to_bytes().unwrap(), state.payload);
+    }
+    #[test]
+    fn opaque_eight_region_keeps_both_record_lengths_and_full_terminator() {
+        let mut state = binding_state();
+        state.soft_dirty |= 0x100008;
+        // Declaration count zero: 24 bytes. Its presence tests prefix order.
+        let mut declaration = vec![0x5a; 24];
+        declaration[12..14].copy_from_slice(&0u16.to_le_bytes());
+        let mut region = vec![1, 0, 9, 0, 0, 0, 0xaa, 0xbb];
+        region.extend([1, 2, 3, 4]); // third u16 zero: exactly four bytes
+        region.extend([2, 0, 2, 0, 3, 0, 0xcc, 0xdd]);
+        region.extend([5, 6, 7, 8, 9]); // otherwise second plus third u16
+        region.extend([0, 0, 9, 8, 7, 6, 5, 4]); // entire terminator retained
+        declaration.extend(&region);
+        declaration.extend(&state.payload);
+        state.payload = declaration;
+        let parsed = state.bindings().unwrap();
+        assert_eq!(parsed.prefix.iter().map(|r| r.flag).collect::<Vec<_>>(), vec![0x100000, 8, 0x8000]);
+        assert_eq!(parsed.prefix[1].bytes, region);
+        assert_eq!(parsed.to_bytes().unwrap(), state.payload);
+        for end in 0..state.payload.len() {
+            let mut truncated = state.clone();
+            truncated.payload.truncate(end);
+            assert!(truncated.bindings().is_err(), "binding prefix {end}");
+        }
+    }
+    #[test]
+    fn opaque_eight_region_rejects_oversize_record_and_missing_terminator() {
+        let mut state = binding_state();
+        state.soft_dirty = 8;
+        state.hard_dirty = 0;
+        state.payload = vec![1, 0, 0xff, 0xff, 0xff, 0xff, 0, 0];
+        assert_eq!(state.bindings(), Err(MaterialError::Truncated));
+        state.payload = vec![1, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4];
+        assert_eq!(state.bindings(), Err(MaterialError::Truncated));
     }
     #[test]
     fn every_binding_prefix_unknown_extent_and_missing_terminator_rejected() {

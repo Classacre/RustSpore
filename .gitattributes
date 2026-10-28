@@ -557,3 +557,8 @@
 /re/cell-screen-color-native-comparison-v1.md -text whitespace=cr-at-eol
 /re/cell-screen-color-native-relocation-preparation-v2.md -text whitespace=cr-at-eol
 /re/cell-world-population-source-v1.md -text whitespace=cr-at-eol
+
+# Preserve source-bound kind-0 model evidence.
+/re/cell-kind0-asset-intake-v1.md -text whitespace=cr-at-eol
+/re/cell-kind0-rw4-shader-evidence-v1.md -text whitespace=cr-at-eol
+/re/cell-kind0-rw4-stage-fixup-v1.md -text whitespace=cr-at-eol
