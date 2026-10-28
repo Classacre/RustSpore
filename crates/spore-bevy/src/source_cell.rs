@@ -589,12 +589,12 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
     let asset = source.load(options.cell)?;
     if !options.pbr_inspection {
         let path = options.shot.as_ref().ok_or("source Cell capture requires --shot <new.png>")?;
-        println!("SOURCE_CELL_ART cell={} structure={} creation={:016X} model={} skin={} pending_effects={} renderer=original-d3d9 fit=inspection",
+        println!("SOURCE_CELL_ART cell={} structure={} creation={:016X} model={} skin={} pending_effects={} renderer=original-d3d9 fit=inspection diagnostic_skin_translation={}",
             asset.definition.cell.key, asset.definition.structure.key, asset.definition.creation_instance,
-            asset.model.key, asset.skin_source.key, asset.pending_structure_entries.len());
+            asset.model.key, asset.skin_source.key, asset.pending_structure_entries.len(), options.diagnostic_skin_translation);
         #[cfg(all(windows, feature = "native_renderer"))]
         return crate::native_cell_renderer::capture_key(&options.install, path,
-            asset.model.key)
+            asset.model.key, options.diagnostic_skin_translation)
             .map_err(|e| e.to_string());
         #[cfg(not(all(windows, feature = "native_renderer")))]
         return Err("Original shader capture requires Windows native rendering. Use --pbr-inspection for the separate diagnostic view.".to_string());
@@ -639,14 +639,14 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct PreviewOptions { install: PathBuf, cell: u32, shot: Option<PathBuf>, audit: bool, pbr_inspection: bool }
+struct PreviewOptions { install: PathBuf, cell: u32, shot: Option<PathBuf>, audit: bool, pbr_inspection: bool, diagnostic_skin_translation: bool }
 
 impl PreviewOptions {
     fn parse(args: &[String]) -> Result<Self, String> {
         let mut result = Self {
             install: std::env::var_os("RUSTSPORE_INSTALL").map(PathBuf::from)
                 .unwrap_or_else(|| PathBuf::from("D:/Games/SPORE Collection")),
-            cell: JAWHEAD, shot: None, audit: false, pbr_inspection: false,
+            cell: JAWHEAD, shot: None, audit: false, pbr_inspection: false, diagnostic_skin_translation: false,
         };
         let mut index = 0;
         while index < args.len() {
@@ -663,10 +663,14 @@ impl PreviewOptions {
                 "--shot" => { result.shot = Some(PathBuf::from(value(index)?)); index += 2; }
                 "--audit" => { result.audit = true; index += 1; }
                 "--pbr-inspection" => { result.pbr_inspection = true; index += 1; }
+                "--diagnostic-skin-translation" => { result.diagnostic_skin_translation = true; index += 1; }
                 other => return Err(format!("unknown source Cell option {other:?}; use --install <dir> --cell <hex> --shot <new.png> or --audit")),
             }
         }
         if !result.audit && result.shot.is_none() { return Err("source Cell preview requires --shot <new.png> or --audit".to_string()); }
+        if result.diagnostic_skin_translation && (result.cell != JAWHEAD || result.shot.is_none() || result.audit || result.pbr_inspection) {
+            return Err("--diagnostic-skin-translation requires Jawhead, --shot, and original D3D9 rendering; it cannot be combined with --audit or --pbr-inspection".to_string());
+        }
         Ok(result)
     }
 }
@@ -922,6 +926,10 @@ mod tests {
         assert_eq!(parsed.shot, Some(PathBuf::from("target/source.png")));
         assert!(!parsed.pbr_inspection);
         assert!(PreviewOptions::parse(&args(&["--pbr-inspection", "--shot", "target/pbr.png"])).unwrap().pbr_inspection);
+        assert!(PreviewOptions::parse(&args(&["--diagnostic-skin-translation", "--shot", "target/diagnostic.png"])).unwrap().diagnostic_skin_translation);
+        assert!(PreviewOptions::parse(&args(&["--diagnostic-skin-translation", "--audit"])).is_err());
+        assert!(PreviewOptions::parse(&args(&["--diagnostic-skin-translation", "--pbr-inspection", "--shot", "target/diagnostic.png"])).is_err());
+        assert!(PreviewOptions::parse(&args(&["--diagnostic-skin-translation", "--cell", "1", "--shot", "target/diagnostic.png"])).is_err());
         assert!(PreviewOptions::parse(&args(&["--audit"])).unwrap().audit);
     }
 

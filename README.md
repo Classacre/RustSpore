@@ -22,7 +22,10 @@ capture. On Windows this now uses original compiled shaders, untouched vertex
 buffers, source normal/specular maps and full mip chains on the RTX. All 28
 resolved primary Cell creations pass controlled draws. Source camera framing,
 final game draw state, effects and gameplay remain under reconstruction.
-Add `--pbr-inspection` for the separate Bevy comparison view.
+Add `--pbr-inspection` for the separate Bevy comparison view. For Jawhead only,
+add `--diagnostic-skin-translation` to a `--source-cell --shot` command to
+apply explicit synthetic translations to copied vertex positions. Normals and
+tangents remain unchanged; this diagnostic does not play original animation.
 Saved Creature artwork also follows explicit creation PROP/LOD references:
 `--source-creature --creature 40626200067C5390 --shot target/creature.png`
 executes original shaders and source mip chains offscreen. The measured fresh

@@ -252,6 +252,7 @@ mod probe {
         instance: u64,
         model_key: Option<NativeResourceKey>,
         creature_camera: bool,
+        diagnostic_skin_translation: bool,
     ) -> Result<(), Failure> {
         if output.exists() {
             return Err("capture output already exists".into());
@@ -280,6 +281,47 @@ mod probe {
             .iter()
             .find(|v| v.render_type == 0)
             .ok_or("missing source static render type0")?;
+        // Validate the complete diagnostic draw set before issuing either draw.
+        // The direct-path value below is a conditional association for this
+        // experiment, not an assertion that this renderer is Spore's path.
+        if diagnostic_skin_translation {
+            if instance != 0x4061_7100_780a_9eaf || model.meshes.len() != 2
+                || model.vertex_buffers.len() != 1 || model.vertex_buffers[0].vertex_count != 5947
+                || model.meshes.iter().any(|m| m.vertex_index != 0)
+                || model.meshes[0].triangle_index == model.meshes[1].triangle_index
+                || tail.palettes.len() != 2
+                || (tail.palettes[0].first_word, tail.palettes[0].bone_count) != (0, 64)
+                || (tail.palettes[1].first_word, tail.palettes[1].bone_count) != (64, 19)
+            { return Err("diagnostic requires the known Jawhead two-mesh shared-buffer layout and palette descriptors".into()); }
+            for (i, mesh) in model.meshes.iter().enumerate() {
+                let vb = model.vertex_buffers.get(usize::try_from(mesh.vertex_index)?).ok_or("diagnostic vertex reference")?;
+                let format = model.vertex_formats.get(usize::try_from(vb.format_index)?).ok_or("diagnostic vertex format")?;
+                let position = format.elements.iter().find(|e| e.usage == 0 && e.usage_index == 0)
+                    .ok_or("diagnostic position declaration absent")?;
+                if position.offset < 0 { return Err("diagnostic position offset invalid".into()); }
+                let position_start = position.offset as usize;
+                for element in format.elements.iter().filter(|e| e.usage == 3 || e.usage == 6) {
+                    if element.offset < 0 { return Err("diagnostic normal/tangent offset invalid".into()); }
+                    let start = element.offset as usize;
+                    if start < position_start + 12 && position_start < start + element.size() {
+                        return Err("diagnostic position overlaps normal/tangent".into());
+                    }
+                }
+                let mut data: BTreeMap<u16, Vec<u8>> = tail.materials[i].shader_data.iter()
+                    .map(|d| Ok((u16::try_from(d.id)?, d.payload.clone())))
+                    .collect::<Result<_, std::num::TryFromIntError>>()?;
+                data.insert(0x219, vec![]);
+                if format.native_normal_unpack_required(true) { data.insert(0x22c, vec![]); }
+                let bindings = shader_binding::texture_bindings(data.get(&0x20d).ok_or("diagnostic textures absent")?)?;
+                let samplers: BTreeSet<u16> = bindings.iter().map(|b| u16::try_from(b.sampler)).collect::<Result<_, _>>()?;
+                let context = SelectionContext { declaration_features: format.native_shader_features()?, shader_data: &data, available_samplers: &samplers };
+                let vs = shader_selection::select(&variant.vertex, &context)?;
+                if vs.fragment_ids.as_slice() != [0x14, 0x17, 0x19, 0x15, 0x31, 0x30, 0x29, 0x01] {
+                    return Err(format!("diagnostic requires non-skinning vertex recipe for mesh {i}; got {:02X?}", vs.fragment_ids).into());
+                }
+            }
+            println!("SOURCE_3D_DIAGNOSTIC kind=synthetic_position_translation direct_path=conditional_assumption actor_pose=false live_animation=false normals_tangents=unchanged");
+        }
         let light = sources.properties(0x40200100fced73a2)?;
         if light.value(0x0100eac6) != Some(&PropValue::Bool(false)) {
             return Err("camera-space lighting requires an unrecovered SH rotation".into());
@@ -367,6 +409,27 @@ mod probe {
         if !radius.is_finite() || radius <= 0. {
             return Err("invalid source bounds".into());
         }
+        // Complete both diagnostic deformations before creating a device or
+        // beginning a scene. Each draw receives its own full buffer copy.
+        let diagnostic_buffers = if diagnostic_skin_translation {
+            use spore_core::gmdl_direct_draw_position_diagnostic_v1::{deform_positions, Matrix};
+            use spore_core::gmdl_direct_draw_influences_v1::DrawPath;
+            let identity: Matrix = [[1., 0., 0., 0.], [0., 1., 0., 0.], [0., 0., 1., 0.]];
+            let mut palette = vec![identity; 83];
+            for matrix in &mut palette[..64] { matrix[0][3] = radius * 0.15; }
+            for matrix in &mut palette[64..] { matrix[0][3] = -radius * 0.15; }
+            let mut buffers = Vec::with_capacity(2);
+            for i in 0..2 {
+                let copy = deform_positions(&raw, &model, &tail, i,
+                    DrawPath::DirectFresh769a80Unmodified, &palette)
+                    .map_err(|e| format!("position diagnostic mesh {i}: {e:?}"))?;
+                buffers.push(copy);
+            }
+            for i in 0..2 {
+                println!("SOURCE_3D_DIAGNOSTIC_DRAW mesh={i} translation_x={} copied_buffer=true normals_tangents=unchanged", if i == 0 { radius * 0.15 } else { -radius * 0.15 });
+            }
+            Some(buffers)
+        } else { None };
         let model_matrix =
             Mat4::from_scale(Vec3::splat(1. / radius)) * Mat4::from_translation(-centre);
         let distance = 1.15 / (fov * 0.5).sin();
@@ -443,6 +506,9 @@ mod probe {
             let vertices = raw
                 .get(vb.data_offset..vb.data_offset + vb.buffer_size as usize)
                 .ok_or("source vertex data truncated")?;
+            let vertices = if let Some(buffers) = &diagnostic_buffers {
+                buffers[i].as_slice()
+            } else { vertices };
             let material = &tail.materials[i];
             let mut data: BTreeMap<u16, Vec<u8>> = material
                 .shader_data
@@ -624,7 +690,7 @@ mod probe {
                 )?;
             }
             total_triangles += count;
-            println!("SOURCE_3D_DRAW mesh={i} vertices={} triangles={count} vs={:02X?} ps={:02X?} untouched_vertex_bytes=true",vb.vertex_count,vs.fragment_ids,ps.fragment_ids);
+            println!("SOURCE_3D_DRAW mesh={i} vertices={} triangles={count} vs={:02X?} ps={:02X?} untouched_vertex_bytes={}",vb.vertex_count,vs.fragment_ids,ps.fragment_ids,!diagnostic_skin_translation);
         }
         unsafe {
             device.EndScene()?;
@@ -659,15 +725,16 @@ pub fn capture(
     output: &std::path::Path,
     instance: u64,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    probe::render(install, output, instance, None, false)
+    probe::render(install, output, instance, None, false, false)
 }
 #[cfg(windows)]
 pub fn capture_key(
     install: &std::path::Path,
     output: &std::path::Path,
     model: dbpf::native_index::NativeResourceKey,
+    diagnostic_skin_translation: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    probe::render(install, output, model.scoped_instance(), Some(model), false)
+    probe::render(install, output, model.scoped_instance(), Some(model), false, diagnostic_skin_translation)
 }
 
 #[cfg(windows)]
@@ -676,7 +743,7 @@ pub fn capture_creature_key(
     output: &std::path::Path,
     model: dbpf::native_index::NativeResourceKey,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    probe::render(install, output, model.scoped_instance(), Some(model), true)
+    probe::render(install, output, model.scoped_instance(), Some(model), true, false)
 }
 #[cfg(not(windows))]
 pub fn capture(

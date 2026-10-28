@@ -20,6 +20,35 @@ tests pass separately. Neither test result establishes complete gameplay.
 Workspace suite V30 subsequently passed 666 executions, zero failures and two
 intentional ignores; log SHA-256
 `7fe3e740cb137e8be843da8db40622f0240d72e4820fdbc52c2a4ee6c6eedbc9`.
+After checkpoint `7bf2e2ce2eafc598162d97059833fac75721b774` was pushed and
+verified, local work added a lossless multi-mesh influence reader. It matched
+11,894 Jawhead mesh-reference rows from an independent census, reading one shared
+5,947-vertex buffer twice. This establishes raw bytes only, not a palette or
+animated result. Workspace suite V31 then passed 670 tests, zero failures and
+two intentional ignores; log SHA-256
+`583ca44755cfcd428e8b95aeccdbec92503119f6c3cfa4e924bf1b87ebcedafc`.
+The public AnimList v10 parser also matches all 2,531 records in the two
+installed v10 resources in a complete-field independent comparison; the report
+SHA-256 is `efa652fd7ef7c228ad9ed2b6d4cb1e1b589e65b1f3ca0ec3b5f7c3b29e14066f`.
+Workspace V32 passed 674 tests, zero failures and two ignored; log SHA-256
+`d72929241d86b9500cad3d306bd91e4b663b6f35cbd11056495682fe5dc9c48f`.
+The v7 parser matched both installed v7 lists (1,888 records); the report hash
+is `7c30d513a5159c7bb0ecf4a25be3bad00ee49bec0f96f70b6418458e8bf11976`.
+Workspace V33 passed 678 tests with two ignored; log SHA-256
+`eb145a00dc21eacaafb2ddfa24829badc4985a29448ab5eac68759b30b6ec27d`.
+The v8/v9 parser has only synthetic test coverage because this installation
+contains no resources of those versions.
+Actor request and runtime animation binding remain unproven.
+
+A conditional direct-draw resolver matches the original Jawhead census for
+5,947 referenced vertices and 10,779 active influence lanes. A position-only
+synthetic-palette diagnostic also matches an independent scalar calculation
+for 35,682 position components. Its opt-in offscreen capture ran on the RTX
+3060 with the selected original non-skinning shader; the ordinary capture
+remained byte-identical to the previous baseline. The diagnostic intentionally
+separates mesh sections and leaves normals and tangents unchanged: it is not
+live animation or gameplay. Workspace V35 passed 690 tests with two ignored;
+log SHA-256 `b6cd2c94c6d89151a5c001788b63dae82e0ba38569a88b8410c133a177667b5a`.
 
 The Cell contact trace reaches source candidate arbitration and event
 scheduling, but the input geometry, external calls and live actor state remain

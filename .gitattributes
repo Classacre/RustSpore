@@ -477,3 +477,32 @@
 /re/cell-feeding-candidate-producer-v1.md whitespace=-blank-at-eof,cr-at-eol
 /tools/cell_skybox_effdir_audit_v1.py whitespace=-blank-at-eof,cr-at-eol
 /tools/cell_ui_parent_span_local_audit_v4.py whitespace=-blank-at-eof,cr-at-eol
+
+# Preserve the later animation-reader and diagnostic checkpoint verbatim.
+/README.md text eol=crlf
+/crates/spore-bevy/src/main.rs text eol=crlf
+/crates/spore-bevy/src/native_cell_renderer.rs text eol=crlf
+/crates/spore-bevy/src/source_cell.rs text eol=crlf
+/crates/spore-core/examples/animlist_v10_dump.rs -text whitespace=cr-at-eol
+/crates/spore-core/examples/animlist_v7_dump.rs -text whitespace=cr-at-eol
+/crates/spore-core/examples/gmdl_direct_draw_census_verify_v1.rs -text whitespace=cr-at-eol
+/crates/spore-core/examples/gmdl_position_diagnostic_source_verify_v1.rs -text whitespace=cr-at-eol
+/crates/spore-core/examples/gmdl_skin_raw_census_verify_v1.rs -text whitespace=cr-at-eol
+/crates/spore-core/src/animlist_v10.rs -text whitespace=cr-at-eol
+/crates/spore-core/src/animlist_v7.rs -text whitespace=cr-at-eol
+/crates/spore-core/src/animlist_v8_v9.rs -text whitespace=cr-at-eol
+/crates/spore-core/src/gmdl_direct_draw_influences_v1.rs -text whitespace=cr-at-eol
+/crates/spore-core/src/gmdl_direct_draw_position_diagnostic_v1.rs -text whitespace=cr-at-eol
+/crates/spore-core/src/gmdl_skin_raw_influences_v1.rs -text whitespace=cr-at-eol
+/tools/animlist_v10_corpus_compare.py -text whitespace=cr-at-eol
+/tools/animlist_v7_corpus_compare.py -text whitespace=cr-at-eol
+/tools/gmdl_direct_draw_census_compare_v1.py -text whitespace=cr-at-eol
+/tools/gmdl_position_diagnostic_source_compare_v1.py -text whitespace=cr-at-eol
+/tools/gmdl_skin_raw_census_compare_v1.py -text whitespace=cr-at-eol
+/re/cell-animlist-resource-selection-v1.md -text whitespace=cr-at-eol
+/re/cell-feeding-depth-x87-trace-v1.md -text whitespace=cr-at-eol
+/re/cell-gmdl-descriptor-transfer-v1.md -text whitespace=cr-at-eol
+/re/cell-gmdl-palette-render-state-v1.md -text whitespace=cr-at-eol
+/re/cell-jawhead-multimesh-palette-trace-v1.md -text whitespace=cr-at-eol
+/re/cell-screen-effect-type-fallback-v1.md -text whitespace=cr-at-eol
+/re/cell-feeding-depth-x87-trace-v1.md whitespace=-blank-at-eof,cr-at-eol
