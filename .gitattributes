@@ -580,3 +580,11 @@
 /re/cell-rw4-binding-lookup-followup-v1.md text eol=lf
 /re/cell-hierarchy-76f930-controlled-v1.md text eol=lf
 /re/cell-hierarchy-76f930-guarded-v2.md text eol=lf
+
+# Keep Cell source investigation notes stable on checkout.
+/re/cell-rw4-hierarchy-caller-source-v1.md text eol=lf
+/re/cell-hierarchy-vtable-caller-audit-v1.md text eol=lf
+/re/cell-model-world-instance-source-v1.md text eol=lf
+/re/cell-model-world-loader-source-v1.md text eol=lf
+/re/cell-kind4-source-list-v1.md text eol=lf
+/re/cell-kind4-query-manager-v1.md text eol=lf

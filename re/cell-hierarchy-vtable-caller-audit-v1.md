@@ -1,0 +1,19 @@
+# Candidate model-world hierarchy dispatch: caller audit
+
+This is a bounded static investigation of `SporeBin/SporeApp.exe`, SHA-256 `17cf32b3e3adbcc7ed9c4e593c83b5d3deb3c675059b7ad9cbfd19192df5f87a`. The hierarchy call paths and model-resource lookup are detailed in [the caller-source trace](cell-rw4-hierarchy-caller-source-v1.md). No live process was observed and no original game code was executed.
+
+## Table and possible Cell connection
+
+The earlier native palette trace in [anim-palette-native.md](anim-palette-native.md) identifies constructor stores `753859..75387A` and destructor stores `7502BD..7502DE` for main model-world table `0140D740`, alongside secondary interface tables. Read-only PE data inspection finds `0140D840 = 00744F90` and `0140D844 = 00746540`, corresponding to main-table offsets +100 and +104. `744F90` forwards through `776240`/`7761B0` into the hierarchy path; `746540` forwards through `775F30` into the same path. Those facts establish table entries and callable implementation paths; they do not establish that a particular instance or Cell actor invoked them.
+
+The separate [Cell world-population trace](cell-world-population-source-v1.md) reports a kind-0 path passing the selected Cell model-world object to `E4EE60`, which invokes its virtual +0C, and a disk-projected candidate `DAE8CE17`. The generic model-world loader evidence in [creature-model-links-native.md](creature-model-links-native.md) identifies main table +0C as `74D3B0`, which loads a PROP and model. These observations are a useful interface-level connection, but the concrete vtable and resource selected by that Cell call have not been established; no inference of a call to +100/+104 or of candidate clip selection follows.
+
+## Bounded slot search
+
+A raw executable-section scan looked for x86 direct `call [reg+disp32]` for offsets `100` and `104`, and separately for raw `mov reg,[base+disp32]` followed within 100 bytes by `call reg`. This is candidate generation only: arbitrary byte alignment, register reassignment, indirect thunks, SIB encodings, and other control flows prevent a complete caller inventory. It returned 46 raw mov/call candidates for +100 and 350 for +104 across the whole executable, plus six direct-memory-call byte candidates for +104. An instruction-level and receiver-provenance trace is necessary before attributing any to this table.
+
+In retained Ghidra dossier `target/rea/20261028-source-runtime-v6/36-analyze_function.json`, Evidence `ev_7e4d9f8457f9bd9829849d7a1d67d8b9ee704b7313f826e326bdf90427397cf7`, Cell-related `E54150` includes +104 virtual dispatches at `E5467D..E54688` and `E5469F..E546AA`. Each supplies one stack argument before the call. The selected table's `746540` returns with `ret 0C`, consuming three stack arguments. These callsites therefore do not establish dispatch to `746540`; treating matching numeric offsets across different interfaces as a connection would be unsupported.
+
+Two +100 raw candidates in the approximate Cell-code address range, `E6BA7B` and `E8A3E8`, also fail this simple dispatch interpretation on instruction inspection: the former loads fields used by other work, while the latter reads an object at +100 and calls through its +5C slot. Neither establishes a model-world +100 call. These checks are bounded and cannot prove that Cell never invokes either slot.
+
+Next, trace the actual constructor and ownership of the Cell model-world interface through the factory result, find virtual callsites with the five-argument +100 or three-argument +104 contract, and resolve the receiver to the main `0140D740` table. In parallel, trace writers of the forwarded object's adjusted +9C field and the model-resource object's key. A runtime association requires source-backed receiver, resource key, provider and selected actor evidence; the existing hierarchy result and inverse-bind mismatch remain separate.

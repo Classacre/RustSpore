@@ -17,6 +17,8 @@ ROOT = Path(__file__).resolve().parent.parent
 PACKAGE_SHA = 'e01bb86d8ddf02c56d52394b4e1db7181c1e1ebe1878bf6fb72c4ee523fcedd1'
 TYPE = 0x2f4e681b
 SPEC = {
+    # Legacy wide-index fields: apparent group is the preceding metadata word;
+    # apparent 64-bit instance is native scope concatenated with instance-low.
     'A_clip': (0x0001ffff, 0x4060600060bdd177, 17, 40,
                'c20051c08236501764cb052d36c74592ff005b7fe26bcd0976a59d9a4775e3b2'),
     'B_model': (0x00010000, 0x00000000dae8ce17, 10, 0,
@@ -66,8 +68,10 @@ def extract(package, entries, name, spec):
     read_words(data, flags, n, 'I')
     if len(set(id_values)) != n or any(v < -1 or v >= i for i, v in enumerate(parent_values)):
         raise ValueError(f'{name}: invalid IDs or hierarchy')
-    return parent_values, id_values, dict(dbpf_type=f'{TYPE:08X}', dbpf_group=f'{group:08X}',
-        dbpf_instance=f'{instance:016X}', payload_sha256=digest(data), binding_section=binding,
+    return parent_values, id_values, dict(dbpf_type=f'{TYPE:08X}', legacy_group_metadata_field=f'{group:08X}',
+        legacy_scoped_instance=f'{instance:016X}',
+        native_key_instance_type_scope=f'{instance & 0xffffffff:08X}:{TYPE:08X}:{instance >> 32:08X}',
+        payload_sha256=digest(data), binding_section=binding,
         skeleton_section=expected_skeleton, skeleton_id=f'{skeleton_id:08X}', skeleton_flags=skeleton_flags,
         parent_sha256=digest(struct.pack('<' + 'i'*n, *parent_values)),
         ids_sha256=digest(struct.pack('<' + 'I'*n, *id_values)), count=n)
