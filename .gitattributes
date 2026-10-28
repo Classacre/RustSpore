@@ -442,3 +442,38 @@
 # Preserve the conditional Cell matrix fixture and auditor.
 /crates/spore-bevy/examples/cell_ui_matrix_fixture_v2.rs text eol=crlf
 /tools/cell_ui_matrix_fixture_audit_v2.py text eol=crlf
+
+# Preserve bytes for the later Cell source and comparison checkpoint.
+/crates/spore-core/src/cell_effdir_framing_v3.rs -text whitespace=cr-at-eol
+/crates/spore-core/src/cell_feeding_callback_boundary_v2.rs -text whitespace=cr-at-eol
+/crates/spore-core/src/cell_feeding_contact_arbitration_e59b40_v1.rs -text whitespace=cr-at-eol
+/crates/spore-core/src/effect_directory_startup_plan_v1.rs -text whitespace=cr-at-eol
+/crates/spore-core/examples/cell_effdir_public_verify_v1.rs -text whitespace=cr-at-eol
+/crates/spore-core/examples/cell_arbitration_oracle.rs -text whitespace=cr-at-eol
+/crates/spore-bevy/examples/cell_ui_parent_span_local_v4.rs -text whitespace=cr-at-eol
+/tools/cell_effdir_corpus_compare_v1.py -text whitespace=cr-at-eol
+/tools/cell_skybox_effdir_audit_v1.py -text whitespace=cr-at-eol
+/tools/cell_skybox_effdir_extract_v1.py -text whitespace=cr-at-eol
+/tools/cell_ui_parent_span_local_audit_v4.py -text whitespace=cr-at-eol
+/tools/cell_arbitration_native_prepare.py -text whitespace=cr-at-eol
+/tools/cell_arbitration_native_compare.py -text whitespace=cr-at-eol
+/tools/cell_arbitration_native_prepare_v2.py -text whitespace=cr-at-eol
+/tools/cell_arbitration_native_build_v2.py -text whitespace=cr-at-eol
+/tools/cell_arbitration_native_compare_v2.py -text whitespace=cr-at-eol
+/tools/cell_arbitration_native_prepare_v3.py -text whitespace=cr-at-eol
+/tools/cell_arbitration_cargo_build_v3.py -text whitespace=cr-at-eol
+/tools/cell_arbitration_native_build_v3.py -text whitespace=cr-at-eol
+/tools/cell_arbitration_native_compare_v3.py -text whitespace=cr-at-eol
+/re/cell-animation-request-palette-followup.md -text whitespace=cr-at-eol
+/re/cell-arbitration-native-comparison-plan.md -text whitespace=cr-at-eol
+/re/cell-arbitration-native-comparison-plan-v2.md -text whitespace=cr-at-eol
+/re/cell-arbitration-native-comparison-plan-v3.md -text whitespace=cr-at-eol
+/re/cell-feeding-candidate-producer-v1.md -text whitespace=cr-at-eol
+/re/cell-feeding-selector-source-trace-v1.md -text whitespace=cr-at-eol
+/re/cell-screen-effect-source-trace-v1.md -text whitespace=cr-at-eol
+/re/cell-skybox-effdir-candidate-v1.md -text whitespace=cr-at-eol
+/re/cell-ui-graphics-descriptor-source-trace-v1.md -text whitespace=cr-at-eol
+/re/cell-ui-parent-sizing-audit-v1.md -text whitespace=cr-at-eol
+/re/cell-feeding-candidate-producer-v1.md whitespace=-blank-at-eof,cr-at-eol
+/tools/cell_skybox_effdir_audit_v1.py whitespace=-blank-at-eof,cr-at-eol
+/tools/cell_ui_parent_span_local_audit_v4.py whitespace=-blank-at-eof,cr-at-eol

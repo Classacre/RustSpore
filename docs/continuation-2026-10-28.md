@@ -10,6 +10,28 @@ its ignored log is `target/workspace-tests-20261028-resume-v23.log` (SHA-256
 Focused font tests passed as recorded below. Pending Cell and creature node
 research is preserved as work in progress; no stage or editor is complete.
 
+The later checkpoint `6c9859048a2e0b3d0d60617492c418a74e522ea6` was pushed to
+GitHub `master` and the remote SHA verified. Subsequent source-effect, UI and
+feeding investigations remain local. Workspace suite V29 passed 662 executions,
+with zero failures and two intentional ignores; log SHA-256
+`8ba83e12ca7c37bfc6e794d4636f05e550a082ea5a2ebc8eaf0afde36fc73326`.
+This suite predates the later contact-arbitration module, whose four focused
+tests pass separately. Neither test result establishes complete gameplay.
+Workspace suite V30 subsequently passed 666 executions, zero failures and two
+intentional ignores; log SHA-256
+`7fe3e740cb137e8be843da8db40622f0240d72e4820fdbc52c2a4ee6c6eedbc9`.
+
+The Cell contact trace reaches source candidate arbitration and event
+scheduling, but the input geometry, external calls and live actor state remain
+open. The bounded `cell_feeding_contact_arbitration_e59b40_v1` models selection
+over caller-supplied candidates only; all 314 cases in a non-aliasing native
+comparison match its 12 final output words, and four focused tests pass. This
+does not establish native candidate production or gameplay parity. The type-9 screen
+effect carries the candidate skybox resource pair into a runtime descriptor,
+but the receiver, provider and actual draw remain unresolved. See the
+`re/cell-feeding-selector-source-trace-v1.md` and
+`re/cell-screen-effect-source-trace-v1.md` notes for evidence and scope.
+
 The paused work was committed and pushed as `446b463d2d91f5ebe5aee8e61b2657e19ec0b66c`;
 the remote and local commit were verified equal. Subsequent work is local until a
 later publication. The user requested parallel subagents with GPT-6.1 Terra and

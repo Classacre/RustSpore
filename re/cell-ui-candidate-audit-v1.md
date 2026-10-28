@@ -20,6 +20,14 @@ attachments, no runtime mutation, zero private flags and the authored root
 rectangle. It does not establish global screen positions or an active HUD.
 See `cell_ui_ordered_local_v2` and `cell_ui_ordered_local_audit_v2.py`.
 
+The later parent-span v4 fixture accepts actual laid-out parent spans rather
+than assuming raw display dimensions. It binds the selected decoded package
+payload and admits only a nonzero authored root origin, ensuring the modeled
+move requests a layout update under the stated callback assumptions. Rust and
+the independent audit agree on all 58 eligible rows for three span fixtures in
+each package, including zero and fractional spans. This is conditional local
+layout evidence, not a captured frame or proof of the active package.
+
 The installed base executable SHA-256 is
 `17cf32b3e3adbcc7ed9c4e593c83b5d3deb3c675059b7ad9cbfd19192df5f87a`.
 Ghidra function `E54150` hashes the literal `GlobalUICell-3`, constructs a
