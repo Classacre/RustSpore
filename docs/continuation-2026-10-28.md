@@ -40,6 +40,22 @@ The v8/v9 parser has only synthetic test coverage because this installation
 contains no resources of those versions.
 Actor request and runtime animation binding remain unproven.
 
+Subsequent source tracing connects Cell actor state to an original 131-row
+animation-request table. The public reader matches all 1,179 source words;
+a source join matches all 131 rows to both installed v7 and v10 list records,
+without choosing package precedence. Bounded snapshot admission and selection
+projections pass focused tests but take caller-supplied state and a committed
+draw. The nonzero-state RNG model matches the source executable numerically on
+10,368 controlled cases; its zero-seed timing path, zero sign, native scaling
+and live actor state remain outside that comparison. Workspace V38 passed 716
+tests with two ignored; log SHA-256
+`1ff8770acd10c035998aeb4f6c2b60bacefd74b97c4c6f47fc82f91db0246671`.
+The later bounded seeded selector composes supplied snapshot admission, the
+nonzero RNG model and source-guided x87 scaling; its combined scaling remains
+unverified against native execution. Workspace V39 passed 721 tests with two
+ignored; log SHA-256
+`b5d3dc2ccb3bd1aa5ba6d3b835932162310063b136b5396f39ccbee57c626d00`.
+
 A conditional direct-draw resolver matches the original Jawhead census for
 5,947 referenced vertices and 10,779 active influence lanes. A position-only
 synthetic-palette diagnostic also matches an independent scalar calculation

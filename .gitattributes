@@ -506,3 +506,22 @@
 /re/cell-jawhead-multimesh-palette-trace-v1.md -text whitespace=cr-at-eol
 /re/cell-screen-effect-type-fallback-v1.md -text whitespace=cr-at-eol
 /re/cell-feeding-depth-x87-trace-v1.md whitespace=-blank-at-eof,cr-at-eol
+
+# Preserve source-bound Cell request and selector artifacts.
+/crates/spore-core/examples/cell_anim_source_crosslink_compare_v1.rs -text whitespace=cr-at-eol
+/crates/spore-core/examples/cell_anim_state_table_verify_v1.rs -text whitespace=cr-at-eol
+/crates/spore-core/examples/cell_request_rng_native_compare_v1.rs -text whitespace=cr-at-eol
+/crates/spore-core/src/cell_anim_source_crosslink_v1.rs -text whitespace=cr-at-eol
+/crates/spore-core/src/cell_anim_state_table_v1.rs -text whitespace=cr-at-eol
+/crates/spore-core/src/cell_request_admission_projection_v1.rs -text whitespace=cr-at-eol
+/crates/spore-core/src/cell_request_rng_v1.rs -text whitespace=cr-at-eol
+/crates/spore-core/src/cell_request_seeded_selection_v1.rs -text whitespace=cr-at-eol
+/crates/spore-core/src/cell_request_snapshot_selection_v1.rs -text whitespace=cr-at-eol
+/crates/spore-core/src/cell_request_weighted_suffix_v1.rs -text whitespace=cr-at-eol
+/tools/cell_anim_source_crosslink_compare_v1.py -text whitespace=cr-at-eol
+/tools/cell_anim_state_table_audit_v1.py -text whitespace=cr-at-eol
+/tools/cell_anim_state_table_compare_v1.py -text whitespace=cr-at-eol
+/tools/cell_request_rng_native_prepare_v1.py -text whitespace=cr-at-eol
+/tools/cell_request_rng_native_run_v1.py -text whitespace=cr-at-eol
+/re/cell-actor-animation-request-trace-v1.md -text whitespace=cr-at-eol
+/re/cell-request-rng-native-comparison-v1.md -text whitespace=cr-at-eol
