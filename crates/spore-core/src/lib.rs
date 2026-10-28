@@ -112,6 +112,7 @@ pub mod rw4_animation;
 pub mod shader_fragments;
 pub mod shader_binding;
 pub mod shader_codegen;
+pub mod shader_pixel_codegen;
 pub mod shader_pack;
 pub mod shader_selection;
 pub mod skin;

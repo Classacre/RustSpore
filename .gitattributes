@@ -562,3 +562,11 @@
 /re/cell-kind0-asset-intake-v1.md -text whitespace=cr-at-eol
 /re/cell-kind0-rw4-shader-evidence-v1.md -text whitespace=cr-at-eol
 /re/cell-kind0-rw4-stage-fixup-v1.md -text whitespace=cr-at-eol
+
+# Preserve source-bound pixel generator and model fixture evidence.
+/crates/spore-core/src/shader_pixel_codegen.rs -text whitespace=cr-at-eol
+/crates/spore-bevy/examples/cell_kind0_native_fixture_v1.rs -text whitespace=cr-at-eol
+/crates/spore-bevy/examples/shader_pixel_codegen_verify.rs -text whitespace=cr-at-eol
+/re/cell-kind0-native-fixture-v1.md -text whitespace=cr-at-eol
+/re/cell-native-pixel-fallback-v1.md -text whitespace=cr-at-eol
+/re/shader-pixel-codegen-native-v1.md -text whitespace=cr-at-eol

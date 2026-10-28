@@ -29,7 +29,7 @@ mod probe {
         raster,
         shader_binding::{self, MaterialParams, UniformDescriptor},
         shader_codegen::{self, SourceTemplates},
-        shader_fragments, shader_pack,
+        shader_fragments, shader_pack, shader_pixel_codegen,
         shader_selection::{self, SelectionContext},
     };
     use std::{
@@ -96,6 +96,24 @@ mod probe {
         }
         fn read(&self, typ: u32, instance: u64) -> Result<Vec<u8>, Failure> {
             self.read_key(NativeResourceKey::from_scoped_instance(typ, instance))
+        }
+        /// Resolve the profile-3 fragment library from the same package that
+        /// supplied the selected pack; do not silently mix source libraries.
+        fn selected_pack_fragments(&self) -> Result<Vec<u8>, Failure> {
+            let pack_key = NativeResourceKey::from_scoped_instance(0x0469a3f7, 0x4021200400000003);
+            let fragment_key = NativeResourceKey::from_scoped_instance(0x0469a3f7, 0x4021200200000003);
+            for package in &self.0 {
+                if package.index().find_unique(pack_key)?.is_some() {
+                    let entry = package.index().find_unique(fragment_key)?
+                        .ok_or("selected shader pack's package has no profile-3 fragment library")?;
+                    if entry.decompressed_size.max(entry.stored_size) > 32 * 1024 * 1024 {
+                        return Err("source fragment library too large".into());
+                    }
+                    println!("SOURCE_3D_FRAGMENT_PACKAGE path={} profile=3", package.path().display());
+                    return Ok(package.read(entry)?);
+                }
+            }
+            Err("selected shader pack package not found".into())
         }
         fn properties(&self, instance: u64) -> Result<PropTree, Failure> {
             let p = prop::parse(&self.read(0x00b1b104, instance)?)?;
@@ -584,8 +602,7 @@ mod probe {
                     }
                     let image = std::fs::read(install.join("SporeBin/SporeApp.exe"))?;
                     let templates = SourceTemplates::from_original_executable(&image)?;
-                    let library =
-                        shader_fragments::parse(&sources.read(0x0469a3f7, 0x4021200200000003)?)?;
+                    let library = shader_fragments::parse(&sources.selected_pack_fragments()?)?;
                     let source =
                         shader_codegen::generate_vertex(&library, &vs.fragment_ids, &templates)?;
                     let flags = if builder.header.words[6] & 2 != 0 {
@@ -621,15 +638,48 @@ mod probe {
                     &generated_program
                 }
             };
-            let ps_program = pack
-                .compiled_pixel
-                .lookup(&ps.fragment_ids)?
-                .ok_or_else(|| {
-                    format!(
-                        "source pixel recipe uncached: mesh={i} recipe={:02X?}",
-                        ps.fragment_ids
-                    )
-                })?;
+            let generated_pixel_program;
+            let cached_pixel = pack.compiled_pixel.lookup(&ps.fragment_ids)?;
+            // Offscreen conformance only: preserve normal cache behavior unless
+            // the probe feature is compiled and the explicit value is exactly 1.
+            #[cfg(feature = "native_shader_probe")]
+            let force_pixel_generation = std::env::var_os("RUSTSPORE_VERIFY_PIXEL_FALLBACK")
+                .as_deref() == Some(std::ffi::OsStr::new("1"));
+            #[cfg(not(feature = "native_shader_probe"))]
+            let force_pixel_generation = false;
+            let ps_program = match cached_pixel {
+                Some(cached) if !force_pixel_generation => cached,
+                _ => {
+                    if force_pixel_generation {
+                        println!("SOURCE_3D_VERIFY_PIXEL_FALLBACK forced=true cached_available={} recipe={:02X?}", cached_pixel.is_some(), ps.fragment_ids);
+                    }
+                    if builder.header.words[5] != 0xffff0300 {
+                        return Err("unestablished source pixel compiler profile".into());
+                    }
+                    let image = std::fs::read(install.join("SporeBin/SporeApp.exe"))?;
+                    let templates = SourceTemplates::from_original_executable(&image)?;
+                    let library = shader_fragments::parse(&sources.selected_pack_fragments()?)?;
+                    let source = shader_pixel_codegen::generate_pixel(&library, &ps.fragment_ids, &templates)?;
+                    let flags = if builder.header.words[6] & 2 != 0 { 0x32 } else { 0x12 };
+                    let compiled = native_d3dx::Compiler::system()?.compile(
+                        &source.hlsl, templates.entrypoint()?, "ps_3_0", flags,
+                    )?;
+                    if !compiled.diagnostics.is_empty() {
+                        println!("SOURCE_3D_COMPILE_DIAGNOSTICS stage=ps {:?}", compiled.diagnostics);
+                    }
+                    let mut signature = [0; 32];
+                    signature[..ps.fragment_ids.len()].copy_from_slice(&ps.fragment_ids);
+                    let uniforms: Vec<_> = source.uniforms.iter().map(|u| u.metadata).collect();
+                    let flags_word = source.uniforms.iter().fold(0, |mask, u| mask | u.flags_word());
+                    println!("SOURCE_3D_COMPILE stage=ps recipe={:02X?} source_bytes={} bytecode_bytes={} compiler=system-d3dx9_27 flags={flags:02X} original_templates=true runtime_fidelity=unverified",
+                        ps.fragment_ids, source.hlsl.len(), compiled.bytecode.len());
+                    generated_pixel_program = shader_pack::CompiledProgram {
+                        signature, bytecode: compiled.bytecode, uniforms,
+                        uniform_words: source.registers, flags_word,
+                    };
+                    &generated_pixel_program
+                }
+            };
             let vs_tokens = native_d3d9::tokens(&vs_program.bytecode, 0xfffe0300)?;
             let ps_tokens = native_d3d9::tokens(&ps_program.bytecode, 0xffff0300)?;
             let mut elements = Vec::new();

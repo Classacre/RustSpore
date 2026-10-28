@@ -84,6 +84,10 @@ pub struct Compiled {
     pub diagnostics: String,
 }
 impl Compiler {
+    /// Return the module actually used for the compiler entry point.
+    pub fn module_handle(&self) -> HMODULE {
+        self.module
+    }
     pub fn system() -> Result<Self, Failure> {
         unsafe {
             let module = LoadLibraryExW(w!("d3dx9_27.dll"), None, LOAD_LIBRARY_SEARCH_SYSTEM32)?;

@@ -38,3 +38,82 @@ In all twelve inspected installed profile packs, ID `80000004` identifies builde
 The existing `native_cell_renderer.rs` offscreen renderer parses GMDL, uses the profile-3 `generic_static` builder `80000002`, and derives texture inputs from GMDL material data. It does not directly implement this RW4 `generic_skinning` state. A controlled candidate draw would need to validate the saved mesh/index ranges and topology, use the exact declaration and both referenced raster mip chains, decode and apply the saved state and sampler lists, and evaluate the profile-matched builder against an explicit complete context. It must provide and identify a test bone palette, transforms, camera and lighting inputs; select only a corresponding cached program or a separately justified compilation; and record the resulting recipes, program hashes and all assumed inputs. An identity palette or inspection camera would be a controlled fixture, not evidence of the original pose or scene.
 
 No original shader render, actual runtime pointer fixup, active candidate, provider precedence, texture overrides, real pose, or rendered-image fidelity is established by this note. No Cargo, native code, GPU or GUI was run for this investigation.
+
+## Diagnostic selector snapshot
+
+The six saved semantic words yield candidate feature mask `0008C045`; this is
+not a verified final runtime declaration. Dossier q857 (`11F4070`) leaves
+saved tags `003`, `004` and `210` unchanged because all are below `400`.
+Dossier q853 shows that further payload fixup can occur through a callback, so
+unchanged tags do not prove unchanged contents or the full live data table.
+
+An exploratory replay used the three saved data payloads and candidate
+sampler slots 0 and 1, while provisionally treating all other data as absent.
+For the PatchData profile-3 render-type-zero `generic_skinning` builder, vertex
+selector 7 reaches condition 12 and needs live shader data `24E`; no value was
+supplied, so the vertex recipe and cache lookup cannot be established. The
+pixel-only provisional replay produced `05 09 3B 2A`, but assumed IDs `212`,
+`213`, `216`, `218`, `219`, `21C`, `223`, `224`, `22E`, `236` and `238`
+absent; that byte sequence is not a claim about a runtime shader.
+
+A read-only bounded PE scan found explicit `push 24E; call 777990` pairs at
+`7605B8`, `76065A`, and `760743`; each supplies `[EBP+648]` as the pointer.
+The identified shader-data slot is `016F7EE0`. Other bounded instruction
+hits mutate bits through that pointer, including `591372` setting bit 0 and
+`5878C9` clearing it. The containing setup routine and runtime values are not
+yet established. The byte scan can miss computed or indirect producers and
+must not be treated as a complete call graph. No selector result, palette,
+source shader execution or runtime draw is inferred from this snapshot.
+
+A further **conditional diagnostic only** sets `24E=0` based on the fresh
+constructor's `75F840` write to object +648 and assumes all shader-data IDs
+other than `003`, `004`, `210`, and `24E` absent, with sampler slots 0 and 1
+available and candidate feature mask `0008C045`. The pointer to +648 is
+published through `777990` at `7605BD`, `76065F` and `760748`; construction
+and draw lifetime and later flag mutations remain unverified. A read-only
+Python transcription of the selector yields the following profile-3 recipes:
+
+| Pack | Vertex recipe | Pixel recipe | Cached matches |
+|---|---|---|---|
+| PatchData | `17 19 15 03 10 31 01` | `05 09 3B 2A` | none in either stage |
+| Spore_Graphics | `17 18 15 03 10 30 01` | `05 09 3A 29` | none in either stage |
+
+These are snapshot results under the stated assumptions, not observed runtime
+recipes. The current source generator supports vertex generation but not pixel
+generation, so this snapshot cannot produce the requested paired original
+shader draw from the cached programs. Another independent trace reports the
+ID-4 SkinBones callback writes `3 * count` rows from register base plus
+`3 * start`; the saved start 1/count 8 does not account for active index 0.
+Identity rows covering that matrix would be an explicitly supplied fixture,
+not an established native pose or register binding. Selector-state callbacks,
+complete draw context and source-equivalent animation remain open.
+
+## Bounded 24E bit-0 sensitivity
+
+For the inspected profile-3, render-type-zero `generic_skinning` tables,
+condition 12 compares `(24E & 0001) == 0001`. The selector emits fragment ID
+zero. In PatchData it is vertex selector 7 and adds accumulated flag `10`;
+in Spore_Graphics it is vertex selector 6 and adds accumulated flag `08`.
+A static inspection of each complete vertex selector table found no selector
+whose required or forbidden flag mask tests the respective added bit. Under
+the Rust selector projection and with every other input held fixed, toggling
+only bit 0 therefore changes selector acceptance and accumulated flags, but
+not the emitted vertex recipe for either table. This is a bounded table
+inference, not a native runtime observation or proof that other consumers do
+not use shader data 24E.
+
+Bounded original-instruction decoding at `591366..591399` stores 1 at
+`ESI+2B0`, then ORs bit 0 through the pointer in global slot `016F7EE0`.
+The following nonzero `ESI+1CC` and type `DFAD9F51` tests guard publication
+of a separate shader-data key `236`; they do not guard the preceding bit-0
+store. The setter's containing function was not recovered and its relationship
+to the candidate draw remains unknown.
+
+Dossier q864 identifies clearer `5878C9` within `587830`: it ANDs bit 0 off
+through the same global pointer during a broad object cleanup path that also
+releases resources, refers to `editor`, and later clears shader-data keys
+`238` and `236`. That dossier has no resolved callers. Neither this cleanup
+nor the setter establishes the value or ordering for the candidate world draw.
+The pointer's constructor initialization and publication do not exclude later
+mutation. No original executable, native test or GPU draw was run for this
+additional static analysis.

@@ -92,7 +92,7 @@ impl<'a> SourceTemplates<'a> {
         }
         Err(CodegenError::InvalidTemplate(address as u32))
     }
-    fn text(&self, address: u32) -> Result<&'a str, CodegenError> {
+    pub(crate) fn text(&self, address: u32) -> Result<&'a str, CodegenError> {
         let data = self.bytes_at(address)?;
         let end = data
             .iter()
@@ -101,7 +101,7 @@ impl<'a> SourceTemplates<'a> {
             .ok_or(CodegenError::InvalidTemplate(address))?;
         std::str::from_utf8(&data[..end]).map_err(|_| CodegenError::InvalidTemplate(address))
     }
-    fn pointed_text(&self, pointer: u32) -> Result<&'a str, CodegenError> {
+    pub(crate) fn pointed_text(&self, pointer: u32) -> Result<&'a str, CodegenError> {
         let bytes = self
             .bytes_at(pointer)?
             .get(..4)
@@ -113,11 +113,11 @@ impl<'a> SourceTemplates<'a> {
     }
 }
 
-enum Argument<'a> {
+pub(crate) enum Argument<'a> {
     Number(usize),
     Text(&'a str),
 }
-fn formatted(template: &str, arguments: &[Argument<'_>]) -> Result<String, CodegenError> {
+pub(crate) fn formatted(template: &str, arguments: &[Argument<'_>]) -> Result<String, CodegenError> {
     let mut output = String::new();
     let mut rest = template;
     let mut index = 0;
