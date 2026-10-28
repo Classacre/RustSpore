@@ -575,3 +575,8 @@
 /re/cell-kind0-gameplay-inspection-v1.md text eol=lf
 /re/creature-source-gameplay-inspection-v1.md text eol=lf
 /re/cell-rw4-binding-caller-trace-v1.md text eol=lf
+
+# Preserve hierarchy investigation notes across checkout platforms.
+/re/cell-rw4-binding-lookup-followup-v1.md text eol=lf
+/re/cell-hierarchy-76f930-controlled-v1.md text eol=lf
+/re/cell-hierarchy-76f930-guarded-v2.md text eol=lf
