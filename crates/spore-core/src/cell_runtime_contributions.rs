@@ -146,8 +146,9 @@ pub fn accumulate_scalar_components(
                 let (scaled_weight_bits, weight_argument_bits, weighted_value_bits) =
                     source_products(slot, blend_bits, context.x87)?;
                 let raw_kind = (descriptor.flags >> 7) & 1;
+                let tag = u32::from_le_bytes(descriptor.tag);
                 let write = aggregate.accumulate_scalar(
-                    descriptor.tag,
+                    tag,
                     raw_kind,
                     weighted_value_bits,
                     weight_argument_bits,
@@ -155,7 +156,7 @@ pub fn accumulate_scalar_components(
                 )?;
                 contributions.push(CellRuntimeScalarContribution {
                     descriptor: index,
-                    tag: descriptor.tag,
+                    tag,
                     raw_kind,
                     scaled_weight_bits,
                     weight_argument_bits,

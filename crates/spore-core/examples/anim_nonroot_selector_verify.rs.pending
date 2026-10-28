@@ -1,0 +1,28 @@
+//! Pending actual finalized-body full9B2150 mode0 original comparison.
+use spore_core::{anim_body_capabilities,anim_body_finalizer_fields};
+#[path="../src/native_sse.rs"]mod native_sse;
+#[path="../src/anim_nonroot_selector.rs"]mod selector;
+use std::{error::Error,fs::{File,OpenOptions},io::{Read,Write}};
+const FIELDS:[usize;39]=[0x104,0x108,0x1f8,0x1fc,0x200,0x21c,0x208,0x10c,0x110,0x114,0x118,0x11c,0x120,0x124,0x128,0x12c,0x130,0x134,0x138,0x13c,0x140,0x144,0x148,0x14c,0x344,0x348,0x34c,0x350,0x354,0x358,0x35c,0x360,0x364,0x368,0x36c,0x378,0x37c,0x204,0x20c];
+fn word(b:&[u8],o:usize)->u32{u32::from_le_bytes(b[o..o+4].try_into().unwrap())}
+fn field(b:&[u8],o:usize)->u32{word(b,168+FIELDS.iter().position(|x|*x==o).unwrap()*4)}
+fn csr()->u32{let mut v=0;unsafe{std::arch::asm!("stmxcsr [{p}]",p=in(reg)&mut v,options(nostack,preserves_flags));}v}
+fn set(v:u32){unsafe{std::arch::asm!("ldmxcsr [{p}]",p=in(reg)&v,options(nostack,preserves_flags));}}
+struct Restore(u32);impl Drop for Restore{fn drop(&mut self){set(self.0)}}
+fn main()->Result<(),Box<dyn Error>>{
+ let args:Vec<_>=std::env::args_os().skip(1).collect();if args.len()!=3{return Err("GROUPED_INPUT NATIVE1040 OUTPUT1032".into())}
+ let _restore=Restore(csr());let mut inputs=File::open(&args[0])?;let mut native=File::open(&args[1])?;let mut output=OpenOptions::new().write(true).create_new(true).open(&args[2])?;let(mut groups,mut queries)=(0,0);
+ loop{let mut header=[0;32];if inputs.read(&mut header[..1])?==0{break}inputs.read_exact(&mut header[1..])?;assert_eq!(word(&header,0),0x314c4553);let n=word(&header,4)as usize;let q=word(&header,8)as usize;assert!((1..=255).contains(&n)&&q>0&&q<=256);assert_eq!(header[20..],[0;12]);
+  let mut blocks=Vec::new();for _ in 0..n{let mut b=[0;324];inputs.read_exact(&mut b)?;let mut caps=anim_body_capabilities::CapabilitySlots::default();for i in 0..32{caps.ids[i]=word(&b,8+i*4);caps.numbers[i]=b[136+i]}
+   let parent=field(&b,0x1fc);blocks.push(selector::FinalizedSelectorBlock{ordinal:field(&b,0x1f8),parent:if parent==u32::MAX{None}else{Some(parent as usize)},source_palette_id:field(&b,0x21c),presence_mask:word(&b,0),nonzero_mask:word(&b,4),capabilities:caps,center:std::array::from_fn(|i|f32::from_bits(field(&b,0x10c+i*4))),half_extents:std::array::from_fn(|i|f32::from_bits(field(&b,0x138+i*4)))})
+  }
+  for _ in 0..q{let mut raw=[0;32];inputs.read_exact(&mut raw)?;let mut reply=[0;1040];native.read_exact(&mut reply)?;let s=[word(&raw,0),word(&raw,4),word(&raw,8),word(&raw,12)];assert!(word(&raw,16)<=1&&word(&raw,20)<=255);assert_eq!(word(&raw,24),0);
+   assert_eq!(u16::from_le_bytes(reply[1032..1034].try_into()?)as u32,word(&header,12));assert_eq!(u16::from_le_bytes(reply[1034..1036].try_into()?)&0x3800,0);assert_eq!(word(&reply,1036)&!0x3f,0x1f80);
+   let mut expected=None;for incoming in[0x1f80,0xdf81,0xbf84]{set(incoming);let selected=selector::select(&blocks,s,word(&raw,16)!=0,word(&raw,20)as usize).map_err(|e|format!("query{queries}: {e:?}"))?;assert_eq!(csr(),incoming);
+    let mut projection=[0xff;1032];projection[..4].copy_from_slice(&word(&header,16).to_le_bytes());projection[4..8].copy_from_slice(&word(&raw,28).to_le_bytes());projection[8..12].copy_from_slice(&(selected.len()as u32).to_le_bytes());for(i,b)in selected.iter().enumerate(){projection[12+i*4..16+i*4].copy_from_slice(&b.runtime_ordinal.to_le_bytes());assert_eq!(b.source_palette_id,blocks[b.runtime_ordinal as usize].source_palette_id)}
+    if projection!=reply[..1032]{let at=projection.iter().zip(reply).position(|(a,b)|*a!=b).unwrap();return Err(format!("query{queries} body{} byte{at} differs",word(&header,16)).into())}if let Some(old)=expected{assert_eq!(old,projection)}expected=Some(projection);
+    let mut z=s;z[0]|=0x40;assert!(matches!(selector::select(&blocks,z,false,255),Err(selector::Error::Selector(_))));assert_eq!(csr(),incoming);
+   }output.write_all(&expected.unwrap())?;queries+=1;
+  }groups+=1;
+ }assert!(groups>0&&queries>0);assert_eq!(native.read(&mut[0])?,0);output.flush()?;println!("NONROOT_SELECTOR_VERIFY bodies={groups} queries={queries} CSR_states=3 source_runtime_ordinals=true actor_association=false");Ok(())
+}

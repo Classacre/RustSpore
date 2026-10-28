@@ -1,0 +1,15 @@
+//! Source-oracle comparison for owned bounded intersection arithmetic.
+use spore_core::spui_font_intersection as intersection;
+use std::{error::Error,io::Write};
+fn main()->Result<(),Box<dyn Error>>{
+ let a:Vec<_>=std::env::args_os().skip(1).collect();if a.len()!=2{return Err("SOURCE_TSV NEW_OUTPUT".into())}
+ let source=std::fs::read_to_string(&a[0])?;let mut out=std::fs::OpenOptions::new().create_new(true).write(true).open(&a[1])?;let mut count=0;
+ for l in source.lines(){let f:Vec<_>=l.split('\t').collect();assert_eq!(f.len(),4);assert_eq!(f[0],"I0F");let v:Vec<i32>=f[2].split(',').map(str::parse).collect::<Result<_,_>>()?;assert_eq!(v.len(),9);
+  let r=intersection::intersect([v[0],v[1]],[v[2],v[3]],[v[4],v[5]],[v[6],v[7]],u8::try_from(v[8])?).map_err(|e|format!("case{count}: {e:?}"))?;
+  // Expected values do not enter the computation above.
+  writeln!(out,"{}\t{}\t{}\t{},{},{}",f[0],f[1],f[2],r.point[0],r.point[1],r.touched)?;count+=1;
+ }
+ assert!(matches!(intersection::intersect([8193,0],[0,0],[0,0],[0,0],0),Err(intersection::Error::Coordinates)));
+ assert!(matches!(intersection::intersect([i32::MIN,0],[0,0],[0,0],[0,0],0),Err(intersection::Error::Coordinates)));
+ out.flush()?;println!("INTERSECTION_VERIFY rows={count} typed_guards=2 source_reference=true native_executed=false");Ok(())
+}

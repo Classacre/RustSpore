@@ -1,0 +1,361 @@
+# Keep working-tree bytes stable for hash-pinned reconstruction evidence.
+# New sources default to LF; existing CRLF and mixed sources retain their bytes.
+*.py text eol=lf
+*.rs text eol=lf
+*.rs.pending -text
+*.bat -text
+
+# Existing CRLF sources.
+/crates/dbpf/src/index.rs text eol=crlf
+/crates/dbpf/src/lib.rs text eol=crlf
+/crates/spore-bevy/examples/anim_root_pose_verify.rs text eol=crlf
+/crates/spore-bevy/src/assets.rs text eol=crlf
+/crates/spore-core/examples/anim_root_zero_child_stage_verify.rs text eol=crlf
+/crates/spore-core/examples/cell_runtime_clip_metadata_verify.rs text eol=crlf
+/crates/spore-core/examples/cell_runtime_source_clock_root_data_verify.rs text eol=crlf
+/crates/spore-core/src/anim_nonroot_selector.rs text eol=crlf
+/crates/spore-core/src/anim_order.rs text eol=crlf
+/crates/spore-core/src/anim_root_zero_child_stage.rs text eol=crlf
+/crates/spore-core/src/cell_runtime_clip_metadata.rs text eol=crlf
+/crates/spore-core/src/cell_runtime_controller_loop.rs text eol=crlf
+/crates/spore-core/src/cell_runtime_fresh_aid.rs text eol=crlf
+/crates/spore-core/src/cell_runtime_source_clock_root_data.rs text eol=crlf
+/crates/spore-core/src/gmsh.rs text eol=crlf
+/crates/spore-core/src/mesh.rs text eol=crlf
+/crates/spore-core/src/prop.rs text eol=crlf
+/crates/spore-core/src/raster.rs text eol=crlf
+/crates/spore-core/src/rw4.rs text eol=crlf
+/crates/spore-core/src/shader_selection.rs text eol=crlf
+/crates/spore-core/src/skin.rs text eol=crlf
+/crates/spore-core/src/spui_font_hint_scalar.rs text eol=crlf
+/crates/spore-core/src/spui_font_raster_glyph0.rs text eol=crlf
+/tools/anim_body_root_native_run.py text eol=crlf
+/tools/anim_nonroot_selector_native_probe_v1.py text eol=crlf
+/tools/anim_nonroot_selector_prepare_v1.py text eol=crlf
+/tools/anim_root_binding_native_probe_v4.py text eol=crlf
+/tools/anim_root_binding_native_run_v2.py text eol=crlf
+/tools/anim_root_pose_native_probe_v10.py text eol=crlf
+/tools/anim_root_pose_native_probe_v4.py text eol=crlf
+/tools/anim_root_pose_native_probe_v5.py text eol=crlf
+/tools/anim_root_pose_native_probe_v6.py text eol=crlf
+/tools/anim_root_pose_native_probe_v7.py text eol=crlf
+/tools/anim_root_pose_native_probe_v8.py text eol=crlf
+/tools/anim_root_pose_native_probe_v9.py text eol=crlf
+/tools/anim_root_pose_sparse_carrier_audit_v2.py text eol=crlf
+/tools/anim_root_pose_sparse_carrier_independent_review_v1.py text eol=crlf
+/tools/anim_root_pose_sparse_carrier_independent_review_v2.py text eol=crlf
+/tools/anim_root_pose_sparse_carrier_native_run_v1.py text eol=crlf
+/tools/anim_root_pose_sparse_carrier_native_run_v2.py text eol=crlf
+/tools/anim_root_pose_sparse_carrier_v1.py text eol=crlf
+/tools/anim_root_pose_sparse_carrier_v2.py text eol=crlf
+/tools/anim_root_pose_sparse_carrier_v3.py text eol=crlf
+/tools/anim_root_pose_v6_independent_review.py text eol=crlf
+/tools/anim_root_zero_child_stage_audit_v2.py text eol=crlf
+/tools/anim_root_zero_child_stage_native_probe_v3.py text eol=crlf
+/tools/anim_root_zero_child_stage_native_run_v1.py text eol=crlf
+/tools/cell_runtime_clip_metadata_inputs.py text eol=crlf
+/tools/cell_runtime_clip_metadata_native_probe.py text eol=crlf
+/tools/cell_runtime_clock_independent_review.py text eol=crlf
+/tools/cell_runtime_clock_v2_linked_review.py text eol=crlf
+/tools/cell_runtime_controller_loop_inputs.py text eol=crlf
+/tools/cell_runtime_controller_loop_native_probe.py text eol=crlf
+/tools/cell_runtime_fresh_aid_inputs.py text eol=crlf
+/tools/cell_runtime_fresh_aid_native_probe.py text eol=crlf
+/tools/cell_runtime_source_clock_root_data_fixture.py text eol=crlf
+/tools/cell_runtime_source_clock_root_data_native_run.py text eol=crlf
+/tools/compiled_state_probe.py text eol=crlf
+/tools/gmdl_material_probe.py text eol=crlf
+/tools/gmsh_digest.py text eol=crlf
+/tools/native_font_glyph_debug_run.py text eol=crlf
+/tools/prop_names.py text eol=crlf
+/tools/prop_refs.py text eol=crlf
+/tools/rw4_texture_digest.py text eol=crlf
+/tools/spui_font_curved_fixtures_v2.py text eol=crlf
+/tools/spui_font_curved_fixtures_v3.py text eol=crlf
+/tools/spui_font_curved_hint_reference_v1.py text eol=crlf
+/tools/spui_font_hint_glyph0_probe.py text eol=crlf
+/tools/spui_font_hint_glyph0_reference.py text eol=crlf
+/tools/spui_font_hint_prep_probe.py text eol=crlf
+/tools/spui_font_hint_prep_reference.py text eol=crlf
+/tools/spui_font_hint_prep_twilight_probe.py text eol=crlf
+/tools/spui_font_raster_glyph0_fixtures.py text eol=crlf
+/tools/spui_font_raster_glyph0_probe.py text eol=crlf
+/tools/spui_font_rectilinear_fixtures_v1.py text eol=crlf
+/tools/spui_font_rectilinear_fixtures_v2.py text eol=crlf
+/tools/spui_font_rectilinear_fixtures_v3.py text eol=crlf
+/tools/spui_font_server_cfg_frontier_v2.py text eol=crlf
+/tools/spui_font_simple_census_v2.py text eol=crlf
+/tools/spui_font_simple_census_v3.py text eol=crlf
+/tools/spui_font_simple_native_census_v4.py text eol=crlf
+/tools/spui_font_simple_native_census_v5.py text eol=crlf
+/tools/spui_font_simple_raster_census_v1.py text eol=crlf
+/tools/spui_font_simple_raster_census_v2.py text eol=crlf
+/tools/spui_font_visible_fixtures.py text eol=crlf
+/tools/spui_font_visible_hint_scout.py text eol=crlf
+/tools/spui_font_visible_raster_scout.py text eol=crlf
+
+# Mixed line endings in frozen analysis tools must not be normalized.
+/tools/anim_nonroot_selector_audit_v1.py -text
+/tools/anim_root_pose_sparse_carrier_audit_v1.py -text
+/tools/anim_root_pose_sparse_loader_diagnosis_v1.py -text
+/tools/anim_root_zero_child_stage_arithmetic_inputs_v1.py -text
+/tools/anim_root_zero_child_stage_arithmetic_native_run_v1.py -text
+/tools/anim_root_zero_child_stage_audit_v1.py -text
+/tools/anim_root_zero_child_stage_independent_review_v1.py -text
+/tools/anim_root_zero_child_stage_inputs_v1.py -text
+/tools/anim_root_zero_child_stage_native_probe_v2.py -text
+/tools/anim_root_zero_child_stage_prepare_v1.py -text
+/tools/cell_runtime_clip_metadata_independent_review_v1.py -text
+/tools/cell_runtime_small_hosts_independent_review_v1.py -text
+/tools/cell_runtime_small_hosts_native_run_v1.py -text
+/tools/spui_font_curved_algorithm_v1.py -text
+/tools/spui_font_curved_axis_reference_review_v1.py -text
+/tools/spui_font_curved_fixtures_v1.py -text
+/tools/spui_font_rectilinear_helper_audit_v1.py -text
+/tools/spui_font_server_cfg_frontier_v1.py -text
+/tools/spui_font_simple_census_v1.py -text
+/tools/spui_font_simple_native_census_v3.py -text
+/tools/spui_font_ui_sequence_comparison_v1.py -text
+/tools/spui_font_ui_sequence_reference_v1.py -text
+/tools/spui_font_ui_upload_reference_v1.py -text
+
+# Additional hash-pinned continuation sources.
+/crates/spore-bevy/examples/spui_font_simple_batch_verify_v3.rs text eol=crlf
+/crates/spore-core/examples/anim_nonroot_selector_verify.rs text eol=crlf
+/crates/spore-core/examples/cell_runtime_controller_loop_verify.rs text eol=crlf
+/crates/spore-core/examples/cell_runtime_fresh_aid_verify.rs text eol=crlf
+/crates/spore-core/src/anim_selector_z_bounds.rs -text
+/crates/spore-core/src/cell_runtime_fresh_loop.rs text eol=crlf
+/crates/spore-core/src/spui_font_hint_simple_state.rs text eol=crlf
+/crates/spore-core/src/spui_font_raster_simple_contours.rs text eol=crlf
+/tools/anim_nonroot_selector_audit_v2.py text eol=crlf
+/tools/anim_nonroot_selector_independent_font_review_v1.py text eol=crlf
+/tools/anim_nonroot_selector_native_probe_v2.py text eol=crlf
+/tools/anim_nonroot_selector_native_run_v1.py text eol=crlf
+/tools/anim_nonroot_selector_protocol_v1.py -text
+/tools/anim_nonroot_selector_runner_independent_font_review_v1.py -text
+/tools/anim_selector_z_bounds_audit_v1.py -text
+/tools/anim_selector_z_bounds_native_probe_v1.py -text
+/tools/anim_selector_z_bounds_prepare_v1.py -text
+/tools/cell_runtime_fresh_aid_sparse_carrier_audit_v1.py -text
+/tools/cell_runtime_fresh_aid_sparse_carrier_audit_v2.py text eol=crlf
+/tools/cell_runtime_fresh_aid_sparse_carrier_audit_v3.py text eol=crlf
+/tools/cell_runtime_fresh_aid_sparse_carrier_v1.py text eol=crlf
+/tools/cell_runtime_fresh_aid_sparse_carrier_v2.py -text
+/tools/cell_runtime_fresh_aid_sparse_native_run_v1.py -text
+/tools/spui_font_simple_batch_compare_v1.py -text
+/tools/spui_font_simple_batch_fixtures_v1.py -text
+/tools/spui_font_simple_batch_fixtures_v2.py text eol=crlf
+/tools/spui_font_simple_controls_batch_fixtures_v1.py text eol=crlf
+/tools/spui_font_simple_controls_source_proof_v1.py -text
+/tools/spui_font_simple_loop_batch_fixtures_v1.py text eol=crlf
+/tools/spui_font_simple_loop_source_proof_v1.py text eol=crlf
+/tools/spui_font_simple_state_batch_fixtures_v1.py text eol=crlf
+/tools/spui_font_simple_state_source_proof_v1.py -text
+
+# Additional frozen source bytes from the continuation checkpoint.
+/crates/spore-bevy/examples/spui_font_simple_state_batch_verify.rs text eol=crlf
+/crates/spore-core/examples/anim_nonroot_selector_z_verify.rs -text
+/crates/spore-core/examples/anim_selector_z_bounds_verify.rs -text
+/crates/spore-core/examples/anim_ungrouped_binding_builder_verify.rs -text
+/crates/spore-core/examples/cell_runtime_fresh_loop_verify.rs -text
+/crates/spore-core/src/anim_nonroot_selector_z.rs text eol=crlf
+/crates/spore-core/src/anim_ungrouped_binding_builder.rs text eol=crlf
+/crates/spore-core/src/cell_runtime_fresh_sampled_channel.rs text eol=crlf
+/crates/spore-core/src/spui_font_hint_general_positive.rs text eol=crlf
+/tools/anim_nonroot_selector_z_audit_v1.py text eol=crlf
+/tools/anim_nonroot_selector_z_independent_font_review_v1.py -text
+/tools/anim_nonroot_selector_z_native_probe_v1.py text eol=crlf
+/tools/anim_nonroot_selector_z_native_run_v1.py -text
+/tools/anim_nonroot_selector_z_prepare_v1.py text eol=crlf
+/tools/anim_nonroot_selector_z_runner_independent_font_review_v1.py -text
+/tools/anim_selector_z_bounds_audit_v2.py -text
+/tools/anim_selector_z_bounds_independent_font_review_v2.py -text
+/tools/anim_selector_z_bounds_native_probe_v2.py -text
+/tools/anim_selector_z_bounds_native_run_v1.py -text
+/tools/anim_selector_z_bounds_native_run_v2.py text eol=crlf
+/tools/anim_selector_z_bounds_runner_independent_font_review_v2.py -text
+/tools/anim_selector_z_bounds_symbolic_review_v1.py -text
+/tools/anim_ungrouped_binding_builder_audit_v1.py text eol=crlf
+/tools/anim_ungrouped_binding_builder_audit_v2.py -text
+/tools/anim_ungrouped_binding_builder_native_probe_v1.py text eol=crlf
+/tools/anim_ungrouped_binding_builder_native_probe_v2.py -text
+/tools/anim_ungrouped_binding_builder_native_run_v1.py -text
+/tools/anim_ungrouped_binding_builder_native_run_v2.py text eol=crlf
+/tools/anim_ungrouped_binding_builder_prepare_v1.py text eol=crlf
+/tools/cell_runtime_fresh_loop_hybrid_carrier_audit_v1.py text eol=crlf
+/tools/cell_runtime_fresh_loop_hybrid_carrier_audit_v2.py text eol=crlf
+/tools/cell_runtime_fresh_loop_independent_font_review_v1.py -text
+/tools/cell_runtime_fresh_loop_independent_font_review_v2.py text eol=crlf
+/tools/cell_runtime_fresh_loop_inputs.py text eol=crlf
+/tools/cell_runtime_fresh_loop_native_probe.py text eol=crlf
+/tools/cell_runtime_fresh_loop_native_probe_v2.py -text
+/tools/cell_runtime_fresh_loop_native_run_v1.py text eol=crlf
+/tools/cell_runtime_fresh_loop_runner_independent_font_review_v1.py -text
+/tools/cell_runtime_fresh_loop_sparse_carrier.py text eol=crlf
+/tools/cell_runtime_fresh_loop_sparse_carrier_v2.py text eol=crlf
+/tools/spui_font_accepted338_frame_audit_v1.py -text
+/tools/spui_font_empty_program_bypass_proof_v1.py -text
+/tools/spui_font_general_positive_batch_fixtures_v1.py text eol=crlf
+/tools/spui_font_general_vector_batch_fixtures_v1.py -text
+/tools/spui_font_general_vector_batch_fixtures_v2.py text eol=crlf
+/tools/spui_font_general_vector_hint_reference_v1.py -text
+/tools/spui_font_general_vector_hint_reference_v2.py text eol=crlf
+/tools/spui_font_simple_cvt_batch_fixtures_v1.py text eol=crlf
+/tools/spui_font_simple_cvt_source_proof_v1.py -text
+/tools/spui_font_vector_primitives_reference_v1.py -text
+
+# Pinned plans, fixtures and manifests also retain exact checkout bytes.
+/.gitignore text eol=lf
+/.workbuddy-ai/memory/2026-10-16.md text eol=lf
+/.workbuddy-ai/memory/2026-10-17.md text eol=lf
+/.workbuddy-ai/memory/2026-10-19.md -text
+/.workbuddy-ai/memory/2026-10-20.md text eol=lf
+/.workbuddy-ai/memory/2026-10-22.md text eol=lf
+/.workbuddy-ai/memory/2026-10-23.md text eol=lf
+/.workbuddy-ai/memory/2026-10-27.md -text
+/Cargo.lock text eol=lf
+/Cargo.toml text eol=lf
+/crates/dbpf/Cargo.toml text eol=lf
+/crates/dbpf/README.md text eol=lf
+/crates/spore-bevy/Cargo.toml text eol=lf
+/crates/spore-bevy/examples/spui_font_general_positive_batch_verify.rs text eol=crlf
+/crates/spore-core/Cargo.toml text eol=lf
+/crates/spore-core/tests/fixtures/spui_linear_fade_sequences.tsv text eol=lf
+/crates/spore-core/tests/fixtures/spui_linear_fade_ticks.tsv text eol=lf
+/docs/animation-nonroot-selector-Z-preparation-v1.md -text
+/docs/animation-selector-z-producer-preparation-v1.md -text
+/docs/animation-selector-z-producer-preparation-v2.md -text
+/docs/animation-ungrouped-binding-builder-preparation-v1.md -text
+/docs/animation-ungrouped-binding-builder-preparation-v2.md -text
+/docs/continuation-2026-10-23.md text eol=lf
+/docs/continuation-2026-10-27.md text eol=lf
+/docs/dbpf-format.md text eol=lf
+/docs/engine-architecture.md text eol=lf
+/docs/functional-milestones.md text eol=lf
+/docs/prior-art.md text eol=lf
+/docs/resource-types.md text eol=lf
+/re/anim-block-order.md text eol=lf
+/re/anim-body-capabilities-native.md text eol=lf
+/re/anim-body-finalizer-fields-native.md text eol=lf
+/re/anim-body-source-anchors-native.md text eol=lf
+/re/anim-body-source-fields-native.md text eol=lf
+/re/anim-body-topology-native.md text eol=lf
+/re/anim-channels.md text eol=lf
+/re/anim-deform-binding.md text eol=lf
+/re/anim-nonroot-selector-native.md text eol=lf
+/re/anim-optional-feet-native.md text eol=lf
+/re/anim-palette-native.md text eol=lf
+/re/anim-position-native.md text eol=lf
+/re/anim-quaternion-native.md text eol=lf
+/re/anim-rig-mapping.md text eol=lf
+/re/anim-rig-native.md text eol=lf
+/re/anim-root-binding-constructor.md text eol=lf
+/re/anim-root-pose-bridge.md text eol=lf
+/re/anim-rotation-curve-native.md text eol=lf
+/re/archive-index-native.md text eol=lf
+/re/cell-behavior.md text eol=lf
+/re/cell-camera.md text eol=lf
+/re/cell-capability-cache.md text eol=lf
+/re/cell-capability-curves.md text eol=lf
+/re/cell-lighting.md text eol=lf
+/re/cell-movement.md text eol=lf
+/re/cell-runtime-animation-integration.md text eol=lf
+/re/cell-runtime-clock-native.md text eol=lf
+/re/cell-runtime-controller-loop-native.md text eol=lf
+/re/cell-runtime-data-native.md text eol=lf
+/re/cell-runtime-fresh-aid-native.md text eol=lf
+/re/cell-runtime-fresh-loop-native.md -text
+/re/cell-source-assets.md text eol=lf
+/re/creature-header-native.md text eol=lf
+/re/creature-model-links-native.md text eol=lf
+/re/crt-ciacos-native.md text eol=lf
+/re/gmdl-skin.md text eol=lf
+/re/locale-table-native.md text eol=lf
+/re/native-float-render-context.md text eol=lf
+/re/native-x87.md text eol=lf
+/re/paint-entrypoints.md text eol=lf
+/re/prop-numeric.md text eol=lf
+/re/rw4-animation.md text eol=lf
+/re/shader-codegen-native.md text eol=lf
+/re/shader-execution.md text eol=lf
+/re/shader-resources.md text eol=lf
+/re/spui-draw-state.md text eol=lf
+/re/spui-font-empty-program-boundary.md -text
+/re/spui-font-fixture-native.md text eol=lf
+/re/spui-font-general-positive-native.md -text
+/re/spui-font-general-vector-native.md -text
+/re/spui-font-native.md text eol=lf
+/re/spui-font-outline-native.md text eol=lf
+/re/spui-font-rectilinear-native.md text eol=lf
+/re/spui-font-simple-batch-coverage.md -text
+/re/spui-font-simple-batch-native.md text eol=lf
+/re/spui-font-simple-census.md -text
+/re/spui-font-simple-controls-native.md -text
+/re/spui-font-simple-curved-axis-reference-v3.md -text
+/re/spui-font-simple-cvt-native.md -text
+/re/spui-font-simple-loop-native.md -text
+/re/spui-font-simple-state-native.md -text
+/re/spui-font-ui-lifetime-native.md -text
+/re/spui-font-vector-primitives-native.md -text
+/re/spui-layout.md text eol=lf
+/re/spui-title-native.md text eol=lf
+/rust-toolchain.toml text eol=lf
+/tools/cell_runtime_fresh_sampled_channel_source.py text eol=crlf
+/tools/native_font_glyph_host.c.in text eol=lf
+/tools/rea-spore.ps1 text eol=lf
+/tools/spui_font_general_positive_controls_reference_v1.py -text
+
+# Complete checkpoint checkout-byte preservation.
+/.gitattributes text eol=crlf
+/.workbuddy-ai/memory/2026-10-21.md text eol=crlf
+/.workbuddy-ai/memory/MEMORY.md text eol=crlf
+/README.md text eol=crlf
+/crates/spore-bevy/examples/spui_font_general_intersection_batch_verify.rs text eol=crlf
+/docs/continuation-2026-10-22.md text eol=crlf
+/docs/roadmap.md text eol=crlf
+/re/anim-ungrouped-binding-builder-native.md text eol=lf
+/re/binary-analysis.md text eol=crlf
+/re/data/argscript-functions.txt text eol=crlf
+/re/data/console-commands.txt text eol=crlf
+/re/data/ea-source-paths.txt text eol=crlf
+/re/data/pe-meta-raw.txt text eol=crlf
+/re/data/pe-structure-raw.txt text eol=crlf
+/re/data/prop-names.txt text eol=crlf
+/re/data/rtti-types.json text eol=crlf
+/re/data/rtti-types.txt text eol=crlf
+/re/data/simulator-classes.txt text eol=crlf
+/re/data/strings-classified.txt text eol=crlf
+/re/material-links.md text eol=crlf
+/re/payload-formats.md text eol=crlf
+/re/shader-selection.md text eol=crlf
+/re/spui-font-general-intersection-native.md text eol=lf
+/re/spui-font-hint-glyph0-native.md text eol=crlf
+/re/spui-font-hint-native.md text eol=crlf
+/re/spui-font-hint-prep-native.md text eol=crlf
+/re/spui-font-intersection-native.md text eol=lf
+/re/spui-font-raster-glyph0-native.md text eol=crlf
+/re/spui-font-simple-curved-native.md text eol=crlf
+/re/spui-font-visible-characters.md text eol=crlf
+/tools/cell_runtime_fresh_sampled_channel_native_probe.py text eol=crlf
+/tools/native_font_glyph_host_v2.c.in text eol=crlf
+/tools/spui_font_F17_vm_reference_v1.py -text
+/tools/spui_font_F17_vm_reference_v2.py text eol=crlf
+/tools/spui_font_general_intersection_alias_reference_v1.py -text
+/tools/spui_font_general_intersection_batch_fixtures_v1.py text eol=crlf
+
+# Preserve the preexisting raw PE metadata byte representation.
+/re/data/pe-meta-raw.txt -text
+
+# CR characters are valid line endings in preserved evidence source.
+* whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+# Exact frozen source exceptions; hashes and scope are documented separately.
+/tools/anim_selector_z_bounds_native_probe_v2.py whitespace=blank-at-eol,-blank-at-eof,space-before-tab,cr-at-eol
+/tools/anim_ungrouped_binding_builder_audit_v1.py whitespace=blank-at-eol,-blank-at-eof,space-before-tab,cr-at-eol
+/tools/anim_ungrouped_binding_builder_native_run_v1.py whitespace=blank-at-eol,-blank-at-eof,space-before-tab,cr-at-eol
+/tools/anim_ungrouped_binding_builder_native_run_v2.py whitespace=blank-at-eol,-blank-at-eof,space-before-tab,cr-at-eol
+/tools/anim_ungrouped_binding_builder_prepare_v1.py whitespace=blank-at-eol,-blank-at-eof,space-before-tab,cr-at-eol
+/tools/cell_runtime_source_clock_root_data_fixture.py whitespace=-blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+
+/docs/source-byte-preservation.md text eol=lf
+/docs/continuation-2026-10-28.md text eol=lf

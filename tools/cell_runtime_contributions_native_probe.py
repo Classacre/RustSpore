@@ -75,7 +75,7 @@ def host_source(image):
         lines += [f'PUBLIC Original_{first:08X}'] + db(f'Original_{first:08X}', image.read(first, last-first))
     lines += ['.data']
     for name, size in BUFFERS:
-        lines += [f'PUBLIC {name}Buffer', f'{name}Before DWORD 4 DUP(0A5A5A5A5h)',
+        lines += [f'PUBLIC {name}Buffer,{name}Before,{name}After', f'{name}Before DWORD 4 DUP(0A5A5A5A5h)',
                   f'{name}Buffer BYTE {size} DUP(0)', f'{name}After DWORD 4 DUP(0A5A5A5A5h)']
         if name != 'Reply':
             lines += [f'{name}Shadow BYTE {size} DUP(0)']
@@ -277,6 +277,17 @@ def main():
     args.out.resolve().relative_to((ROOT/'target').resolve())
     image = SourceImage(args.source_exe)
     source = audit_source(image)
+    if args.audit_exe is not None:
+        assert args.audit_map is not None
+        manifest = json.loads((args.out/'manifest.json').read_text())
+        assembly = args.out/'host-x86.asm'
+        assert assembly.read_text() == host_source(image)
+        assert digest(assembly.read_bytes()) == manifest['host_source_sha256']
+        result = linked_audit(args.audit_exe, args.audit_map, image)
+        result.update(host_map_sha256=digest(args.audit_map.read_bytes()), host_executed=False)
+        (args.out/'linked-audit.json').write_text(json.dumps(result, indent=2)+'\n')
+        print(json.dumps({key:result[key] for key in ['host_exe_sha256','owned_code_sha256','host_executed']}, indent=2))
+        return
     args.out.mkdir(parents=True, exist_ok=False)
     assembly = host_source(image)
     (args.out/'host-x86.asm').write_text(assembly)
@@ -298,11 +309,8 @@ def main():
         buffers=[dict(name=name, bytes=size) for name,size in BUFFERS],
         scope='Explicit post-binding scalar contribution only; complete99D190/POS/ROT/angular paths, clip/clock/admission, selected-pose assignment and actor/controller loop remain outside.',
         compile_commands_templates=[['ml.exe','/nologo','/c','/coff','/Fohost-x86.obj','host-x86.asm'],
-            ['link.exe','/NOLOGO','/MACHINE:X86','/SUBSYSTEM:CONSOLE','/ENTRY:HostMain','/BASE:0x26000000','/DYNAMICBASE:NO','/SAFESEH:NO','/OUThost-x86.exe','/MAP:host-x86.map','host-x86.obj','kernel32.lib']],
+            ['link.exe','/NOLOGO','/MACHINE:X86','/SUBSYSTEM:CONSOLE','/ENTRY:HostMain','/BASE:0x26000000','/DYNAMICBASE:NO','/SAFESEH:NO','/OUT:host-x86.exe','/MAP:host-x86.map','host-x86.obj','kernel32.lib']],
         review_required_before_execution=True)
-    if args.audit_exe is not None:
-        assert args.audit_map is not None
-        report['linked_audit'] = linked_audit(args.audit_exe, args.audit_map, image)
     (args.out/'manifest.json').write_text(json.dumps(report, indent=2)+'\n')
     print(json.dumps({key:report[key] for key in ['schema','source_bytes','host_source_sha256','host_executed','compiled_by_tool']}, indent=2))
 

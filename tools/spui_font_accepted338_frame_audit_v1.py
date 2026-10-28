@@ -1,0 +1,23 @@
+"""Audit accepted338 full numeric groups against source-correct frame replay."""
+import hashlib,json,struct,sys
+from pathlib import Path
+from spui_font_curved_fixtures_v3 import emit_hint
+from spui_font_rectilinear_fixtures_v3 import emit_raster
+ROOT=Path(__file__).resolve().parent.parent
+def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
+def main(output):
+ out=Path(output);out.resolve().relative_to((ROOT/'target').resolve());out.mkdir(exist_ok=False);fresh=ROOT/'target/source-ui/font-general-vector-hint-reference-v1';accept=ROOT/'target/source-ui/font-simple-state-rust-run-v1/comparison-v1.json';a=json.loads(accept.read_text());assert a['completed_glyphs']==338;cm=json.loads((ROOT/'target/source-ui/font-simple-native-census-v5/manifest.json').read_text());census={r['gid']:r for r in cm['rows']};expected=[];cases=[];actual=(ROOT/'target/source-ui/font-simple-state-rust-run-v1/rust.tsv');assert sha(actual)==a['actual_sha256'];actualnumeric=[l for l in actual.read_text().splitlines()if '\tstatus\t' not in l]
+ # Normalize on-disk JSON before comparison: in-memory tuples versus savedlists
+ # made v1 manifest's changes diagnostic false-positive. No original numeric changed.
+ all_nonempty=[]
+ for p in sorted(fresh.glob('gid*-hint.json')):
+  n=json.loads(p.read_text());old=json.loads((ROOT/f'target/source-ui/font-simple-census-v3/{p.name}').read_text());fields={k:n[k]==old[k]for k in ['cvt','storage','state_hex','remaining_stack','call_entries']};fields.update({k:n['glyph'][k]==old['glyph'][k]for k in ['output_points','touched','original_scaled_points','design_points']});assert all(fields.values()),(p.name,fields);all_nonempty.append(dict(gid=n['glyph']['glyph_index'],numeric_fields_equal=fields))
+ assert len(all_nonempty)==385
+ for key in a['completed']:
+  gid=int(key[3:]);p=fresh/f'{key}-hint.json';n=json.loads(p.read_text());old=json.loads((ROOT/f'target/source-ui/font-simple-census-v3/{key}-hint.json').read_text());h=[l for l in emit_hint(key,n)if '\tdispatch\t' not in l];at=next(i for i,l in enumerate(h)if '\tgraphics\t'in l)+1;h.insert(at,f'{key}\tloop_minus_one\t{struct.unpack_from("<H",bytes.fromhex(n["frame_hex"]),0x3e)[0]}');expected+=h;row=census[gid];g=n['glyph'];count=g['real_points']
+  for d,folder,pin in [(0,'font-simple-raster-census-v1','raster_sha256'),(1,'font-simple-raster-census-v2','raster_dropout1_sha256')]:
+   rp=ROOT/f'target/source-ui/{folder}/{key}-raster.json';assert sha(rp)==row[pin];r=json.loads(rp.read_text());expected+=emit_raster(f'{key}:d{d}',r);origin=[(r['metrics'][at]-g['output_points'][count][i])&~63 for i,at in enumerate(['1C','18'])];assert origin==row['final_origin'];expected.append(f'{key}:d{d}\tfinal_origin\t{origin[0]}\t{origin[1]}')
+  fnew=bytes.fromhex(n['frame_hex']);fold=bytes.fromhex(old['frame_hex']);cases.append(dict(gid=gid,corrected_hint_sha256=sha(p),changed_frame_offsets=[i for i,(x,y)in enumerate(zip(fold,fnew))if x!=y],all_prior_numeric_outputs_equal=True,raw_raster_inputs_identical=True,native_observations=len(row['observations'])))
+ assert len(expected)==153051 and expected==actualnumeric,(len(expected),len(actualnumeric),next((i for i,(x,y)in enumerate(zip(expected,actualnumeric))if x!=y),None))
+ blob=('\n'.join(expected)+'\n').encode();(out/'correct-source-numeric.tsv').write_bytes(blob);report=dict(schema='accepted338-original-frame-correction-numeric-audit-v1',accepted_glyphs=338,all385_nonempty_numeric_outputs_unchanged=True,accepted_numeric_rows=len(expected),accepted_numeric_exact_against_existing_Rust=True,retained_native_observations=sum(r['native_observations']for r in cases),canonical_sha256=hashlib.sha256(blob).hexdigest(),all_nonempty=all_nonempty,cases=cases,accepted_comparison_sha256=sha(accept),correct_frame_reference_manifest_sha256=sha(fresh/'manifest.json'),rust_tsv_sha256=sha(actual),historical_diagnostic='v1numeric_changespoints entries arose onlyfromlivePython tuples versus savedJSONlists. This audit compares persistedJSONand regeneratedwholecanonical; no numeric differences. Oldmanualprofileframeworddata preserved. Fullframevectorsarecorrected,newclaims; oldacceptednumericgroupsunchanged.',native_executed=False,rust_executed=False,scope='Regeneratedsource-correctinitialprefix wholehintnumericoutputs plus retainedoriginalrasterwithidenticalinputs for everyaccepted338. This is numeric-equivalence audit,notassertion everyprogram usesidenticalsetter; no acceptedclaim retired. Newfullframecanonical mustusecorrectinitialwords.');(out/'report.json').write_text(json.dumps(report,indent=2)+'\n');print(len(expected),report['canonical_sha256'],sha(out/'report.json'))
+if __name__=='__main__':main(sys.argv[1])

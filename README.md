@@ -106,6 +106,10 @@ The workspace targets `x86_64-pc-windows-msvc`. `tools/build.bat` finds Visual S
 which needs `reg.exe`. If the toolchain is missing it names what is missing instead of
 failing later with `LNK1181`.
 
+Reconstruction checks pin source-file bytes. Keep the line endings specified by
+`.gitattributes`; `python tools/source_checkout_hash_audit.py --out target/checkout-audit.json`
+checks that Git filters preserve them without changing the index or source files.
+
 ```
 tools\build.bat build --workspace     # about 3 minutes cold
 tools\build.bat test --workspace

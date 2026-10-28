@@ -242,12 +242,18 @@ GUI ran. Earlier16-row and supplied-upper packets remain separate, prepared
 and unexecuted; the accepted source comparison uses complete channels and
 native frame-to-upper selection.
 
-The next caller gate is99D190's original scalar contribution:
+The next caller gate at the2026-10-23 pause was99D190's original scalar contribution:
 `MULSS(weight, explicitBlend)`, then `MULSS(value, weightedWeight)`, followed by
 the already measured99C170 accumulation. Its descriptor mask/order and outer
 blend gate must be preserved before composing it with the accepted sampler.
 Actual selected clips, advancing clock, runtime blend policy and pose binding
 remain explicit inputs until their own source chains are recovered.
+
+[MEASURED] On2026-10-27 this scalar contribution gate passes52,911 native/Rust
+cases, and a25-case/five-full-channel composition passes actual parsing,
+sampling, count-only reset, contribution and data2 consumption. See
+[the integration ledger](cell-runtime-animation-integration.md) for exact
+denominators, source ownership and still-explicit frame/binding/actor boundaries.
 
 All explicit kernel floating contexts remain distinct from the original
 entry/thread policy. See [the rendering-context evidence](native-float-render-context.md)

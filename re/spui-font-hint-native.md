@@ -35,7 +35,7 @@ Thus an ENDF-valued byte inside any PUSH payload remains data. FDEF scanning
 does not execute its bodies, evaluate their jumps or dispatch their handlers.
 Lexical body opcodes do not establish later reachability.
 
-`[PREPARED]` New `spui_font_hint_program` implements only PUSH/FDEF
+`[ACCEPTED: BOUNDED SETUP]` Exported `spui_font_hint_program` implements only PUSH/FDEF
 setup with an initially empty operand stack and FPGM program selector1.
 It borrows original body slices, preserves offset/length/selector and reports
 indexed definitions, top-level dispatch positions, stack depth and remaining
@@ -46,10 +46,10 @@ including CALL, are unsupported. Its public guards are owned API behavior.
 `[MEASURED]` At the user-requested pause, root reproduced66,626 reference rows
 exactly, SHA256
 `2d261c579c37dcc2972eeb7474531ee88b44ff4e50d067363570b077ed7b3f2b`.
-The module is exported and compiled through another verifier build. Its five
-focused tests and full Rust comparison remain pending; no acceptance is implied
-by export. The separate CALL/LOOPCALL module remains unexported and its verifier
-retains `.rs.pending`, as required by its frozen reference packet.
+On2026-10-27 root passed allfive focused tests and reproduced every66,626
+canonical row with Rust. See
+`target/source-ui/font-hint-program-rust-comparison-v1.json`. This accepts
+only setup; no function body executes in that verifier.
 
 The independent source-instruction oracle interprets the entire original
 ordinary loop, all four PUSH handlers, FDEF and the original PUSH scanner,
@@ -112,7 +112,7 @@ by overwriting its own caller-argument slot at entryESP+4 (`8AE8F7`); later
 `8AE903` reads that slot after pushing its three callback arguments. This is
 an internal ABI fact; the ordinary caller subsequently discards that slot.
 
-`[PREPARED]` New unexported `spui_font_hint_control` models this range lookup,
+`[ACCEPTED: BOUNDED CONTROL]` Exported `spui_font_hint_control` models this range lookup,
 count rule and shared-frame scope. Its explicit program windows use modeled
 u32 addresses, never dereferenced native pointers. It checks the stored range
 against the borrowed body and rejects undefined/out-of-range bindings and
@@ -121,8 +121,8 @@ will select zero calls. A supplied ordinary body processor can mutate the
 shared stack, opcode, selector and external state. Successful scope exit
 restores only the cursor. Cursor cleanup on a returned error is owned policy,
 not a claim to emulate native longjmp recovery. No body opcode is implemented
-by this control foundation. Its verifier is `.rs.pending` until root exports
-the module, preserving concurrent all-target Cargo checks.
+by this control foundation. Root promoted its verifier after acceptance;
+the original pending-name preparation pin remains historical evidence.
 
 The separate control instruction reference exhausts every count word and
 upper-word aliases. Full-call fixtures use only an owned PUSHB1/ADD body,
@@ -141,11 +141,15 @@ byte. Its65,699 canonical rows contain1,035,129 bytes, SHA-256
 `f0d5dd557d74f4f33b555044933d6b01d3b481a1a34035e393b3ee03e2352c7b`.
 The expected file and source/model/port pins are retained in
 `target/source-ui/font-hint-control-reference-packet-v1.json`.
-Root's Rust comparison and five focused tests remain pending.
+On2026-10-27 root passed allfive focused tests and matched all65,699 Rust
+rows. See`target/source-ui/font-hint-control-rust-comparison-v1.json`.
 
 `[UNKNOWN]` Rust PREP execution and its persistent CVT/storage state, point-zone
 setup, source function-body execution, glyph hint execution and scan conversion
-remain separate implementation gates. The measured fresh/sequence differences
+remain separate implementation gates. The new fullfont0 PREP source-instruction
+reference and unexported Rust draft are described in
+[spui-font-hint-prep-native.md](spui-font-hint-prep-native.md).
+The measured fresh/sequence differences
 in seven font0 glyphs require retaining native CVT lifetime; see
 [spui-font-fixture-native.md](spui-font-fixture-native.md). No system font
 engine is substituted and no Rust native-pixel equivalence is claimed.

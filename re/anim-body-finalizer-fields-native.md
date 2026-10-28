@@ -158,8 +158,10 @@ native projection above. Seven focused Rust tests pass. Three redundant trailing
 pins and failed build log remain retained. The current core source SHA256 is
 `08cbfd1cdadcff12652ac23c8bb6a2fea278c69a05a68bd3c4c0e33b9c43c739`.
 
-[UNKNOWN] Full fresh-source Rust reconstruction and the formal combined report
-remain pending at the pause. The module and both verifier examples are exported.
-See the leading pause handback in `docs/continuation-2026-10-23.md` for the two
-remaining commands. No rendering or complete runtime-animation milestone is
-claimed. Later native constraints/classes and channel/pose binding remain open.
+[MEASURED] On2026-10-27 root completed the full fresh-source Rust reconstruction:
+all82 indexes,1,365 resources/46,418 rows and4,095 contexts match the independent
+source digest above, retaining3,966 admissions and129 initial-spin exclusions.
+Formal combined acceptance is
+`target/animation/body-finalizer-fields-native-v3-run/comparison-v1.json`.
+The module and both verifier examples are exported. Later native
+constraints/classes, channel/pose binding and rendered animation remain open.

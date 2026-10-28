@@ -1,10 +1,11 @@
 # RustSpore: durable project notes
 
-Latest continuation: `docs/continuation-2026-10-23.md` and the dated
-`2026-10-23.md` project log. Work is paused at the user's explicit request;
-resume only when asked. The full original-fidelity roadmap is incomplete.
+Latest continuation: `docs/continuation-2026-10-27.md` and the dated
+`2026-10-27.md` project log. The user resumed work on2026-10-27 and requested
+GPT-6.1 Sol/lower reasoning for delegated work. The full original-fidelity
+roadmap is incomplete; the prior pause handback remains historical context.
 Main Cell and authored creature captures now execute original programs; the latest
-full workspace all-targets suite passes586 test executions (574 primary unit tests,
+full workspace all-targets suite V21 passes611 test executions (599 primary unit tests,
 twelve repeated example tests) with two explicit installed-corpus ignores. All704
 explicit-linked creations now pass hidden RTX original-program captures. Native UI
 batching, ANIM descriptor preparation and typed Cell definitions/branches now
@@ -15,12 +16,54 @@ cases including4,012 positive finite-API errors. Simple font phantom sets and
 selector-0/1 scaling pass independent source-instruction/Rust comparisons.
 Full Cell curves pass84,544 native cases (288 positive input errors); data2
 movement multiplier passes37,669 (4,552 positive finite-API errors).
-Finalizer fields pass4,590 native/Python/Rust prepared replies and seven tests;
-fresh-source reconstruction/formal comparison remains pending. FPGM setup's
-source oracle is reproduced but Rust acceptance is pending. Unexported scalar
-contribution and CALL/LOOPCALL drafts are saved. Final rig/live curve binding,
-text hint/raster and all stage/editor gates remain open. The checkpoint's pause
-handback has exact artifact paths, known draft issue and resumption commands.
+Finalizer fields pass4,590 native/Python/Rust replies, seven tests and all4,095
+fresh-source reconstruction contexts. FPGM setup66,626 rows and CALL/LOOPCALL
+65,699 rows now pass Rust/reference checks with five focused tests each.
+Scalar contributions now match52,911 native/Rust cases; ordinary root binding
+matches15,113 native/Python/Rust contexts. A cohesive25-case/five-channel path
+matches sampling, count-only reset, accumulation and modifier read with supplied
+frames/bindings/actor context. Font0 PREP913 rows and glyph0 hinting249 rows match
+source/Rust; retained native scalar state agrees. Glyph0 source raster matches
+all49 native pixels and Rust raster now matches1,389 source/root/Rust rows.
+Fourvisiblefont0characters also match1,357 source/root/Rust rows and16 retained
+nativeobservations. Clock1,560 native/Rust and40case/fivechannel composition
+through96freshcurves now pass. FreshrootROT matches3,702 rows/215clips,two
+excluded. Source-onlysimplefont0census389glyphs/1,556nativeobservations matches;
+generic font coverage is now recorded below. E/F/H/L/T bounded Rust matches2,573 rows/20
+retained native observations. Root conversion/accumulation now matches22,212
+native/Rust source-paired cases,42 protocols and14 further Rust/native protocol
+cases. Sparse carrier v3 fixes earlier pre-input mappings and a retained v2
+WinError193 PE adjacency failure, with original bytes unchanged. Loop arithmetic
+matches2,256 native/Rust cases,15 protocols and21 typed errors under explicit
+state/CRT policy. Zero-child staging/final commit now matches66,636 native/Rust
+cases and576 owned alternate/threshold contexts. Actual source metadata now
+drives32 clock/sampler/scalar cases across four admitted channels; constructor
+metadata independently matches2,304 cases. D/P/U adds2,291 corrected source/Rust
+rows/12 retained native observations; two inherited diagnostic axes were fixed
+from original frame/callback proof without numeric Rust changes. Controller
+setter183B passes536 native/Rust cases,14 protocols and15 typed guards with34
+unchanged pins. FreshAid1049B now passes288 native/Rust cases,11 protocols and12
+typed guards with59 unchanged pins through the new sparse carrier; original
+pre-input mapping failure stays retained. Generic bounded font0 Rust coverage
+now passes360/389 simple glyphs,164,948 numeric rows/1,440 retained native observations,
+plus326 owned contour rows. Correct original-prefix replay preserves all338 numeric
+groups; accepted general-vector/intersection successors now compare complete
+frame vectors and callbacks.29 simple/183
+composite/six empty glyphs retain exclusions. Original rotated-box publication
+passes15,864 native/Rust rows; combined production bounds/nonroot selection passes
+161,284 queries over1,322 genuine bodies/all1,644 retained source instances,
+73 protocols and119 unchanged native pins. Full ungrouped constructor now passes
+1,085 prepared cases/27,142 records including160 ownership fallbacks;57 protocols,
+216 native pins and9,765 typed Rust guard executions pass. Actual actor lifetime,
+allocation and nonzero-child pose admission stay open. Activation hybrid passes300 records/2,700 snapshots,23 rejection protocols
+and6,300 typed guard executions with143 unchanged native pins; source channel
+counts remain actual and all four sample/event masks are zero. Nonzero sampling
+and events remain open. Integer vector primitives pass2,135 source/root/Rust rows;
+the07 and0F VM paths now have actual full-program checks. F20 and full-program87
+remain open. Actual rig/live
+binding, wider hint/raster and all stage/editor gates remain open. Current
+2026-10-27 checkpoint supersedes the old pause handback and records retained
+failures, bounded acceptance and next steps.
 
 ## Conventions
 

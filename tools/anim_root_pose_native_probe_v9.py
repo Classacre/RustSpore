@@ -1,0 +1,264 @@
+"""Pin frozen v3; add positive-blend admission and safe owned failure exit.
+
+No compile/link/run. Original code/data, native entries/exits, buffers and
+ordinary computation are unchanged. The fixed linked base stays29000000.
+"""
+import argparse
+import hashlib
+import json
+import re
+import struct
+from pathlib import Path
+
+import anim_root_pose_native_probe_v8 as v8
+import anim_root_pose_native_probe_v7 as v7
+import anim_root_pose_native_probe_v6 as v6
+import anim_root_pose_native_probe as v3
+from cell_schema_probe import SourceImage
+from native_crt_acos_probe import PE,decoder
+
+ROOT = Path(__file__).resolve().parent.parent
+FROZEN = ROOT/'target/animation/root-pose-conversion-host-v3'
+TOOL = '212980f1b37a332b1f668d6f7f7a1a435d1fa07af20a814c5c62eb34dcf78603'
+ASM = 'b60a73629d2984031816292580023976eb64491ca5ab5477e75eb950e0d3d331'
+CODE,BUFFERS,BASE = v3.CODE,v3.BUFFERS,v3.BASE
+IMPORTS = v3.IMPORTS | {'VirtualQuery'}
+
+
+def sha(path):return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def frozen_host_source(image,audit):
+    assert sha(v3.__file__)==TOOL and sha(FROZEN/'host-x86.asm')==ASM
+    original = v3.host_source(image,audit)
+    assert original==(FROZEN/'host-x86.asm').read_text()
+    lines = original.splitlines()
+    lines.insert(lines.index('.code'),'PUBLIC SavedStack,FailureStackReady')
+    index = lines.index('HostFailure PROC')+1
+    failure = ['cmp SavedStack,0','je FailureStackReady','mov esp,SavedStack','FailureStackReady::']
+    lines[index:index]=failure
+    index = lines.index('ValidateRecord ENDP')
+    assert lines[index-1]=='ret'
+    positive = ['mov eax,dword ptr [InputBuffer+16]','test eax,080000000h','jnz HostFailure',
+                'test eax,07FFFFFFFh','jz HostFailure']
+    lines[index-1:index-1]=positive
+    # Inverse edit proves unchanged source bytes, buffer declarations and
+    # ordinary owned instructions without rewriting any frozen artifact.
+    inverse=list(lines)
+    start=inverse.index('cmp SavedStack,0');assert inverse[start:start+len(failure)]==failure
+    del inverse[start:start+len(failure)]
+    start=inverse.index('ValidateRecord ENDP')-1-len(positive)
+    assert inverse[start:start+len(positive)]==positive
+    del inverse[start:start+len(positive)]
+    inverse.remove('PUBLIC SavedStack,FailureStackReady')
+    assert inverse==original.splitlines()
+    return '\n'.join(lines)+'\n'
+
+
+def host_source(image,audit):
+    assert sha(v6.__file__)=='27370aa2b5b5147f72183b8797974b9c4135067fed86e89fb82ed52622d571b9'
+    assert sha(v8.__file__)=='f4b9005955b50b35b84d58f2942cbf6c50d7bc4757bb49b04beb0b54f09c59d0'
+    assert sha(v7.__file__)=='cad22addad6ce7ccab91c06208fcde7610ccdd916bcc316ec0a8d69bdb5f84b2'
+    original=frozen_host_source(image,audit)
+    assert original==v6.host_source(image,audit)
+    lines=original.splitlines()
+    data=['PUBLIC MappingDiagnostic,MappingPage,MappingStage,MappingResult,MappingRealESP,MappingHost,MappingStackBase,MappingStackLimit,MappingPageQuery,MappingStackQuery,MappingPageMBI,MappingStackMBI',
+          'MappingDiagnostic DWORD 03850414Dh','MappingStage DWORD 0',
+          'MappingPage DWORD 0','MappingError DWORD 0','MappingResult DWORD 0',
+          'MappingRealESP DWORD 0','MappingHost DWORD 0','MappingStackBase DWORD 0',
+          'MappingStackLimit DWORD 0','MappingPageQuery DWORD 0','MappingStackQuery DWORD 0',
+          'MappingPageMBI BYTE 28 DUP(0)','MappingStackMBI BYTE 28 DUP(0)']
+    lines.insert(lines.index('.data'),'EXTERN _VirtualQuery@12:PROC')
+    lines[lines.index('.code'):lines.index('.code')]=data
+    for api,stage in (('_VirtualAlloc@16',1),('_VirtualProtect@16',2)):
+        indices=[i for i,line in enumerate(lines) if line=='call '+api]
+        for i in reversed(indices):
+            page=lines[i-1].split()[1]
+            assert page.startswith('0') and page.endswith('h')
+            setup=['mov MappingStage,'+str(stage),'mov MappingPage,'+page]
+            # MOV preserves the last-error value and API return before the
+            # existing CMP/TEST and conditional failure branch.
+            lines[i+1:i+1]=['mov MappingResult,eax']
+            lines[i:i]=setup
+    start=lines.index('MappingFailure PROC');end=lines.index('MappingFailure ENDP')+1
+    lines[start:end]=['ASSUME FS:NOTHING','MappingFailure PROC','call _GetLastError@0','mov MappingError,eax',
+        'mov MappingRealESP,esp','mov eax,OFFSET HostMain','mov MappingHost,eax',
+        'mov eax,dword ptr fs:[4]','mov MappingStackBase,eax',
+        'mov eax,dword ptr fs:[8]','mov MappingStackLimit,eax',
+        'push 28','push OFFSET MappingPageMBI','push MappingPage','call _VirtualQuery@12','mov MappingPageQuery,eax',
+        'push 28','push OFFSET MappingStackMBI','push MappingRealESP','call _VirtualQuery@12','mov MappingStackQuery,eax',
+        'push -12','call _GetStdHandle@4','push 0','push OFFSET Transferred',
+        'push 100','push OFFSET MappingDiagnostic','push eax','call _WriteFile@20',
+        'push 12','call _ExitProcess@4','MappingFailure ENDP']
+    text='\n'.join(lines)+'\n'
+    assert text.replace('ASSUME FS:NOTHING\n','')==v8.host_source(image,audit)
+    return text
+
+
+def _base_linked_audit(path,mapping,image,audit):
+    from capstone import CS_GRP_CALL,CS_GRP_JUMP
+    from capstone.x86 import X86_OP_IMM,X86_OP_REG,X86_REG_EAX
+    pe = PE(path);symbols = {}
+    for line in mapping.read_text().splitlines():
+        match = re.match(r'\s*[0-9A-Fa-f]{4}:[0-9A-Fa-f]+\s+(\S+)\s+([0-9A-Fa-f]{8})\b',line)
+        if match:symbols[match[1]] = int(match[2],16)
+    assert pe.base == BASE
+    first,last = symbols['OwnedStart'],symbols['OwnedEnd']
+    rows = list(decoder().disasm(pe.read(first,last-first),first))
+    assert sum(row.size for row in rows)==last-first
+    boundaries = {row.address for row in rows};imports = pe.imports()
+    assert len(imports)==9
+    assert {name for dll,name in imports.values() if dll.lower()=='kernel32.dll'}==IMPORTS
+    def imported(row):
+        if row.mnemonic!='call' or row.operands[0].type!=X86_OP_IMM:return None
+        target = row.operands[0].imm
+        if target in boundaries:return None
+        thunk = pe.read(target,6);assert thunk[:2]==bytes.fromhex('ff25')
+        return imports[struct.unpack_from('<I',thunk,2)[0]][1]
+    entries = []
+    for index,row in enumerate(rows):
+        if not(row.group(CS_GRP_CALL) or row.group(CS_GRP_JUMP)):continue
+        op = row.operands[0]
+        if op.type==X86_OP_REG:
+            assert op.reg==X86_REG_EAX and index>0
+            previous = rows[index-1]
+            assert previous.mnemonic=='mov' and previous.operands[1].type==X86_OP_IMM
+            target = previous.operands[1].imm
+            assert (row.mnemonic,target) in (('call',0x9b0ca0),('jmp',0x99d74f))
+            entries.append(dict(at=f'{row.address:08X}',operation=row.mnemonic,target=f'{target:08X}'))
+        else:
+            assert op.type==X86_OP_IMM
+            assert op.imm in boundaries or imported(row) in IMPORTS
+    assert len(entries)==2
+    at = struct.unpack_from('<I',pe.data,0x3c)[0];optional=at+24
+    assert pe.base+struct.unpack_from('<I',pe.data,optional+16)[0]==symbols['HostMain']
+    assert not struct.unpack_from('<H',pe.data,optional+70)[0]&0x40
+    count = struct.unpack_from('<H',pe.data,at+6)[0];size = struct.unpack_from('<H',pe.data,at+20)[0]
+    sections=[]
+    for i in range(count):
+        header=optional+size+40*i;extent,rva=struct.unpack_from('<II',pe.data,header+8)
+        sections.append((pe.base+rva,pe.base+rva+extent,struct.unpack_from('<I',pe.data,header+36)[0]))
+    def permission(address,n):
+        return next(flags for lo,hi,flags in sections if lo<=address and address+n<=hi)&0xe0000000
+    assert permission(first,last-first)==0x60000000
+    for a,b in CODE:
+        linked = symbols[f'Original_{a:08X}']
+        assert pe.read(linked,b-a)==image.read(a,b-a) and permission(linked,b-a)==0x40000000
+    for row in audit['data']:
+        a,n = int(row['address'],16),row['bytes'];linked=symbols[f'Data_{a:08X}']
+        assert pe.read(linked,n)==image.read(a,n) and permission(linked,n)==0x40000000
+    extents=[]
+    def add_extent(name,low,n):
+        assert permission(low,n)==0xc0000000
+        assert all(low+n<=lo or hi<=low for _,lo,hi in extents)
+        extents.append((name,low,low+n))
+    for name,n in BUFFERS:
+        address=symbols[name+'Buffer']
+        assert address-symbols[name+'Before']==16 and symbols[name+'After']-address==n
+        assert pe.read(address-16,16)==bytes.fromhex('a5'*16)
+        assert pe.read(address+n,16)==bytes.fromhex('a5'*16)
+        add_extent(name,address-16,n+32)
+        if name not in ('Converted','Reply'):add_extent(name+'Shadow',symbols[name+'Shadow'],n)
+    first_read = next(row.address for row in rows if imported(row)=='ReadFile')
+    incoming=[]
+    for index,row in enumerate(rows):
+        if not(row.group(CS_GRP_CALL) or row.group(CS_GRP_JUMP)):continue
+        if row.operands[0].type!=X86_OP_IMM or row.operands[0].imm!=symbols['MappingFailure']:continue
+        assert symbols['HostMain']<row.address<first_read and index>=2
+        assert rows[index-2].mnemonic=='mov' and rows[index-2].operands[0].mem.disp==symbols['MappingResult']
+        name=imported(rows[index-3]);assert name in ('VirtualAlloc','VirtualProtect')
+        assert (name=='VirtualAlloc' and rows[index-1].mnemonic=='cmp' and row.mnemonic in ('jne','jnz')) or \
+               (name=='VirtualProtect' and rows[index-1].bytes==bytes.fromhex('85c0') and row.mnemonic in ('je','jz'))
+        incoming.append(dict(at=f'{row.address:08X}',api=name))
+    assert incoming and sum(x['api']=='VirtualAlloc' for x in incoming)==sum(x['api']=='VirtualProtect' for x in incoming)
+    index=next(i for i,row in enumerate(rows) if row.address==symbols['MappingFailure'])
+    diagnostic=rows[index:]
+    assert [imported(r) for r in diagnostic if r.mnemonic=='call']==['GetLastError','VirtualQuery','VirtualQuery','GetStdHandle','WriteFile','ExitProcess']
+    assert diagnostic[0].mnemonic=='call' and imported(diagnostic[0])=='GetLastError'
+    assert diagnostic[1].mnemonic=='mov' and diagnostic[2].op_str==f'dword ptr [0x{symbols["MappingRealESP"]:x}], esp'
+    assert diagnostic[3].mnemonic=='mov' and diagnostic[3].operands[1].imm==symbols['HostMain']
+    assert diagnostic[-6].mnemonic=='push' and diagnostic[-6].operands[0].imm==100
+    assert diagnostic[-2].operands[0].imm==12
+    assert pe.read(symbols['MappingDiagnostic'],100)==struct.pack('<I',0x3850414d)+bytes(96)
+    assert symbols['MappingStackMBI']==symbols['MappingDiagnostic']+72
+    assert symbols['MappingPageMBI']==symbols['MappingDiagnostic']+44
+    assert any(r.bytes==bytes.fromhex('64a104000000') for r in diagnostic)
+    assert any(r.bytes==bytes.fromhex('64a108000000') for r in diagnostic)
+    query_rows=[k for k,r in enumerate(diagnostic) if imported(r)=='VirtualQuery']
+    for k,buffer,address,result in zip(query_rows,('MappingPageMBI','MappingStackMBI'),('MappingPage','MappingRealESP'),('MappingPageQuery','MappingStackQuery')):
+        assert diagnostic[k-3].mnemonic=='push' and diagnostic[k-3].operands[0].imm==28
+        assert diagnostic[k-2].mnemonic=='push' and diagnostic[k-2].operands[0].imm==symbols[buffer]
+        assert diagnostic[k-1].mnemonic=='push' and diagnostic[k-1].operands[0].mem.disp==symbols[address]
+        assert diagnostic[k+1].mnemonic=='mov' and diagnostic[k+1].operands[0].mem.disp==symbols[result]
+    for k,row in enumerate(rows):
+        if imported(row) not in ('VirtualAlloc','VirtualProtect'):continue
+        assert rows[k-2].mnemonic=='mov' and rows[k-2].operands[0].mem.disp==symbols['MappingStage']
+        assert rows[k-2].operands[1].imm==(1 if imported(row)=='VirtualAlloc' else 2)
+        assert rows[k-1].mnemonic=='mov' and rows[k-1].operands[0].mem.disp==symbols['MappingPage']
+        assert rows[k-3].mnemonic=='push' and rows[k-3].operands[0].imm==rows[k-1].operands[1].imm
+    return dict(schema='root-POS-ROT-conversion-accumulation-linked-audit-v1',native_executed=False,
+        host_exe_sha256=sha(path),host_map_sha256=sha(mapping),
+        owned_code_sha256=hashlib.sha256(pe.read(first,last-first)).hexdigest(),
+        source_and_data_byte_exact=True,sections_checked=True,guarded_buffers_shadows_nonoverlapping=True,
+        partial_native_entries=entries,mapping_failure_pre_input=incoming,
+        imports=[dict(iat=f'{a:08X}',dll=dll,name=name) for a,(dll,name) in imports.items()],
+        symbols={k:f'{v:08X}' for k,v in symbols.items() if not k.startswith('_')},
+        disassembly=[f'{i.address:08X}: {i.bytes.hex()} {i.mnemonic} {i.op_str}' for i in rows],
+        limits='Partial source entry/exit with checkedESP; no partialGPRABI promise or staged/livepose claim.')
+
+
+
+def linked_audit(exe,mapping,image,audit):
+    result=_base_linked_audit(exe,mapping,image,audit)
+    pe=PE(exe);symbols={k:int(v,16) for k,v in result['symbols'].items()}
+    saved=symbols['SavedStack'];failure=symbols['HostFailure']
+    assert pe.read(saved,4)==bytes(4)
+    rows=list(decoder().disasm(pe.read(failure,40),failure))
+    assert rows[0].mnemonic=='cmp' and rows[0].operands[0].mem.disp==saved
+    assert rows[0].operands[1].imm==0
+    assert rows[1].mnemonic in ('je','jz') and rows[1].operands[0].imm==symbols['FailureStackReady']
+    assert rows[2].mnemonic=='mov' and rows[2].op_str==f'esp, dword ptr [0x{saved:x}]'
+    assert rows[3].address==symbols['FailureStackReady'] and rows[3].mnemonic=='push' and rows[3].operands[0].imm==71
+    owned_start=symbols['OwnedStart'];owned_end=symbols['OwnedEnd']
+    allrows=list(decoder().disasm(pe.read(owned_start,owned_end-owned_start),owned_start))
+    epilogue=next(i for i,r in enumerate(allrows) if r.address==symbols['RunOnce'])
+    prefix=allrows[:epilogue]
+    assert prefix[-1].mnemonic=='ret'
+    assert [r.mnemonic for r in prefix[-6:-1]]==['mov','test','jne','test','je']
+    result.update(schema='root-POS-ROT-conversion-accumulation-linked-audit-v9',
+        owned_failure_restores_saved_stack=True,positive_finite_blend_only=True,
+        no_original_code_data_or_buffer_change=True)
+    return result
+
+
+def main():
+    p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--source-exe',type=Path,default=Path('D:/Games/SPORE Collection/SporeBin/SporeApp.exe'))
+    p.add_argument('--out',type=Path,required=True)
+    p.add_argument('--audit-exe',type=Path);p.add_argument('--audit-map',type=Path)
+    a=p.parse_args();a.out.resolve().relative_to((ROOT/'target').resolve())
+    image=SourceImage(a.source_exe);audit=v3.source_audit(image);text=host_source(image,audit)
+    if a.audit_exe is not None:
+        assert a.audit_map is not None
+        manifest=json.loads((a.out/'manifest.json').read_text())
+        assert sha(__file__)==manifest['preparation_tool_sha256']
+        assert (a.out/'host-x86.asm').read_text()==text and sha(a.out/'host-x86.asm')==manifest['host_source_sha256']
+        report=linked_audit(a.audit_exe,a.audit_map,image,audit)
+        with (a.out/'linked-audit.json').open('x') as f:json.dump(report,f,indent=2);f.write('\n')
+        print(json.dumps({k:report[k] for k in('schema','host_exe_sha256','native_executed')},indent=2));return
+    a.out.mkdir(parents=True,exist_ok=False);(a.out/'host-x86.asm').write_text(text)
+    manifest=json.loads((FROZEN/'manifest.json').read_text())
+    manifest.update(schema='root-POS-ROT-conversion-accumulation-host-preparation-v9',
+        host_source_sha256=sha(a.out/'host-x86.asm'),preparation_tool_sha256=sha(__file__),
+        frozen_v3_pins={str(p.relative_to(ROOT)):sha(p) for p in(Path(v3.__file__),FROZEN/'host-x86.asm',FROZEN/'manifest.json')},
+        frozen_v8_tool_sha256=sha(v8.__file__), frozen_v6_tool_sha256=sha(v6.__file__), frozen_v7_tool_sha256=sha(v7.__file__),
+        mapping_diagnostic=dict(exit=12,stderr_bytes=100,layout=['magic_MAP8','APIstage_1_alloc_2_protect','requested_page','GetLastError','mapping_API_EAX','realESP','actualHostMain','FS_stackbase','FS_stacklimit','pageQueryReturn','stackQueryReturn','pageMBI32_28bytes','stackMBI32_28bytes'],retry_allowed=False,pre_input_only=True),
+        owned_instruction_changes=['V9 adds ASSUME FS:NOTHING only relative to v8; no emitted instruction changes.', 'Record mapping API stage/page/result; immediate GetLastError, VirtualQuery page/realESP, actual HostMain and FS stack bounds, 100-byte stderr diagnostic, exit12.', 'Conditional restoration ofSavedStack beforeHostFailure exit71.',
+            'Reject finite nonpositive blend atownedValidateRecord boundary beforeoriginalpartialentry.'],
+        domain=manifest['domain']+' V4requirespositivefiniteblend;negative/zero inputsaretypedprotocolrejections,notwholecallerexamples.',
+        linked_audit_command='python tools/anim_root_pose_native_probe_v9.py --out HOST_DIR --audit-exe HOST_DIR/host-x86.exe --audit-map HOST_DIR/host-x86.map')
+    (a.out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
+    print(json.dumps({k:manifest[k] for k in('schema','host_source_sha256','compiled','linked','native_executed')},indent=2))
+
+
+if __name__=='__main__':main()
