@@ -111,6 +111,8 @@ pub mod spui_font_hint_simple_cvt;
 pub mod spui_font_vector_primitives;
 pub mod spui_font_hint_general_positive;
 pub mod spui_font_hint_general_intersection;
+pub mod spui_font_hint_general_f20_state_v1;
+pub mod spui_font_raster_simple_contours_maxp_v1;
 pub mod spui_font_intersection;
 pub mod spui_font_raster_simple_contours;
 pub mod spui_font_raster_simple_curved;

@@ -359,3 +359,15 @@
 
 /docs/source-byte-preservation.md text eol=lf
 /docs/continuation-2026-10-28.md text eol=lf
+
+# Preserve the paused source checkpoint without changing pinned working bytes.
+/crates/spore-bevy/examples/spui_font_general_f20_alias_verify_v2.rs text eol=crlf
+/crates/spore-bevy/examples/spui_font_general_f20_batch_verify_v2.rs text eol=crlf
+/crates/spore-bevy/examples/spui_font_general_f20_maxp_verify_v1.rs text eol=crlf
+/crates/spore-bevy/examples/spui_font_general_f20_state_alias_verify_v1.rs text eol=crlf
+/crates/spore-bevy/examples/spui_font_general_f20_state_batch_verify_v1.rs text eol=crlf
+/crates/spore-core/src/spui_font_raster_simple_contours_maxp_v1.rs text eol=crlf
+/tools/anim_cid_node_init_source_v1.py text eol=crlf
+/tools/cell_runtime_fresh_sampled_channel_hybrid_audit.py text eol=crlf
+/tools/cell_runtime_fresh_sampled_channel_sparse_carrier.py -text
+/tools/spui_font_general_F20_batch_fixtures_v1.py text eol=crlf
