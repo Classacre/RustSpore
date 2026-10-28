@@ -540,3 +540,20 @@
 /re/cell-anim-candidate-bridge-v1.md -text whitespace=cr-at-eol
 /re/cell-gameplay-source-art-bridge-plan.md -text whitespace=cr-at-eol
 /re/cell-movement-gate-native-preparation-v1.md -text whitespace=cr-at-eol
+
+# Preserve source-bound Cell screen and population evidence.
+/crates/spore-core/src/cell_screen_quad_v1.rs -text whitespace=cr-at-eol
+/crates/spore-core/src/cell_world_population_view_v1.rs -text whitespace=cr-at-eol
+/crates/spore-core/examples/cell_screen_color_native_compare_v1.rs -text whitespace=cr-at-eol
+/crates/spore-bevy/examples/cell_world_population_intake_v1.rs -text whitespace=cr-at-eol
+/crates/spore-bevy/examples/source_screen_background_probe.rs -text whitespace=cr-at-eol
+/tools/cell_screen_color_native_prepare_v1.py -text whitespace=cr-at-eol
+/tools/cell_screen_color_native_prepare_v2.py -text whitespace=cr-at-eol
+/tools/cell_screen_color_native_run_v1.py -text whitespace=cr-at-eol
+/re/cell-screen-effect-render-trace-v1.md -text whitespace=cr-at-eol
+/re/cell-screen-effect-material-selection-v1.md -text whitespace=cr-at-eol
+/re/cell-screen-effect-color-curve-v1.md -text whitespace=cr-at-eol
+/re/cell-screen-background-candidate-probe-v1.md -text whitespace=cr-at-eol
+/re/cell-screen-color-native-comparison-v1.md -text whitespace=cr-at-eol
+/re/cell-screen-color-native-relocation-preparation-v2.md -text whitespace=cr-at-eol
+/re/cell-world-population-source-v1.md -text whitespace=cr-at-eol
