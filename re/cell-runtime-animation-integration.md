@@ -46,9 +46,12 @@ Frozen preparation/promotion archives retain the original pending verifier.
 
 [MEASURED] Factory A0B110 constructs CID and queue and stores them at actor+17C
 and+184. A00930 binds the same CID. E563F0/E51760 resolves actor+248 through the
-manager, then object+17C -> CID+2E4 first pose+A0. E73F90 passes a selected
-animation resource to E83420, which reaches9CB2F0 on its argument+17C. This
-establishes source field connections; live registry admission remains open.
+manager, then object+17C -> CID+2E4 first pose+A0. E73F90 obtains an object
+through a method on one of two effects worlds and passes it to E83420; E83420
+reaches9CB2F0 through a separate actor-associated argument's+17C. The object and
+method types are unresolved, so this chain does not establish active clip
+selection. See `cell-animation-effects-world-correction.md` for the factory
+and teardown evidence. Live registry admission remains open.
 
 [MEASURED] Binding rows are16 bytes: byte+C selects pose, byte+D independently
 selects sampled wrapper, row+8 supplies low24 component mask, byte+F&9 skips.

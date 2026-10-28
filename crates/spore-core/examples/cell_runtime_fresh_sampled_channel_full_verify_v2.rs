@@ -1,0 +1,44 @@
+//! Full retained interpolation-corpus comparison; endpoint sampling stays open. original data and CRT constants remain external.
+use spore_core::{anim,cell_runtime_fresh_aid::{initialize_fresh_aid,SourceGlobalSerial,EventResetBoundary},
+ cell_runtime_fresh_sampled_channel_v2::{activate_fresh_sampled_channel,FreshSampleContext,FreshSampleError,WrapperSerialSeed,SamplingBoundary,RotationDispatch},
+ cell_runtime_fresh_loop::{SourceGeneration,LoopStep},cell_runtime_source_clock_root_data::SourceMetadataAdmission,
+ cell_runtime_loop_clock::{LoopArithmeticContext,ModfDispatch},native_sse::Policy,native_x87::Context,native_crt_acos::ConstantWindow};
+use std::{error::Error,fs::{self,OpenOptions},io::Write,path::Path};
+fn word(b:&[u8],a:usize)->u32{u32::from_le_bytes(b[a..a+4].try_into().unwrap())}
+fn half(b:&[u8],a:usize)->u16{u16::from_le_bytes(b[a..a+2].try_into().unwrap())}
+fn csr()->u32{let mut v=0;unsafe{std::arch::asm!("stmxcsr [{p}]",p=in(reg)&mut v,options(nostack,preserves_flags));}v}
+fn set_csr(v:u32){unsafe{std::arch::asm!("ldmxcsr [{p}]",p=in(reg)&v,options(nostack,preserves_flags));}}
+fn x87()->(u16,u16){let(mut c,mut s)=(0,0);unsafe{std::arch::asm!("fnstcw [{c}]","fnstsw [{s}]",c=in(reg)&mut c,s=in(reg)&mut s,options(nostack,preserves_flags));}(c,s)}
+struct Restore(u32);impl Drop for Restore{fn drop(&mut self){set_csr(self.0);}}
+fn native_projection(reply:&[u8])->Vec<u8>{
+ let mut b=Vec::with_capacity(4896);
+ for j in 0..9{let r=&reply[448+j*556..448+(j+1)*556];let n=word(r,528)as usize;assert!(n<=2);assert_eq!(word(r,56)as usize,n);b.extend_from_slice(&r[..532]);
+  for k in 0..2{if k<n{let at=532+k*8;b.extend_from_slice(&r[at..at+2]);b.extend_from_slice(&r[at+4..at+8]);}else{b.extend_from_slice(&[0;6]);}}
+ }b
+}
+fn main()->Result<(),Box<dyn Error>>{
+ let a:Vec<_>=std::env::args_os().skip(1).collect();if a.len()!=4{return Err("usage: INPUT-DIR NATIVE5452.bin ACOS-WINDOW.bin RUST4896.bin".into());}
+ let root=Path::new(&a[0]);let input=fs::read(root.join("input.bin"))?;let native=fs::read(&a[1])?;let constants=fs::read(&a[2])?;let constants=ConstantWindow::new(&constants)?;let table=fs::read_to_string(root.join("cases.tsv"))?;
+ assert_eq!(input.len(),300*256);assert_eq!(native.len(),300*5452);let mut output=OpenOptions::new().create_new(true).write(true).open(&a[3])?;let _restore=Restore(csr());let(mut cases,mut guards)=(0,0);
+ for line in table.lines().skip(1){let fields:Vec<_>=line.split('\t').collect();assert_eq!(fields.len(),4);assert_eq!(fields[0].parse::<usize>()?,cases);
+  let raw=&input[cases*256..(cases+1)*256];let reply=&native[cases*5452..(cases+1)*5452];let payload=fs::read(root.join(fields[1]))?;let animation=anim::parse(&payload)?;assert_eq!(word(&payload,8),25);
+  for(at,v)in[(24,animation.header_flags_280),(28,animation.frame_duration.to_bits()),(32,animation.duration.to_bits()),(36,animation.bone_count),(16,16),(44,1),(48,0),(52,1),(56,0),(80,1)]{assert_eq!(word(raw,at),v);}assert_eq!(&raw[84..128],&[0;44]);
+  let cw=half(raw,4);let ctx=FreshSampleContext{clock:LoopArithmeticContext{x87:Context::from_control_word(cw)?,sse:Policy::Mxcsr1f80,modf_dispatch:ModfDispatch::ExplicitFiniteSse2},rotation_dispatch:RotationDispatch::ExplicitSourceImageInitialOne,acos_constants:constants};
+  let fresh=initialize_fresh_aid(SourceGlobalSerial::ExplicitSnapshot(word(raw,0)),EventResetBoundary::BoundedPending{count:0,capacity:16})?;
+  for j in 0..9{let r=&reply[448+j*556..448+(j+1)*556];assert_eq!(half(r,548),cw);assert_eq!(half(r,550)&0x3800,0);assert_eq!(word(r,552)&!0x3f,0x1f80);assert_eq!(half(r,10),0);}
+  let mut computed=None;
+  for incoming in[0x1f80,0xdf81,0xbf84]{set_csr(incoming);let before=x87();
+   let init=|seed,boundary,c|activate_fresh_sampled_channel(fresh,&animation,SourceMetadataAdmission::ExplicitValidatedV25Resource,SourceGeneration::ExplicitIsolatedSnapshot(word(raw,20)),seed,boundary,c);
+   for(seed,boundary,c,error)in[(WrapperSerialSeed::Unestablished,SamplingBoundary::SourceFreshFirstChannelBothMasks,ctx,FreshSampleError::UnestablishedWrapperSerial),(WrapperSerialSeed::ExplicitIsolatedSnapshot(0),SamplingBoundary::Unestablished,ctx,FreshSampleError::UnestablishedSamplingBoundary),(WrapperSerialSeed::ExplicitIsolatedSnapshot(0),SamplingBoundary::SourceFreshFirstChannelBothMasks,FreshSampleContext{rotation_dispatch:RotationDispatch::Unestablished,..ctx},FreshSampleError::UnestablishedRotationDispatch)]{
+    assert!(matches!(init(seed,boundary,c),Err(e)if e==error));guards+=1;
+   }
+   let(mut state,initial)=init(WrapperSerialSeed::ExplicitIsolatedSnapshot(word(raw,76)),SamplingBoundary::SourceFreshFirstChannelBothMasks,ctx)?;
+   assert_eq!(&state.source_constructor_payload()[..],&reply[..440]);assert_eq!(state.next_wrapper_serial(),word(reply,440));assert_eq!(word(reply,444),0);
+   let mut bytes=Vec::with_capacity(4896);bytes.extend(initial.to_le_bytes());
+   for j in 0..8{let at=128+j*16;assert_eq!(word(raw,at+12),0);let step=match word(raw,at){0=>LoopStep::Absolute{time_bits:word(raw,at+4)},1=>LoopStep::Advance{delta_bits:word(raw,at+4)},_=>return Err("unknown step".into())};bytes.extend(state.step(step,word(raw,at+8),ctx)?.to_le_bytes());}
+   assert_eq!(csr(),incoming);assert_eq!(x87().0,before.0);assert_eq!(x87().1&0x3800,before.1&0x3800);
+   let expected=native_projection(reply);if bytes!=expected{let at=bytes.iter().zip(&expected).position(|(a,b)|a!=b).unwrap();return Err(format!("sampled channel case {cases} snapshot {} offset {} differs: rust {:02X} native {:02X}",at/544,at%544,bytes[at],expected[at]).into());}
+   if let Some(ref old)=computed{assert_eq!(old,&bytes);}computed=Some(bytes);
+  }output.write_all(&computed.unwrap())?;cases+=1;
+ }assert_eq!(cases,300);output.flush()?;println!("CELL_RUNTIME_FRESH_SAMPLED_CHANNEL_VERIFY cases={cases} snapshots={} projection_bytes=4896 incoming_states=3 positive_typed_guards={guards} actual_source_events=true",cases*9);Ok(())
+}

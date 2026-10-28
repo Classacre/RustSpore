@@ -1,5 +1,33 @@
 # Native Cell definitions and behavior consumers
 
+## Bounded progress-accounting comparison, 2026-10-28
+
+The integer accounting slice `E7CE91..E7CF18` now matches the Rust
+`cell_progression_v1` model in 1,504 boundary and seeded cases. The comparison
+includes signed 32-bit wrapping, the source 1,000 cap, source-byte counter
+routing and the changed-route branch; both hosts also reject seven malformed
+protocol inputs. The cap was verified in the installed executable's read-only
+`.rdata`. Source, input, runner and binary hashes matched again after the run.
+Evidence is `target/source-cell/cell-progress-run-v3/`.
+
+A separate `cell_feeding_route_v2` model connects statically recovered food
+dispatch to that accounting slice. It requires explicit snapshots before healing,
+after intervening calls for routing, and after `E79750` for accounting; it also
+requires caller admissions for valid pointers and callback preservation.
+Zero-food cleanup remains pending, and earlier bomb/nova effects are not
+reconstructed from later data. Four focused Rust tests and an independent static
+review pass. This composition has not been compared to a complete native feeding
+operation or integrated into gameplay.
+
+This test supplies the state after the earlier `E79750` call and isolates the
+136-byte numeric slice. It does not establish live memory interference, the
+effects of that earlier call, food/source selection, growth, tutorial or stage
+transition side effects. The native host and x64 Rust adapter had independent
+static/linked reviews; the adapter's build record is not a cryptographic proof
+of compiler semantics. The previous rejected host reviews remain in `target/`.
+
+## Earlier source context
+
 Scope: immutable base `SporeBin/SporeApp.exe`, SHA256
 `17cf32b3e3adbcc7ed9c4e593c83b5d3deb3c675059b7ad9cbfd19192df5f87a`,
 and every installed package index, inspected 2026-10-23. Retained REA v3

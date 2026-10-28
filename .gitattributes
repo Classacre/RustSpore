@@ -371,3 +371,74 @@
 /tools/cell_runtime_fresh_sampled_channel_hybrid_audit.py text eol=crlf
 /tools/cell_runtime_fresh_sampled_channel_sparse_carrier.py -text
 /tools/spui_font_general_F20_batch_fixtures_v1.py text eol=crlf
+
+# Preserve exact source bytes for the 2026-10-28 continuation checkpoint.
+/crates/spore-bevy/examples/cell_ui_atlas_regions_v1.rs text eol=crlf
+/crates/spore-bevy/examples/cell_ui_explicit_source_v1.rs -text
+/crates/spore-bevy/examples/cell_ui_ordered_local_v2.rs text eol=crlf
+/crates/spore-bevy/examples/cell_ui_tree_diagnostic_v1.rs -text
+/crates/spore-bevy/examples/spui_font_empty_caller_verify_v1.rs -text
+/crates/spore-core/examples/anim_cid_child_mode2_compare_v1.rs text eol=crlf
+/crates/spore-core/src/anim_cid_child_mode2_v1.rs text eol=crlf
+/crates/spore-core/src/anim_cid_node_validity_v1.rs text eol=crlf
+/crates/spore-core/src/cell_progress_precall_v1.rs -text
+/crates/spore-core/src/cell_progression_v1.rs -text
+/crates/spore-core/src/spui_font_empty_caller_v1.rs -text
+/re/anim-live-owner-nonzero-closure-2026-10-28.md -text
+/re/cell-animation-effects-world-correction.md -text
+/re/cell-feeding-event-dispatch-v1.md -text
+/re/cell-ui-registry-audit-v1.md -text
+/re/creature-health-field-flow-native-v1.md -text
+/re/space-game-reference-candidate-v1.md -text
+/tools/anim_cid_child_mode2_fixtures_v1.py text eol=crlf
+/tools/anim_cid_child_mode2_host_plan_v1.py text eol=crlf
+/tools/anim_cid_child_mode2_native_prepare_v1.py text eol=crlf
+/tools/anim_cid_child_mode2_native_prepare_v2.py text eol=crlf
+/tools/anim_cid_child_mode2_native_prepare_v3.py text eol=crlf
+/tools/anim_cid_child_mode2_native_run_v1.py text eol=crlf
+/tools/anim_cid_child_mode2_native_run_v2.py text eol=crlf
+/tools/anim_cid_child_mode2_native_run_v3.py text eol=crlf
+/tools/anim_cid_child_mode2_rust_inputs_v1.py text eol=crlf
+/tools/anim_cid_child_mode2_source_audit_v1.py text eol=crlf
+/tools/anim_cid_node_init_audit_v2.py text eol=crlf
+/tools/anim_cid_node_init_native_prepare_v2.py text eol=crlf
+/tools/anim_cid_node_init_native_run_v2.py text eol=crlf
+/tools/anim_cid_node_mode_source_audit_v1.py text eol=crlf
+/tools/cell_editor_template_array_audit_v1.py -text
+/tools/cell_runtime_fresh_sampled_channel_endpoint_prepare_v1.py -text
+/tools/cell_runtime_fresh_sampled_channel_endpoint_prepare_v2.py text eol=crlf
+/tools/cell_runtime_fresh_sampled_channel_endpoint_runner_v1.py text eol=crlf
+/tools/cell_runtime_fresh_sampled_channel_endpoint_runner_v3.py text eol=crlf
+/tools/cell_ui_ordered_local_audit_v1.py -text
+/tools/cell_ui_ordered_local_audit_v2.py -text
+/tools/civilization_prop_candidate_v1.py text eol=crlf
+/tools/creature_health_candidate_v1.py text eol=crlf
+/tools/creature_health_candidate_v2.py text eol=crlf
+/tools/creature_health_lookup_semantics_v1.py -text
+/tools/space_game_reference_candidate_v1.py -text
+/tools/spui_font_empty_caller_retained_compare_v1.py -text
+/tools/spui_font_empty_caller_retained_compare_v2.py -text
+/tools/spui_font_empty_caller_retained_compare_v3.py -text
+/tools/spui_font_empty_caller_rust_compare_v1.py -text
+/tools/test_civilization_prop_candidate_v1.py text eol=crlf
+/tools/test_creature_health_candidate_v1.py -text
+/tools/test_creature_health_candidate_v2.py text eol=crlf
+/tools/test_creature_health_lookup_semantics_v1.py -text
+/tools/test_space_game_reference_candidate_v1.py -text
+
+# Preserve LF for new continuation notes.
+/.workbuddy-ai/memory/2026-10-28.md text eol=lf
+/re/cell-editor-templates-v1.md text eol=lf
+/re/cell-runtime-fresh-sampled-channel-native.md text eol=lf
+/re/cell-ui-candidate-audit-v1.md text eol=lf
+/re/cell-world-lighting-selection-v1.md text eol=lf
+/re/spui-font-empty-caller-v1.md text eol=lf
+
+# Keep frozen continuation evidence source whitespace and hashes intact.
+/re/cell-ui-registry-audit-v1.md whitespace=blank-at-eol,-blank-at-eof,space-before-tab,cr-at-eol
+/tools/cell_runtime_fresh_sampled_channel_endpoint_runner_v3.py whitespace=-blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/tools/creature_health_lookup_semantics_v1.py whitespace=blank-at-eol,-blank-at-eof,space-before-tab,cr-at-eol
+
+# Preserve the conditional Cell matrix fixture and auditor.
+/crates/spore-bevy/examples/cell_ui_matrix_fixture_v2.rs text eol=crlf
+/tools/cell_ui_matrix_fixture_audit_v2.py text eol=crlf

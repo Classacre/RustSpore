@@ -1,5 +1,28 @@
 # Live owner and nonzero-node closure, 2026-10-28
 
+## Bounded loop compared on actual bodies
+
+The separately prepared 445-byte source loop now matches the Rust node
+initializer for all 1,322 admitted bodies and 46,256 nodes, including 23,981
+nodes with children. All 700 bytes per node were compared, with 11 rejection
+protocols and four framing checks. The projection SHA-256 is
+`a5013b5e97a27ce83c0f8993fa676baef4f6a73c902cb3cd8aedeab51edbadac`.
+The source host, linked carrier and runner were independently reviewed before
+the single native run. A separate clean Rust build pinned 151 source/input
+files and reproduced the same projection; the public module was also compared.
+Evidence is under `target/animation/cid-node-init-native-run-v2/` and
+`target/animation/cid-node-init-pinned-rust-v1/`.
+
+This loop takes a preallocated, canary-initialized node array and source scale1;
+it does not prove the full constructor or a live animated actor. In particular,
+source analysis of the allocation/copy chain found that node+238 is copied from
+the source node, while the traced temporary constructor does not initialize it.
+Later mode writes are conditional on node+1AC. A fabricated zero mode is not an
+established replacement for this missing runtime state. See
+`target/animation/cid-node-mode-source-audit-v1.json`.
+
+## Earlier source preparation
+
 Source-only preparation; no new native execution or actor admission.
 
 The continuation handoff incorrectly described a 0x700-byte node. Exact saved
@@ -117,3 +140,21 @@ CID+181C..18DB, aligned4; each record links to the next and the last points0.
 Map headCID+17BC pointsCID+181C. The fresh17-bucket map constructor's source
 callee closure is now established without heap allocation in its actual path;
 the remaining full CID constructor/reset helpers are a separate closure.
+
+
+## Mode-2 child comparison, 2026-10-28
+
+A separately scoped mode-2 branch matches 64 complete native records using
+actual source-body geometry and explicitly synthetic stage state. The 3,840-byte
+projection SHA-256 is `d87b75038dda6ca3b58282b204b9e7390bd772aa54b9e58111c355688d8bc4e6`.
+The public Rust module matches the same records, including the recorded x87 and
+SSE state. This does not establish observed motion, actor association, or full
+child traversal. Native evidence and original bytes remain under ignored `target/`.
+
+The mode-2 v1/v2 runners and preparer drafts are retained only as historical
+reconstruction evidence: their independent reviews found admission failures.
+Do not use those versions for new native execution. The reviewed v3 preparer
+loads the frozen v1 preparer as a hash-bound dependency and requires isolated
+`python -I -S`; linked and exact-runner reviews precede execution. Its local
+plans contain absolute paths and ignored evidence, so they are not portable
+without rebuilding and reviewing the corresponding artifacts on another machine.

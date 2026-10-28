@@ -1,8 +1,7 @@
 # Full game implementation milestones
 
 Scope confirmed by the user on 2026-10-22: complete the entire game roadmap, including
-all five gameplay stages and editors. Work resumed at the user's request on2026-10-27,
-with GPT-6.1 Sol at low reasoning effort for scoped delegated work.
+all five gameplay stages and editors. Work resumed at the user's request on 2026-10-27 and continued on 2026-10-28 with GPT-6.1 Terra at task-appropriate reasoning effort.
 The implementation goal remains incomplete until its
 functional acceptance gates pass. A prototype or parser result does not complete a
 retail-fidelity milestone.
@@ -32,14 +31,14 @@ executable analysis, offline comparisons and automated application captures.
 
 | ID | Functional outcome and acceptance gate | State |
 |---|---|---|
-| D0 | Existing archive/geometry/texture paths continue working; all relevant codec and digest checks remain green | Canonical index and viewer catalog agree on82packages/158,720records; allpayloads and four main RTX regressions pass; older compatibility CLI callers remain explicit |
+| D0 | Existing archive/geometry/texture paths continue working; all relevant codec and digest checks remain green | Canonical index and viewer catalog agree on 82 packages/158,720 records; all payloads and four main RTX regressions pass; older compatibility CLI callers remain explicit |
 | D1 | Typed RW4 skeletons, bind matrices, skin weights and animation tracks; valid references and finite values across the measured corpus | Typed-data gate passes on all 13,498 RW4; 4 static mesh attachment cases remain unsupported |
-| D2 | ANIM keyframe values, channel identities and safe sampling; independent byte-level and full-corpus validation | Keys/preparation pass 5,022 resources; 32,256 controlled and 692,878 finite all-source POS samples agree; four NaN copies reject explicitly; whole bounded ROT branch matches30,240 baseline plus3,456 boundary contexts; deformation and full binding remain open |
+| D2 | ANIM keyframe values, channel identities and safe sampling; independent byte-level and full-corpus validation | Keys/preparation pass 5,022 resources; 32,256 controlled and 692,878 finite all-source POS samples agree; four NaN copies reject explicitly; whole bounded ROT branch matches 30,240 baseline plus 3,456 boundary contexts; deformation and full binding remain open |
 | D3 | A real skinned model animates on the RTX GPU; bind pose matches source geometry, two times produce different finite poses, switching/restarting clips works | Source sample rendering and CPU agreement pass; actual playback-system control tests pass |
-| D4 | Creature channel-to-rig mapping and deformation; full assembled creatures move with their own texture and stable attachments | Full 11,041 GMDL tails agree; all704 linked creations pass original-program RTX static captures; ordering/palettes,8,624 root-policy cases,4,095 source contexts and optional construction agree; finalizer fields match4,590 native/Python/Rust cases and all4,095 fresh-source contexts; ordinary root constructor matches15,113 supplied-state cases; root coordinate/accumulation matches22,212 source-paired cases and zero-child staging/final commit matches66,636 cases plus576 owned boundary contexts; bounds and non-root selection match161,284 queries over1,322 actual bodies/all1,644 retained source instances, including Z policies; full ungrouped constructor matches1,085 prepared cases/27,142 records; actual actor association and nonzero-child poses remain open |
+| D4 | Creature channel-to-rig mapping and deformation; full assembled creatures move with their own texture and stable attachments | Full 11,041 GMDL tails agree; all 704 linked creations pass original-program RTX static captures; ordering/palettes, 8,624 root-policy cases, 4,095 source contexts and optional construction agree; finalizer fields match4,590 native/Python/Rust cases and all 4,095 fresh-source contexts; ordinary root constructor matches 15,113 supplied-state cases; root coordinate/accumulation matches 22,212 source-paired cases and zero-child staging/final commit matches 66,636 cases plus 576 owned boundary contexts; bounds and non-root selection match161,284 queries over 1,322 actual bodies/all 1,644 retained source instances, including Z policies; full ungrouped constructor matches 1,085 prepared cases/27,142 records; bounded node initialization matches 1,322 bodies/46,256 nodes including 23,981 with children; one mode-2 child branch matches 64 synthetic-state cases over source body geometry; actual actor association and live nonzero-child poses remain open |
 | D5 | Terrain/blockdata semantics, collision geometry and placement validated against source data | Open |
-| D6 | Usable audio, event routing, UI schemas, text/locales, materials and remaining required resource types | Typed SPUI framing passes748/748; image/layout/original UI programs pass bounded checks; all4,497 locale tables agree on419,485 entries;51,680 unscaled glyph packets and37,691 simple phantom/scaling sets agree across five faces; selector1 passes379,589 records; font0 PREP and bounded Rust hint/raster now pass all385 nonempty simple glyphs with1,540 retained native observations; four empty-program simple glyphs,183 composite glyphs and six empty glyphs retain exclusions; actual font/cache lifetime, full screens/events, audio and runtime locales remain open |
-| G1 | Cell gameplay: controls, feeding/diet, swimming, growth, predators/combat, death/restart, editor integration and evolution into Creature | Original-program draws pass all 28 resolved primary Cell models through main capture; source camera orientation/FOV recovered; retail framing, draw state, animation, effects and behavior remain open |
+| D6 | Usable audio, event routing, UI schemas, text/locales, materials and remaining required resource types | Typed SPUI framing passes 748/748; image/layout/original UI programs pass bounded checks; all 4,497 locale tables agree on 419,485 entries; 51,680 unscaled glyph packets and 37,691 simple phantom/scaling sets agree across five faces; selector1 passes 379,589 records; font0 square-15 hint/raster passes 385 nonempty simple glyphs with 1,540 retained native observations, and the separate empty-program caller matches all four remaining simple glyphs and 16 retained observations; 183 composite glyphs and six empty glyphs retain exclusions; actual font/cache lifetime, full screens/events, audio and runtime locales remain open |
+| G1 | Cell gameplay: controls, feeding/diet, swimming, growth, predators/combat, death/restart, editor integration and evolution into Creature | Original-program draws pass all 28 resolved primary Cell models through main capture; source camera orientation/FOV recovered; bounded progress accounting matches 1,504 native cases; retail framing, draw state, full animation, effects and gameplay behavior remain open |
 | G2 | Creature gameplay: locomotion and animation, food/combat, social behaviours, nests/species, progression and transition to Tribe | Original simulation and GPU frontend pass initial checks; source animation/editor/transition and fidelity gates open |
 | G3 | Tribe gameplay: group selection/orders, food/resources, tools/buildings, social/combat interactions, opposing tribes and progression | 23 core and 5 frontend checks pass, including a complete original diplomacy route; GPU/runtime and fidelity gates open |
 | G4 | Civilization gameplay: cities, vehicles, economy, military/religious/economic interactions, AI opposition and Space transition | Open |
@@ -80,8 +79,8 @@ also must not be described as recovered proprietary interpolation without eviden
   loop history now match300 records/2,700 snapshots with the actual channel
   counts, private epoch/crossing derivation and zero sample/event masks. Actual
   nonzero sampling, event dispatch and scheduling remain open.
-  Root coordinate conversion/accumulation matches22,212 source-paired cases
-  across215 clips. Zero-child staging/final commit matches66,636 cases plus576
+  Root coordinate conversion/accumulation matches 22,212 source-paired cases
+  across215 clips. Zero-child staging/final commit matches 66,636 cases plus 576
   owned alternate/threshold contexts; generated children and actor binding stay open.
   Original font0 PREP matches913
   source/Rust rows and retained native CVT/storage/callback state; glyph0 hinting
@@ -133,8 +132,8 @@ ignored `target/`. The full game roadmap is not complete, and the active goal co
 - Latest native integration V17:611 test executions pass across all workspace targets,
   comprising599 primary unit tests and12 repeated asset-example tests, with two
   intentional installed-corpus ignores. The canonical viewer/source catalog agrees
-  on all158,720 keys and all704 linked creations pass strict saved-mesh/map intake.
-  Whole bounded ROT sampling matches30,240 baseline plus3,456 arithmetic-boundary
+  on all158,720 keys and all 704 linked creations pass strict saved-mesh/map intake.
+  Whole bounded ROT sampling matches 30,240 baseline plus 3,456 arithmetic-boundary
   contexts. Inherited Cell classes, all1,365 source geometry/cache compositions and
   all33,480 finite scalar-cache cases match original-byte fixtures. Body capability
   expansion matches58,802 cases and movement source getters match68,340 finite

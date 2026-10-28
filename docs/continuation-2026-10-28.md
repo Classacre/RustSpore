@@ -10,13 +10,72 @@ its ignored log is `target/workspace-tests-20261028-resume-v23.log` (SHA-256
 Focused font tests passed as recorded below. Pending Cell and creature node
 research is preserved as work in progress; no stage or editor is complete.
 
-## Paused at the user's request, 2026-10-28
+The paused work was committed and pushed as `446b463d2d91f5ebe5aee8e61b2657e19ec0b66c`;
+the remote and local commit were verified equal. Subsequent work is local until a
+later publication. The user requested parallel subagents with GPT-6.1 Terra and
+effort appropriate to the task.
 
-The current instruction is to pause and report progress. All active scoped workers
-were interrupted. Do not resume analysis, builds, native execution or GPU work
-until the user asks to continue. The earlier resume narrative below is historical.
-No complete gameplay stage or editor has passed the original-fidelity acceptance
-gate.
+The sampled Cell first-channel interpolation and defined event payload now
+match native execution across all 300 retained histories/2,700 snapshots. The
+projection SHA-256 is
+`b8b40b3a5da968d84059bf904ad14bda5f5f763c896acfad5907eb19a54fd868`.
+The bounded corpus contains 369 event occurrences, 28 rejected protocols, five
+framing checks, and 601 unchanged native pins. Those frames are interpolation
+cases. A separate source clip now supplies 48 endpoint and 60 interpolation
+snapshots, all matching Rust; its projection SHA-256 is
+`41ee7f78b69a7552f55f7fda570b3b02629228956c9444c5a20347050c384c4e`.
+The endpoint clip has no authored events. Independent review of the newer
+corpus orchestration occurred after execution. A fresh Rust rebuild with 144
+source/input/tool pins reproduced the same projection. Full workspace V25 then
+passed 621 executions, zero failures and two intentional ignores; log SHA-256
+`db80db1c8289b1265a22f166730fc87fd464d552a595fd85c445b92587289d88`.
+The later explicit Cell UI intake example was separately compiled and matched
+both source inventories; this does not render the HUD or choose an overlay.
+See `re/cell-runtime-fresh-sampled-channel-native.md` for scope and failures.
+
+The source-observed Cell progression accounting matches 1,504 bounded native
+cases. Its pre-call predicate and a partial feeding route are separately
+modeled; effects of the intervening call and live gameplay state remain open.
+The bounded CID node-initialization comparison matched 1,322 source bodies
+and 46,256 nodes, including 23,981 nodes with children; this does not establish
+animated motion. All 389 simple glyphs in the bounded font0/15 ppem context
+have now passed their respective comparisons. The composite glyphs remain open.
+The Cell editor's two explicit source template arrays and a candidate Cell UI
+layout have been read, but editor behavior and the active HUD are not established.
+
+Full workspace suite V26 passed 628 executions with zero failures and two
+intentional ignores, log `target/workspace-tests-20261028-resume-v26.log`
+(SHA-256 `f674d3d86ec768dbe495b9f0087d19510bfc073098899595901eb3966e49d948`).
+After the PROP fix and additional public modules, suite V27 passed 632
+executions with zero failures and two intentional ignores; its log SHA-256 is
+`96f90d18b93e3480a578329b7f2c6d4521a7f9ac3e2ca9c09e87339d3a2deb9c`.
+Later diagnostic files created by workers still require their own validation.
+No stage or editor has passed the original-fidelity acceptance gate.
+
+The mode-2 child arithmetic now matches native execution for 64 cases using
+source body geometry and explicitly synthetic stage poses. The full 3,840-byte
+projection, including x87 and SSE status, has SHA-256
+`d87b75038dda6ca3b58282b204b9e7390bd772aa54b9e58111c355688d8bc4e6`;
+the public Rust module also matches it. This is not observed animation or
+proof of actor association. The fresh Cell lighting lookup is traced to key
+`A426730B:00B1B104:40200100`; both explicit package copies match an independent
+audit for all 75 RGB words and exposure. A conditional identity-frame,
+four-band calculation also matches 16 four-word outputs in both copies.
+The actual gameplay frame, runtime package precedence and shader use remain open.
+An invalid zero-stride PROP array previously read the next property's bytes;
+the parser now keeps that malformed array opaque, and regression checks pass.
+The Cell UI matrix subset also matches an independent float32 reference for
+64 explicit parent/rectangle fixtures (1,024 words). These inputs do not
+establish the active parent, runtime root dimensions or a rendered HUD.
+An offscreen original-program Cell preview also ran on the NVIDIA GeForce RTX
+3060 Laptop GPU and reproduced the retained Jawhead PNG byte for byte
+(SHA-256 `b06a039f1c3d8ff838a699ba991cc480a9cb973ac66059a51d94d074f96ebfad`).
+This is an asset/render regression check, not acceptance of a gameplay scene.
+
+## Historical pause, 2026-10-28
+
+At this point the user had requested a pause and all scoped workers were
+interrupted. The later resume and progress above supersede this historical state.
 
 The published checkpoint is `adcc53ba9523e5c91813bf94cab0e3e152cca1ce`
 (`Reconstruct source animation binding, clock history and font VM paths`). Local
@@ -54,7 +113,7 @@ ignores and zero failures. It predates the newest public font modules. The lates
 five focused font runs completed before the pause; a fresh full suite is still
 required after resuming.
 
-When explicitly resumed, the next prepared Cell command is:
+The then-prepared Cell command was:
 
 ```powershell
 python tools/cell_runtime_fresh_sampled_channel_native_run_v2.py --out target/source-cell/runtime-fresh-sampled-channel-native-run-v2 --host-dir target/source-cell/native-runtime-fresh-sampled-channel-root-v3 --runner-review target/source-cell/runtime-fresh-sampled-channel-runner-plan-v2/binding-runner-peer-v2.json --run

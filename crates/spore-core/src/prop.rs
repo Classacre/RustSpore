@@ -457,7 +457,8 @@ fn decode_string16(d: &[u8], p: usize, len: usize) -> String {
 fn parse_single(d: &[u8], typ: u16, p: usize, avail: usize) -> PropValue {
     let take = |n: usize| -> PropValue { PropValue::Raw(d[p..(p + n.min(avail))].to_vec()) };
     match typ {
-        0x0001 => PropValue::Bool(d[p] != 0),
+        0x0001 if avail >= 1 => PropValue::Bool(d[p] != 0),
+        0x0001 => take(avail),
         0x000D => {
             if avail >= 4 {
                 PropValue::Float(f32::from_be_bytes([d[p], d[p + 1], d[p + 2], d[p + 3]]))
@@ -622,14 +623,21 @@ fn parse_values(d: &[u8], typ: u16, spec: u16, vstart: usize, vlen: usize) -> Ve
             return out;
         }
         // Fixed-stride array: parse each element's meaningful (base) bytes.
-        let base = if typ == 0x0020 {
-            KEY_ARRAY_STRIDE
-        } else {
-            fixed_base(typ).unwrap_or(stride)
+        let base = match typ {
+            0x0001 => 1,
+            0x0020 => KEY_ARRAY_STRIDE,
+            _ => fixed_base(typ).unwrap_or(stride),
         };
+        // A malformed stride must not let one element consume the next item
+        // in the property stream. Keep the declared bytes as an opaque value
+        // instead of inventing typed elements from adjacent data.
+        let value_end = vstart.saturating_add(vlen).min(d.len());
+        if count > 0 && stride < base {
+            return vec![PropValue::Raw(d[vstart..value_end].to_vec())];
+        }
         let mut pp = vstart + 8;
         for _ in 0..count {
-            if pp + base > d.len() {
+            if pp.checked_add(base).map_or(true, |end| end > value_end) {
                 break;
             }
             out.push(parse_single(d, typ, pp, base));
@@ -737,6 +745,29 @@ pub fn parse(data: &[u8]) -> Result<PropTree, PropError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn undersized_array_stride_cannot_read_the_following_property() {
+        // A 25-element RGB array with zero stride followed by an ordinary
+        // FLOAT. Previously the next property's 12 bytes became 25 RGBs.
+        let data = [
+            0, 0, 0, 2, 0x01, 0x00, 0xea, 0xc5, 0, 0x32, 0, 0x9c,
+            0, 0, 0, 25, 0, 0, 0, 0, 0x01, 0x00, 0xea, 0xc4,
+            0, 0x0d, 0, 0, 0x3e, 0x99, 0x99, 0x9a,
+        ];
+        let tree = parse(&data).unwrap();
+        assert!(tree.exact);
+        assert_eq!(tree.items.len(), 2);
+        assert_eq!(tree.items[0].values, [PropValue::Raw(data[12..20].to_vec())]);
+        assert_eq!(tree.value(0x0100_eac4), Some(&PropValue::Float(0.3)));
+
+        // Boolean arrays also require at least one byte per nonempty entry.
+        let bool_array = [0, 0, 0, 1, 0, 0, 0, 0, 0xff];
+        assert_eq!(
+            parse_values(&bool_array, types::BOOL, ARRAY_MARKER_1, 0, 8),
+            [PropValue::Raw(bool_array[..8].to_vec())]
+        );
+    }
 
     #[test]
     fn parse_simple_float() {
