@@ -1,12 +1,14 @@
 //! GPU-rendered Creature gameplay baseline using the deterministic core rules.
-//! All art here is original procedural geometry. Retail assembly remains a gate.
+//! Default art is procedural; an optional source-art inspection path is available.
+//! Retail assembly, animation and gameplay fidelity remain separate gates.
 
 use bevy::{
     asset::RenderAssetUsages,
     mesh::Indices,
+    image::{ImageSampler, ImageSamplerDescriptor, ImageAddressMode, ImageFilterMode},
     prelude::*,
     render::{
-        render_resource::PrimitiveTopology,
+        render_resource::{PrimitiveTopology, Extent3d, TextureDimension, TextureFormat},
         renderer::RenderAdapterInfo,
         view::screenshot::{save_to_disk, Screenshot},
     },
@@ -80,6 +82,15 @@ struct AuthoredArt {
     material: Option<Handle<StandardMaterial>>,
 }
 #[derive(Resource)]
+struct SourceInspection {
+    asset: crate::assets::AuthoredCreatureAsset,
+    sampler: ImageSamplerDescriptor,
+}
+#[derive(Resource)]
+struct SourceInspectionRender { mesh: Handle<Mesh>, material: Handle<StandardMaterial> }
+#[derive(Resource, Default)]
+struct OffscreenSimulationReady(bool);
+#[derive(Resource)]
 struct Orbit {
     yaw: f32,
     pitch: f32,
@@ -125,6 +136,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let mut creation_path = None;
     let mut shot = None;
     let mut demo_seconds = None;
+    let mut source_install: Option<PathBuf> = None;
+    let mut source_id: Option<u64> = None;
+    let mut offscreen = false;
     let mut save_path = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."))
@@ -133,6 +147,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         .join("creature.rsp");
     let mut index = 0;
     while index < args.len() {
+        if args[index] == "--offscreen" { offscreen = true; index += 1; continue; }
         let value = || {
             args.get(index + 1)
                 .ok_or_else(|| format!("{} requires a value", args[index]))
@@ -149,6 +164,12 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 }
             }
             "--creation" => creation_path = Some(PathBuf::from(value()?)),
+            "--source-creature-install" => source_install = Some(PathBuf::from(value()?)),
+            "--source-creature-id" => {
+                let text = value()?.trim();
+                let text = text.strip_prefix("0x").or_else(|| text.strip_prefix("0X")).unwrap_or(text);
+                source_id = Some(u64::from_str_radix(text, 16).map_err(|_| "source Creature ID must be hexadecimal u64".to_string())?);
+            }
             "--shot" => shot = Some(PathBuf::from(value()?)),
             "--save-file" => save_path = PathBuf::from(value()?),
             "--demo" => {
@@ -164,6 +185,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
         index += 2;
     }
+    if source_install.is_some() != source_id.is_some() { return Err("--source-creature-install and --source-creature-id must be provided together".into()); }
+    if source_install.is_some() && creation_path.is_some() { return Err("source Creature inspection cannot be combined with --creation".into()); }
+    if offscreen && shot.is_none() { return Err("--offscreen requires --shot <new PNG>".into()); }
     if shot.as_ref().is_some_and(|path| path.exists()) {
         return Err("screenshot already exists; choose a new output path".into());
     }
@@ -174,21 +198,30 @@ pub fn run(args: &[String]) -> Result<(), String> {
     {
         std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
+    let source = if let (Some(install), Some(id)) = (&source_install, source_id) {
+        Some(load_source_inspection(install, id)?)
+    } else { None };
     let world = configured_world(seed, diet, explicit_diet, creation_path.as_deref())?;
     let mut game = Game::new(seed, world.player_diet, save_path);
     game.world = world;
     game.shot = shot;
     game.demo_seconds = demo_seconds;
-    App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
+    let mut app = App::new();
+    if offscreen {
+        crate::offscreen::configure(&mut app, 1280, 800);
+        app.init_resource::<OffscreenSimulationReady>();
+    } else {
+        app.add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "RustSpore | Creature".into(),
                 resolution: (1280, 800).into(),
                 ..default()
             }),
             ..default()
-        }))
-        .insert_resource(ClearColor(Color::srgb(0.38, 0.57, 0.67)))
+        }));
+    }
+    if let Some(source) = source { app.insert_resource(source); }
+    app.insert_resource(ClearColor(Color::srgb(0.38, 0.57, 0.67)))
         .insert_resource(game)
         .init_resource::<Objects>()
         .init_resource::<AuthoredArt>()
@@ -209,6 +242,55 @@ pub fn run(args: &[String]) -> Result<(), String> {
         .run();
     Ok(())
 }
+
+fn load_source_inspection(install: &Path, instance: u64) -> Result<SourceInspection, String> {
+    let base = install.join("Data/Spore_Content.package");
+    let source = crate::assets::AssetSource::open(&base)?;
+    let paths = crate::assets::PackageSet::discover(install).paths().to_vec();
+    let source = source.with_set(crate::assets::PackageSet::from_paths(paths.clone()));
+    let asset = source.authored_creature_asset(instance, 0).map_err(|e| e.to_string())?;
+    let tex = &asset.texture;
+    if tex.width == 0 || tex.height == 0 || tex.width > 4096 || tex.height > 4096
+        || (tex.width as usize).checked_mul(tex.height as usize).and_then(|n| n.checked_mul(4)) != Some(tex.rgba.len()) {
+        return Err("source Creature texture dimensions or decoded extent unsupported".into());
+    }
+    let texture = asset.texture_binding;
+    if texture.availability() != Some(1) { return Err("source sampler unavailable".into()); }
+    let address = match texture.address_mode() {
+        Some(1) => ImageAddressMode::Repeat, Some(2) => ImageAddressMode::MirrorRepeat,
+        Some(3) => ImageAddressMode::ClampToEdge, _ => return Err("source sampler addressing unsupported".into()),
+    };
+    let filter = match texture.min_mag_filter() {
+        Some(1) => ImageFilterMode::Nearest, Some(2) => ImageFilterMode::Linear,
+        _ => return Err("source sampler filtering unsupported".into()),
+    };
+    let mip = match texture.mip_filter() {
+        Some(0 | 1) => ImageFilterMode::Nearest, Some(2) => ImageFilterMode::Linear,
+        _ => return Err("source sampler mip filtering unsupported".into()),
+    };
+    let sampler = ImageSamplerDescriptor { address_mode_u: address, address_mode_v: address, address_mode_w: address,
+        min_filter: filter, mag_filter: filter, mipmap_filter: mip, lod_min_clamp: 0.0, lod_max_clamp: 0.0, ..default() };
+    let (min, max) = asset.mesh.bounds().ok_or("source Creature mesh is empty")?;
+    let extent = (max.x-min.x).max(max.y-min.y).max(max.z-min.z);
+    let center = [(min.x+max.x)*0.5, (min.y+max.y)*0.5, (min.z+max.z)*0.5];
+    if !extent.is_finite() || extent <= 1e-6 || center.iter().any(|v| !v.is_finite()) {
+        return Err("source Creature bounds invalid".into());
+    }
+    let lookup = crate::assets::PackageSet::from_paths(paths);
+    for (role, key) in [("creature", asset.reference.creature), ("prop", asset.reference.prop),
+        ("model", asset.reference.model), ("texture", asset.texture_key)] {
+        let path = if source.resource_keys().any(|k| k == key) { base.clone() } else {
+            lookup.locate(key.type_id, key.scoped_instance()).ok_or("source resource provenance unavailable")?
+        };
+        println!("CREATURE_SOURCE_RESOURCE role={role} package={} key={key}", path.display());
+    }
+    println!("CREATURE_SOURCE_INSPECTION instance={instance:016X} assignment=controlled_prototype_player renderer=pbr pose=static runtime_behavior=unverified overlay=inspection_order camera_scale=inspection basis=source_y_z_x_inference ground=source_z_min mip_chain=base_only saves=disabled");
+    Ok(SourceInspection { asset, sampler })
+}
+
+/// Inspection inference: map source +Z up and +Y forward to Bevy +Y up and
+/// the prototype actor's +X forward. This is not the original runtime pose.
+fn source_to_bevy_basis(v: [f32; 3]) -> [f32; 3] { [v[1], v[2], v[0]] }
 
 fn configured_world(
     seed: u64,
@@ -303,11 +385,33 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     adapter: Res<RenderAdapterInfo>,
+    source: Option<Res<SourceInspection>>,
+    mut images: ResMut<Assets<Image>>,
+    mut readiness: Option<ResMut<crate::offscreen::OffscreenReadiness>>,
 ) {
     println!(
         "CREATURE_GPU name={:?} backend={:?} type={:?}",
         adapter.name, adapter.backend, adapter.device_type
     );
+    let source_inspection = source.is_some();
+    if let Some(source) = source {
+        let data = &source.asset.mesh;
+        let (min, max) = data.bounds().expect("source bounds checked before app startup");
+        let center = [(min.x+max.x)*0.5, (min.y+max.y)*0.5, min.z];
+        let scale = 2.0 / (max.x-min.x).max(max.y-min.y).max(max.z-min.z);
+        let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, data.positions.iter().map(|p| source_to_bevy_basis([(p.x-center[0])*scale, (p.y-center[1])*scale, (p.z-center[2])*scale])).collect::<Vec<_>>());
+        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, data.normals.iter().map(|p| source_to_bevy_basis([p.x,p.y,p.z])).collect::<Vec<_>>());
+        mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, data.uvs.clone());
+        mesh.insert_indices(Indices::U32(data.indices.clone()));
+        let texture = &source.asset.texture;
+        let mut image = Image::new(Extent3d { width: texture.width, height: texture.height, depth_or_array_layers: 1 }, TextureDimension::D2, texture.rgba.clone(), TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::default());
+        image.sampler = ImageSampler::Descriptor(source.sampler.clone());
+        let image = images.add(image);
+        if let Some(readiness) = readiness.as_mut() { readiness.require_image(&image); }
+        let material = materials.add(StandardMaterial { base_color: Color::WHITE, base_color_texture: Some(image), perceptual_roughness: 0.85, cull_mode: None, double_sided: true, ..default() });
+        commands.insert_resource(SourceInspectionRender { mesh: meshes.add(mesh), material });
+    }
     commands.spawn((
         Camera3d::default(),
         AmbientLight {
@@ -391,10 +495,10 @@ fn setup(
         focus: material(&mut materials, Color::srgb(0.97, 0.82, 0.24)),
         pack: material(&mut materials, Color::srgb(0.35, 0.92, 0.89)),
     });
-    ui(&mut commands);
+    ui(&mut commands, source_inspection);
 }
 
-fn ui(commands: &mut Commands) {
+fn ui(commands: &mut Commands, source_inspection: bool) {
     let panel = Color::srgba(0.035, 0.065, 0.075, 0.92);
     let muted = Color::srgb(0.67, 0.78, 0.76);
     commands
@@ -516,9 +620,9 @@ fn ui(commands: &mut Commands) {
     commands.spawn((Node { position_type: PositionType::Absolute, left: px(22), right: px(22), bottom: px(18), padding: UiRect::all(px(14)),
         border_radius: BorderRadius::all(px(10)), flex_direction: FlexDirection::Column, row_gap: px(7), ..default() }, BackgroundColor(panel))).with_children(|column| {
         column.spawn((Text::new("W/S walk   A/D turn   Shift sprint   E eat / collect / recruit   Space attack   1 sing / 2 dance / 3 charm   H rest at home"), TextFont { font_size: 13.0, ..default() }, TextColor(Color::srgb(0.88,0.91,0.83))));
-        column.spawn((Text::new("Tab target   Arrows orbit / tilt   +/- zoom   P pause   R restart   F5 save   F9 load   Esc exit"), TextFont { font_size: 13.0, ..default() }, TextColor(muted)));
+        column.spawn((Text::new(if source_inspection { "Tab target   Arrows orbit / tilt   +/- zoom   P pause   R restart   Esc exit" } else { "Tab target   Arrows orbit / tilt   +/- zoom   P pause   R restart   F5 save   F9 load   Esc exit" }), TextFont { font_size: 13.0, ..default() }, TextColor(muted)));
         column.spawn((Text::new(""), TextFont { font_size: 12.0, ..default() }, TextColor(Color::srgb(0.68,0.85,0.79)), NoticeHud));
-        column.spawn((Text::new("Original functional baseline. Procedural art and rules; retail creature assembly, fidelity and full editors remain pending."), TextFont { font_size: 11.0, ..default() }, TextColor(Color::srgb(0.57,0.67,0.65))));
+        column.spawn((Text::new(if source_inspection { "Source art inspection with prototype rules. Save and load disabled; retail assembly, animation and gameplay fidelity remain unverified." } else { "Original functional baseline. Procedural art and rules; retail creature assembly, fidelity and full editors remain pending." }), TextFont { font_size: 11.0, ..default() }, TextColor(Color::srgb(0.57,0.67,0.65))));
     });
     commands
         .spawn((Node {
@@ -597,7 +701,8 @@ fn closest(world: &CreatureWorld) -> Option<u32> {
         })
         .map(|actor| actor.id)
 }
-fn drive(time: Res<Time>, keys: Res<ButtonInput<KeyCode>>, mut game: ResMut<Game>) {
+fn drive(time: Res<Time>, keys: Res<ButtonInput<KeyCode>>, mut game: ResMut<Game>, source: Option<Res<SourceInspection>>, ready: Option<Res<OffscreenSimulationReady>>) {
+    if ready.as_ref().is_some_and(|ready| !ready.0) { return; }
     if keys.just_pressed(KeyCode::Escape) {
         std::process::exit(0);
     }
@@ -612,6 +717,7 @@ fn drive(time: Res<Time>, keys: Res<ButtonInput<KeyCode>>, mut game: ResMut<Game
         game.notice.clear();
     }
     if keys.just_pressed(KeyCode::F5) {
+        if source.is_some() { game.notice = "Save disabled: source inspection identity is not stored".into(); return; }
         let result = game
             .world
             .snapshot()
@@ -627,6 +733,7 @@ fn drive(time: Res<Time>, keys: Res<ButtonInput<KeyCode>>, mut game: ResMut<Game
         };
     }
     if keys.just_pressed(KeyCode::F9) {
+        if source.is_some() { game.notice = "Load disabled: source inspection identity is not stored".into(); return; }
         match read_save(&game.save_path) {
             Ok(world) => {
                 game.world = world;
@@ -905,6 +1012,7 @@ fn sync_scene(
     mut authored: ResMut<AuthoredArt>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    source: Option<Res<SourceInspectionRender>>,
 ) {
     if authored.creation != game.world.creation {
         if let Some(mesh) = authored.mesh.take() {
@@ -942,6 +1050,9 @@ fn sync_scene(
         live.insert(key);
         let entity = *objects.0.entry(key).or_insert_with(|| {
             if is_player {
+                if let Some(source) = source.as_ref() {
+                    return commands.spawn((Mesh3d(source.mesh.clone()), MeshMaterial3d(source.material.clone()), Transform::default())).id();
+                }
                 if let (Some(mesh), Some(material)) = (&authored.mesh, &authored.material) {
                     return commands
                         .spawn((
@@ -960,7 +1071,7 @@ fn sync_scene(
             entity,
             Transform::from_translation(location(actor.position, 0.0))
                 .with_rotation(Quat::from_rotation_y(-actor.heading))
-                .with_scale(Vec3::splat(if is_player && game.world.creation.is_some() {
+                .with_scale(Vec3::splat(if is_player && (game.world.creation.is_some() || source.is_some()) {
                     actor.radius()
                 } else {
                     1.0
@@ -1284,7 +1395,16 @@ fn update_hud(
         );
     }
 }
-fn capture(mut commands: Commands, mut game: ResMut<Game>) {
+fn capture(mut commands: Commands, mut game: ResMut<Game>, target: Option<Res<crate::offscreen::OffscreenTarget>>, mut readiness: Option<ResMut<crate::offscreen::OffscreenReadiness>>, mut simulation_ready: Option<ResMut<OffscreenSimulationReady>>, layouts: Query<(&Text, Option<&bevy::text::TextLayoutInfo>)>, time: Res<Time>) {
+    if let Some(readiness) = readiness.as_mut() {
+        if let Some(error) = readiness.failure() { eprintln!("Creature offscreen render failed: {error}"); std::process::exit(1); }
+        let text_ready = layouts.iter().all(|(text, layout)| text.0.is_empty() || layout.is_some_and(|layout| readiness.require_text(layout)));
+        if !text_ready || !readiness.ready() {
+            if time.elapsed_secs() > 120.0 { eprintln!("Creature offscreen renderer did not become ready"); std::process::exit(1); }
+            return;
+        }
+        if let Some(ready) = simulation_ready.as_mut() { ready.0 = true; }
+    }
     game.frames += 1;
     if game.capture_frame.is_none()
         && game.elapsed >= game.demo_seconds.unwrap_or(1.5)
@@ -1292,7 +1412,7 @@ fn capture(mut commands: Commands, mut game: ResMut<Game>) {
     {
         if let Some(path) = &game.shot {
             commands
-                .spawn(Screenshot::primary_window())
+                .spawn(target.as_ref().map_or_else(Screenshot::primary_window, |target| target.screenshot()))
                 .observe(save_to_disk(path.clone()));
         }
         game.capture_frame = Some(game.frames);
@@ -1313,6 +1433,63 @@ fn capture(mut commands: Commands, mut game: ResMut<Game>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn source_inspection_basis_maps_positions_and_normals() {
+        assert_eq!(source_to_bevy_basis([1.0, 0.0, 0.0]), [0.0, 0.0, 1.0]);
+        assert_eq!(source_to_bevy_basis([0.0, 1.0, 0.0]), [1.0, 0.0, 0.0]);
+        assert_eq!(source_to_bevy_basis([0.0, 0.0, 1.0]), [0.0, 1.0, 0.0]);
+        let normal = source_to_bevy_basis([0.0, 0.6, 0.8]);
+        assert_eq!(normal, [0.6, 0.8, 0.0]);
+        assert!((normal.iter().map(|x| x * x).sum::<f32>() - 1.0).abs() < 1e-6);
+    }
+    #[test]
+    fn source_inspection_cli_requires_pair_and_excludes_saved_creation() {
+        assert!(run(&["--source-creature-id".into(), "1234".into()]).unwrap_err().contains("provided together"));
+        assert!(run(&["--source-creature-install".into(), "unused".into()]).unwrap_err().contains("provided together"));
+        assert!(run(&["--source-creature-install".into(), "unused".into(), "--source-creature-id".into(), "1234".into(), "--creation".into(), "unused".into()]).unwrap_err().contains("cannot be combined"));
+        assert!(run(&["--offscreen".into()]).unwrap_err().contains("requires --shot"));
+    }
+    #[test]
+    fn source_inspection_rejects_unbound_saves_and_survives_restart() {
+        use crate::assets::{AuthoredCreatureAsset, AuthoredCreatureModel, TextureData};
+        use dbpf::native_index::NativeResourceKey;
+        use spore_core::{mesh::MeshData, shader_binding::TextureBinding};
+        let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let folder = std::env::temp_dir().join(format!("rustspore-source-creature-{}-{nonce}", std::process::id()));
+        std::fs::create_dir(&folder).unwrap();
+        let path = folder.join("creature.rsp");
+        let alternate = CreatureWorld::new(99, Diet::Herbivore).snapshot().to_bytes().unwrap();
+        std::fs::write(&path, &alternate).unwrap();
+        let identity = NativeResourceKey { instance_id: 0x1234, type_id: 0x5678, group_id: 0 };
+        let source = SourceInspection {
+            asset: AuthoredCreatureAsset {
+                reference: AuthoredCreatureModel { creature: identity, prop: identity, model: identity, lod: 0 },
+                mesh: MeshData::default(), texture_key: identity,
+                texture_binding: TextureBinding { sampler: 0, saved_pointer_word: 0, settings: [0; 8], raster_instance: 0 },
+                texture: TextureData { width: 1, height: 1, rgba: vec![1, 2, 3, 4] },
+            }, sampler: ImageSamplerDescriptor::default(),
+        };
+        let mut app = App::new();
+        app.insert_resource(Time::<()>::default())
+            .insert_resource(ButtonInput::<KeyCode>::default())
+            .insert_resource(Game::new(77, Diet::Carnivore, path.clone()))
+            .insert_resource(source)
+            .add_systems(Update, drive);
+        step(&mut app, 0.0, &[KeyCode::F5]);
+        assert_eq!(std::fs::read(&path).unwrap(), alternate);
+        assert!(app.world().resource::<Game>().notice.starts_with("Save disabled"));
+        let before = app.world().resource::<Game>().world.clone();
+        step(&mut app, 0.0, &[KeyCode::F9]);
+        assert_eq!(app.world().resource::<Game>().world, before);
+        assert!(app.world().resource::<Game>().notice.starts_with("Load disabled"));
+        step(&mut app, 0.0, &[KeyCode::KeyR]);
+        assert_eq!(app.world().resource::<Game>().world, CreatureWorld::new(77, Diet::Carnivore));
+        let retained = app.world().resource::<SourceInspection>();
+        assert_eq!(retained.asset.reference.creature, identity);
+        assert_eq!(retained.asset.texture.rgba, [1, 2, 3, 4]);
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_dir(folder).unwrap();
+    }
     fn step(app: &mut App, seconds: f64, pressed: &[KeyCode]) {
         let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
         keys.reset_all();

@@ -1,0 +1,21 @@
+# RW4 binding helper caller trace
+
+This is static Ghidra pseudocode evidence for the installed base executable SHA-256 `17cf32b3e3adbcc7ed9c4e593c83b5d3deb3c675059b7ad9cbfd19192df5f87a`. It does not establish the runtime selection of Cell model `DAE8CE17` or clip `4060600060BDD177`, the meaning of their different inverse binds, or an original pose. Inferred parameter types and stack arguments require assembly confirmation.
+
+## Bounded caller and mapping
+
+[MEASURED] Retained `target/rea/20261022-anim-rig-finalize-v2/69-procedure_pseudo_code.json`, Evidence `ev_1e8f28931bbba1797d13d535530a251c38194fbbe1af7f19d81f744c22917dce`, is pseudocode for `7755F0`. It requests resource type `2F4E681B` through a factory virtual call, obtains the typed resource pointer, checks paired geometry collections and enters the mapping branch only when both objects retrieved through `76F820` are nonzero. One input to `76F820` is the acquired resource; another comes from `73D170`. The exact identity, ownership and class of those objects remain unknown.
+
+[MEASURED] In that branch, for each word in the second object's ID array at +8, the loop searches the first object's ID array at +8. It writes the matching first-array ordinal to a mapping array, initially -1; if there are duplicate matching words, the loop leaves the last matching ordinal. The two array counts come from object +0C. `76F930` checks the pair and mapping; failure returns 6. On success the caller invokes `76F9A0` with the second object, mapping, both counts and three buffers, then invokes `773DE0(&iStack_114b4, *param_4, uVar8)` where the immediately preceding pseudocode assigns `uVar8 = 76F820(puStack_114e4, in_stack_00000020)`. The extra apparent second argument and stack-derived variables must be validated against actual calling convention and instructions.
+
+[MEASURED] `target/rea/20261022-anim-rig-finalize-v2/74-procedure_pseudo_code.json`, Evidence `ev_10d08547521afafa80e5e7ef6381b09b954e71835aa71e68b0d1bf8b1a52722c`, shows `76F9A0` retaining its inputs in globals and initializing one 48-byte and one 176-byte record per first-object count. This identifies setup work, but does not establish all record semantics or their provenance.
+
+[MEASURED] `target/rea/20261022-anim-rig-finalize-v2/73-procedure_pseudo_code.json`, Evidence `ev_132e92b1c0efa31065992b43fd980c54d87b459dc067418a3d21fc63b62324e1`, shows `773DE0` constructing an evaluator from fields in its third argument, temporarily assigning the evaluator and callback `798C80`, calling `796640(0x601)` and `7965A0` with its first argument, invoking an evaluation function, restoring prior fields, then copying twelve words per first-argument count from third-argument +8 through a stack-derived output pointer. The exact output parameter and instruction-level call convention require confirmation. It is not established that this helper reads a clip's inverse bind or that this route handles the candidate pair.
+
+[MEASURED] The separate callback dossier `target/rea/20261022-anim-rig-finalize-v2/144-analyze_function.json` shows `798C80` chooses `797970` when global `01635340` is nonzero; otherwise it chooses `796E20` or `796860` according to another object's +10 field. It then clears the associated globals. The external-record adjustments documented in `anim-rig-native.md` apply to `797970` and do not prove that this particular caller enters that branch.
+
+## Next trace and limits
+
+Trace `76F820` and `76F930` with full assembly and caller context to identify returned section objects and their validation. Confirm the callsite and stack/register flow in `7755F0` and `773DE0`, then trace `7755F0` callers and the `73D170` input to a source-backed Cell resource choice. Identify which SkinsInK, skeleton, animation skin and keyed animation feed evaluator construction before considering pose transfer or inverse-bind correction. Check the mapping on actual explicitly selected candidate data only after object semantics and resource association are established.
+
+Fresh REA inspection was attempted but the server returned `provider_unavailable`: `GHIDRA_INSTALL_DIR` is not configured in its environment. This note relies on retained pseudocode, not fresh execution. The original executable and packages were not modified.

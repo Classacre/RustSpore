@@ -1,6 +1,9 @@
 //! Playable Cell-stage vertical slice with deterministic simulation and GPU visuals.
 //! Retail content, editors and cross-stage progression are separate milestone gates.
 
+#[path = "cell_kind0_inspection.rs"]
+mod cell_kind0_inspection;
+
 use bevy::{
     asset::RenderAssetUsages,
     camera::{visibility::RenderLayers, ScalingMode},
@@ -70,7 +73,8 @@ struct OffscreenSimulationReady(bool);
 
 #[derive(Resource)]
 struct SourcePlayer {
-    asset: crate::source_cell::SourceCellAsset,
+    mesh: spore_core::mesh::MeshData,
+    skin: crate::assets::TextureData,
     sampler: ImageSamplerDescriptor,
     center: Vec3,
     scale: f32,
@@ -161,21 +165,27 @@ pub fn run(args: &[String]) -> Result<(), String> {
         return Err("--offscreen requires --shot <new PNG>".into());
     }
     let source_player = if let (Some(install), Some(id)) = (&source_install, source_id) {
-        let library = crate::source_cell::SourceCellLibrary::open_install(install)?;
-        let asset = library.load(id)?;
-        let sampler = crate::source_cell::source_skin_sampler(&asset)?;
-        let (min, max) = asset.mesh.bounds().ok_or("source Cell mesh is empty")?;
+        let (mesh, skin, sampler) = if id == cell_kind0_inspection::CELL_ID {
+            let asset = cell_kind0_inspection::load(install)?;
+            (asset.mesh, asset.texture, asset.sampler)
+        } else {
+            let library = crate::source_cell::SourceCellLibrary::open_install(install)?;
+            let asset = library.load(id)?;
+            let sampler = crate::source_cell::source_skin_sampler(&asset)?;
+            println!("CELL_SOURCE_INSPECTION creation={:016X} pending_effects={} renderer=pbr static=true original_animation=false overlay=inspection-order", asset.definition.creation_instance, asset.pending_structure_entries.len());
+            for (role, identity) in [("cell", &asset.definition.cell), ("structure", &asset.definition.structure),
+                ("model_prop", &asset.model_prop), ("model", &asset.model), ("skin", &asset.skin_source)] {
+                println!("CELL_SOURCE_RESOURCE role={role} package={:?} key={}", identity.package, identity.key);
+            }
+            (asset.mesh, asset.skin, sampler)
+        };
+        let (min, max) = mesh.bounds().ok_or("source Cell mesh is empty")?;
         let center = Vec3::new((min.x + max.x) * 0.5, (min.y + max.y) * 0.5, (min.z + max.z) * 0.5);
         let extent = (max.x - min.x).max(max.y - min.y).max(max.z - min.z);
         if !center.is_finite() || !extent.is_finite() || extent <= 1e-6 {
             return Err("source Cell mesh has invalid or degenerate bounds".into());
         }
-        println!("CELL_SOURCE_INSPECTION creation={:016X} pending_effects={} renderer=pbr static=true original_animation=false overlay=inspection-order", asset.definition.creation_instance, asset.pending_structure_entries.len());
-        for (role, identity) in [("cell", &asset.definition.cell), ("structure", &asset.definition.structure),
-            ("model_prop", &asset.model_prop), ("model", &asset.model), ("skin", &asset.skin_source)] {
-            println!("CELL_SOURCE_RESOURCE role={role} package={:?} key={}", identity.package, identity.key);
-        }
-        Some(SourcePlayer { asset, sampler, center, scale: 2.0 / extent })
+        Some(SourcePlayer { mesh, skin, sampler, center, scale: 2.0 / extent })
     } else { None };
     let world = configured_world(seed, diet, explicit_diet, creation_path.as_deref())?;
     diet = world.player.diet;
@@ -298,13 +308,13 @@ fn setup(
         }),
     ));
     if let Some(source) = source {
-        let data = &source.asset.mesh;
+        let data = &source.mesh;
         let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
         mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, data.positions.iter().map(|p| [p.x, p.y, p.z]).collect::<Vec<_>>());
         mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, data.normals.iter().map(|p| [p.x, p.y, p.z]).collect::<Vec<_>>());
         mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, data.uvs.clone());
         mesh.insert_indices(Indices::U32(data.indices.clone()));
-        let texture = &source.asset.skin;
+        let texture = &source.skin;
         let mut image = Image::new(Extent3d { width: texture.width, height: texture.height, depth_or_array_layers: 1 }, TextureDimension::D2, texture.rgba.clone(), TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::default());
         image.sampler = ImageSampler::Descriptor(source.sampler.clone());
         let image = images.add(image);

@@ -570,3 +570,8 @@
 /re/cell-kind0-native-fixture-v1.md -text whitespace=cr-at-eol
 /re/cell-native-pixel-fallback-v1.md -text whitespace=cr-at-eol
 /re/shader-pixel-codegen-native-v1.md -text whitespace=cr-at-eol
+
+# Keep inspection notes consistent across checkout platforms.
+/re/cell-kind0-gameplay-inspection-v1.md text eol=lf
+/re/creature-source-gameplay-inspection-v1.md text eol=lf
+/re/cell-rw4-binding-caller-trace-v1.md text eol=lf
