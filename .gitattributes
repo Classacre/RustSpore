@@ -525,3 +525,10 @@
 /tools/cell_request_rng_native_run_v1.py -text whitespace=cr-at-eol
 /re/cell-actor-animation-request-trace-v1.md -text whitespace=cr-at-eol
 /re/cell-request-rng-native-comparison-v1.md -text whitespace=cr-at-eol
+
+# Preserve the source-guided scaling comparison and follow-up evidence.
+/crates/spore-core/examples/cell_request_scaling_native_compare_v1.rs -text whitespace=cr-at-eol
+/tools/cell_request_scaling_native_prepare_v1.py -text whitespace=cr-at-eol
+/tools/cell_request_scaling_native_run_v1.py -text whitespace=cr-at-eol
+/re/cell-request-scaling-native-preparation-v1.md -text whitespace=cr-at-eol
+/re/cell-actor-initialization-movement-v1.md -text whitespace=cr-at-eol

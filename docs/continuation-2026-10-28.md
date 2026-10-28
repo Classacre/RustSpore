@@ -51,9 +51,10 @@ and live actor state remain outside that comparison. Workspace V38 passed 716
 tests with two ignored; log SHA-256
 `1ff8770acd10c035998aeb4f6c2b60bacefd74b97c4c6f47fc82f91db0246671`.
 The later bounded seeded selector composes supplied snapshot admission, the
-nonzero RNG model and source-guided x87 scaling; its combined scaling remains
-unverified against native execution. Workspace V39 passed 721 tests with two
-ignored; log SHA-256
+nonzero RNG model and source-guided x87 scaling. Its scaling and store match
+the original executable on 7,656 controlled cases; 24 zero-sign cases are
+explicit exclusions, and actor admission and live state remain unverified.
+Workspace V39 passed 721 tests with two ignored; log SHA-256
 `b5d3dc2ccb3bd1aa5ba6d3b835932162310063b136b5396f39ccbee57c626d00`.
 
 A conditional direct-draw resolver matches the original Jawhead census for
