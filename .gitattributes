@@ -532,3 +532,11 @@
 /tools/cell_request_scaling_native_run_v1.py -text whitespace=cr-at-eol
 /re/cell-request-scaling-native-preparation-v1.md -text whitespace=cr-at-eol
 /re/cell-actor-initialization-movement-v1.md -text whitespace=cr-at-eol
+
+# Preserve the measured movement-oracle source bytes.
+/crates/spore-core/examples/cell_movement_gate_native_compare_v1.rs -text whitespace=cr-at-eol
+/tools/cell_movement_gate_native_prepare_v1.py -text whitespace=cr-at-eol
+/tools/cell_movement_gate_native_run_v1.py -text whitespace=cr-at-eol
+/re/cell-anim-candidate-bridge-v1.md -text whitespace=cr-at-eol
+/re/cell-gameplay-source-art-bridge-plan.md -text whitespace=cr-at-eol
+/re/cell-movement-gate-native-preparation-v1.md -text whitespace=cr-at-eol

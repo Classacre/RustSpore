@@ -58,6 +58,7 @@ pub mod cell_request_admission_projection_v1;
 pub mod cell_request_snapshot_selection_v1;
 pub mod cell_request_rng_v1;
 pub mod cell_request_seeded_selection_v1;
+pub mod cell_movement_animation_gate_v1;
 pub mod cell_world_lighting_v1;
 pub mod anim_cid_child_mode2_v1;
 pub mod cell_effdir_framing_v3;

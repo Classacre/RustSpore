@@ -2,9 +2,13 @@
 //! Retail content, editors and cross-stage progression are separate milestone gates.
 
 use bevy::{
-    camera::ScalingMode,
+    asset::RenderAssetUsages,
+    camera::{visibility::RenderLayers, ScalingMode},
+    image::{ImageSampler, ImageSamplerDescriptor},
+    mesh::Indices,
     prelude::*,
     render::{
+        render_resource::{Extent3d, PrimitiveTopology, TextureDimension, TextureFormat},
         renderer::RenderAdapterInfo,
         view::screenshot::{save_to_disk, Screenshot},
     },
@@ -60,6 +64,26 @@ struct AuthoredArt {
     mesh: Option<Handle<Mesh>>,
     material: Option<Handle<ColorMaterial>>,
 }
+/// Set once by capture after all required render and text assets are ready.
+#[derive(Resource, Default)]
+struct OffscreenSimulationReady(bool);
+
+#[derive(Resource)]
+struct SourcePlayer {
+    asset: crate::source_cell::SourceCellAsset,
+    sampler: ImageSamplerDescriptor,
+    center: Vec3,
+    scale: f32,
+}
+
+#[derive(Resource)]
+struct SourcePlayerRender {
+    mesh: Handle<Mesh>,
+    material: Handle<StandardMaterial>,
+    center: Vec3,
+    scale: f32,
+}
+
 #[derive(Component)]
 struct Hud;
 #[derive(Component)]
@@ -74,6 +98,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let mut creation_path = None;
     let mut shot = None;
     let mut demo_seconds = None;
+    let mut source_install: Option<PathBuf> = None;
+    let mut source_id: Option<u32> = None;
+    let mut offscreen = false;
     let mut save_path = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."))
@@ -86,7 +113,18 @@ pub fn run(args: &[String]) -> Result<(), String> {
             args.get(i + 1)
                 .ok_or_else(|| format!("{} requires a value", args[i]))
         };
+        if args[i] == "--offscreen" {
+            offscreen = true;
+            i += 1;
+            continue;
+        }
         match args[i].as_str() {
+            "--source-cell-install" => source_install = Some(PathBuf::from(value()?)),
+            "--source-cell-id" => {
+                let text = value()?.trim();
+                let text = text.strip_prefix("0x").or_else(|| text.strip_prefix("0X")).unwrap_or(text);
+                source_id = Some(u32::from_str_radix(text, 16).map_err(|_| "source Cell ID must be hexadecimal u32".to_string())?);
+            }
             "--seed" => seed = value()?.parse().map_err(|_| "invalid seed".to_string())?,
             "--diet" => {
                 explicit_diet = true;
@@ -113,6 +151,32 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
         i += 2;
     }
+    if source_install.is_some() != source_id.is_some() {
+        return Err("--source-cell-install and --source-cell-id must be provided together".into());
+    }
+    if source_install.is_some() && creation_path.is_some() {
+        return Err("source Cell inspection art cannot be combined with --creation".into());
+    }
+    if offscreen && shot.is_none() {
+        return Err("--offscreen requires --shot <new PNG>".into());
+    }
+    let source_player = if let (Some(install), Some(id)) = (&source_install, source_id) {
+        let library = crate::source_cell::SourceCellLibrary::open_install(install)?;
+        let asset = library.load(id)?;
+        let sampler = crate::source_cell::source_skin_sampler(&asset)?;
+        let (min, max) = asset.mesh.bounds().ok_or("source Cell mesh is empty")?;
+        let center = Vec3::new((min.x + max.x) * 0.5, (min.y + max.y) * 0.5, (min.z + max.z) * 0.5);
+        let extent = (max.x - min.x).max(max.y - min.y).max(max.z - min.z);
+        if !center.is_finite() || !extent.is_finite() || extent <= 1e-6 {
+            return Err("source Cell mesh has invalid or degenerate bounds".into());
+        }
+        println!("CELL_SOURCE_INSPECTION creation={:016X} pending_effects={} renderer=pbr static=true original_animation=false overlay=inspection-order", asset.definition.creation_instance, asset.pending_structure_entries.len());
+        for (role, identity) in [("cell", &asset.definition.cell), ("structure", &asset.definition.structure),
+            ("model_prop", &asset.model_prop), ("model", &asset.model), ("skin", &asset.skin_source)] {
+            println!("CELL_SOURCE_RESOURCE role={role} package={:?} key={}", identity.package, identity.key);
+        }
+        Some(SourcePlayer { asset, sampler, center, scale: 2.0 / extent })
+    } else { None };
     let world = configured_world(seed, diet, explicit_diet, creation_path.as_deref())?;
     diet = world.player.diet;
     if shot.as_ref().is_some_and(|path| path.exists()) {
@@ -125,16 +189,22 @@ pub fn run(args: &[String]) -> Result<(), String> {
     {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
+    let mut app = App::new();
+    if offscreen {
+        crate::offscreen::configure(&mut app, 1280, 800);
+        app.init_resource::<OffscreenSimulationReady>();
+    } else {
+        app.add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "RustSpore | Cell".into(),
                 resolution: (1280, 800).into(),
                 ..default()
             }),
             ..default()
-        }))
-        .insert_resource(ClearColor(Color::srgb(0.012, 0.032, 0.046)))
+        }));
+    }
+    if let Some(source) = source_player { app.insert_resource(source); }
+    app.insert_resource(ClearColor(Color::srgb(0.012, 0.032, 0.046)))
         .insert_resource(Game {
             world,
             seed,
@@ -209,6 +279,10 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     adapter: Res<RenderAdapterInfo>,
+    source: Option<Res<SourcePlayer>>,
+    mut source_materials: ResMut<Assets<StandardMaterial>>,
+    mut images: ResMut<Assets<Image>>,
+    mut readiness: Option<ResMut<crate::offscreen::OffscreenReadiness>>,
 ) {
     println!(
         "CELL_GPU name={:?} backend={:?} type={:?}",
@@ -223,6 +297,27 @@ fn setup(
             ..OrthographicProjection::default_2d()
         }),
     ));
+    if let Some(source) = source {
+        let data = &source.asset.mesh;
+        let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, data.positions.iter().map(|p| [p.x, p.y, p.z]).collect::<Vec<_>>());
+        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, data.normals.iter().map(|p| [p.x, p.y, p.z]).collect::<Vec<_>>());
+        mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, data.uvs.clone());
+        mesh.insert_indices(Indices::U32(data.indices.clone()));
+        let texture = &source.asset.skin;
+        let mut image = Image::new(Extent3d { width: texture.width, height: texture.height, depth_or_array_layers: 1 }, TextureDimension::D2, texture.rgba.clone(), TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::default());
+        image.sampler = ImageSampler::Descriptor(source.sampler.clone());
+        let image = images.add(image);
+        if let Some(readiness) = readiness.as_mut() { readiness.require_image(&image); }
+        let material = source_materials.add(StandardMaterial { base_color: Color::WHITE, base_color_texture: Some(image), perceptual_roughness: 0.7, metallic: 0.0, cull_mode: None, double_sided: true, ..default() });
+        commands.insert_resource(SourcePlayerRender { mesh: meshes.add(mesh), material, center: source.center, scale: source.scale });
+        commands.spawn((Camera3d::default(), Camera { order: 1, clear_color: ClearColorConfig::None, ..default() },
+            Projection::Orthographic(OrthographicProjection { scaling_mode: ScalingMode::FixedVertical { viewport_height: 76.0 }, ..OrthographicProjection::default_3d() }),
+            Transform::from_xyz(0., 0., 100.), RenderLayers::layer(1), IsDefaultUiCamera,
+            AmbientLight { color: Color::WHITE, brightness: 300., ..default() }));
+        commands.spawn((DirectionalLight { illuminance: 9000., ..default() }, Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.4, -0.35, 0.)), RenderLayers::layer(1)));
+        commands.spawn((Text::new("SOURCE CELL: static PBR inspection art; experimental gameplay"), TextFont { font_size: 14., ..default() }, TextColor(Color::WHITE), Node { position_type: PositionType::Absolute, right: px(20), top: px(16), ..default() }));
+    }
     let circle = meshes.add(Circle::new(1.0));
     let line = meshes.add(Rectangle::new(1.0, 1.0));
     let ring = meshes.add(Annulus::new(0.96, 1.04));
@@ -417,7 +512,22 @@ pub(crate) fn read_save(path: &std::path::Path) -> std::io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
-fn drive(time: Res<Time>, mut keys: ResMut<ButtonInput<KeyCode>>, mut game: ResMut<Game>) {
+fn validate_source_snapshot(world: &CellWorld, source_enabled: bool) -> Result<(), String> {
+    if source_enabled && world.creation.is_some() {
+        return Err("save contains an authored creation; restart without source Cell inspection art to load it".into());
+    }
+    Ok(())
+}
+
+fn offscreen_step_delta(delta: f64, elapsed: f64, duration: f64, ready: bool) -> f64 {
+    if !ready { return 0.0; }
+    delta.min(0.1).min((duration - elapsed).max(0.0))
+}
+
+fn drive(time: Res<Time>, mut keys: ResMut<ButtonInput<KeyCode>>, mut game: ResMut<Game>, source: Option<Res<SourcePlayer>>, ready: Option<Res<OffscreenSimulationReady>>) {
+    // Render preparation, text layout, and capture continue in their own systems.
+    // Do not let pipeline compilation time advance the offscreen simulation.
+    if ready.as_ref().is_some_and(|ready| !ready.0) { return; }
     if keys.just_pressed(KeyCode::Escape) {
         std::process::exit(0);
     }
@@ -467,6 +577,7 @@ fn drive(time: Res<Time>, mut keys: ResMut<ButtonInput<KeyCode>>, mut game: ResM
             .and_then(|bytes| CellSnapshot::from_bytes(&bytes).map_err(|e| e.to_string()))
             .and_then(|snapshot| CellWorld::from_snapshot(snapshot).map_err(|e| e.to_string()))
             .and_then(|world| {
+                validate_source_snapshot(&world, source.is_some())?;
                 if let Some(creation) = &world.creation {
                     crate::editor::creation_mesh(creation, true)?;
                 }
@@ -484,7 +595,11 @@ fn drive(time: Res<Time>, mut keys: ResMut<ButtonInput<KeyCode>>, mut game: ResM
             Err(e) => game.notice = format!("Load failed: {e}"),
         }
     }
-    let dt = time.delta_secs_f64().min(0.1);
+    let dt = if ready.is_some() {
+        offscreen_step_delta(time.delta_secs_f64(), game.elapsed, game.demo_seconds.unwrap_or(1.5), true)
+    } else {
+        time.delta_secs_f64().min(0.1)
+    };
     game.elapsed += dt;
     if game.demo_seconds.is_some() {
         for key in [
@@ -536,7 +651,7 @@ fn drive(time: Res<Time>, mut keys: ResMut<ButtonInput<KeyCode>>, mut game: ResM
         }
         keys.press(KeyCode::Space);
     }
-    if !game.paused && game.capture_frame.is_none() {
+    if !game.paused && game.capture_frame.is_none() && dt > 0.0 {
         game.world.advance(dt, keyboard_input(&keys));
     }
 }
@@ -604,6 +719,7 @@ fn sync_scene(
     mut game: ResMut<Game>,
     mut transforms: Query<&mut Transform>,
     mut authored: ResMut<AuthoredArt>,
+    source: Option<Res<SourcePlayerRender>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
@@ -642,6 +758,18 @@ fn sync_scene(
         live.insert(key);
         let entity = *objects.0.entry(key).or_insert_with(|| {
             if is_player {
+                if let Some(source) = &source {
+                    return commands.spawn((Transform::default(), Visibility::Visible)).with_children(|parent| {
+                        // Source thumbnail camera uses screen right +Y and up -X.
+                        // A half turn of that view puts Jawhead's mouth toward the
+                        // prototype's +X heading. Gameplay-facing convention is
+                        // not established for the wider source asset corpus.
+                        let rotation = Quat::from_rotation_z(std::f32::consts::FRAC_PI_2);
+                        parent.spawn((Mesh3d(source.mesh.clone()), MeshMaterial3d(source.material.clone()),
+                            Transform::from_translation(-(rotation * source.center) * source.scale)
+                                .with_rotation(rotation).with_scale(Vec3::splat(source.scale)), RenderLayers::layer(1)));
+                    }).id();
+                }
                 if let (Some(mesh), Some(material)) = (&authored.mesh, &authored.material) {
                     return commands
                         .spawn((
@@ -780,7 +908,18 @@ fn update_hud(
     }
 }
 
-fn capture(mut commands: Commands, mut game: ResMut<Game>) {
+fn capture(mut commands: Commands, mut game: ResMut<Game>, target: Option<Res<crate::offscreen::OffscreenTarget>>, mut readiness: Option<ResMut<crate::offscreen::OffscreenReadiness>>, mut simulation_ready: Option<ResMut<OffscreenSimulationReady>>, layouts: Query<(&Text, Option<&bevy::text::TextLayoutInfo>)>, time: Res<Time>) {
+    if let Some(readiness) = readiness.as_mut() {
+        if let Some(error) = readiness.failure() { eprintln!("Cell offscreen render failed: {error}"); std::process::exit(1); }
+        let text_ready = layouts.iter().all(|(text, layout)| text.0.is_empty() || layout.is_some_and(|layout| readiness.require_text(layout)));
+        if !text_ready || !readiness.ready() {
+            if time.elapsed_secs() > 120. { eprintln!("Cell offscreen renderer did not become ready"); std::process::exit(1); }
+            return;
+        }
+        if let Some(simulation_ready) = simulation_ready.as_mut() {
+            simulation_ready.0 = true;
+        }
+    }
     game.frames += 1;
     let duration = game.demo_seconds.unwrap_or(1.5);
     if game.capture_frame.is_none()
@@ -789,7 +928,7 @@ fn capture(mut commands: Commands, mut game: ResMut<Game>) {
     {
         if let Some(path) = &game.shot {
             commands
-                .spawn(Screenshot::primary_window())
+                .spawn(target.as_ref().map_or_else(Screenshot::primary_window, |target| target.screenshot()))
                 .observe(save_to_disk(path.clone()));
         }
         game.capture_frame = Some(game.frames);
@@ -809,6 +948,55 @@ fn capture(mut commands: Commands, mut game: ResMut<Game>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn source_art_requires_explicit_pair_and_rejects_creation_conflict() {
+        let args = |parts: &[&str]| parts.iter().map(|part| part.to_string()).collect::<Vec<_>>();
+        assert!(run(&args(&["--source-cell-install", "missing-install"]))
+            .unwrap_err().contains("must be provided together"));
+        assert!(run(&args(&["--source-cell-id", "7D00E384"]))
+            .unwrap_err().contains("must be provided together"));
+        assert!(run(&args(&["--source-cell-install", "missing-install", "--source-cell-id", "7D00E384", "--creation", "unused.rsc"]))
+            .unwrap_err().contains("cannot be combined"));
+        assert!(run(&args(&["--source-cell-id", "not-hex"]))
+            .unwrap_err().contains("hexadecimal u32"));
+        assert!(run(&args(&["--offscreen"]))
+            .unwrap_err().contains("requires --shot"));
+    }
+
+    #[test]
+    fn offscreen_simulation_waits_and_stops_at_requested_duration() {
+        assert_eq!(offscreen_step_delta(0.1, 0.0, 1.5, false), 0.0);
+        assert_eq!(offscreen_step_delta(0.5, 0.0, 1.5, true), 0.1);
+        let final_step = offscreen_step_delta(0.1, 1.48, 1.5, true);
+        assert!((final_step - 0.02).abs() < 1e-12);
+        assert_eq!(offscreen_step_delta(0.1, 1.5, 1.5, true), 0.0);
+        assert_eq!(offscreen_step_delta(0.1, 1.6, 1.5, true), 0.0);
+    }
+
+    #[test]
+    fn drive_waits_for_offscreen_simulation_latch() {
+        let mut app = App::new();
+        app.insert_resource(Time::<()>::default())
+            .insert_resource(ButtonInput::<KeyCode>::default())
+            .init_resource::<OffscreenSimulationReady>()
+            .insert_resource(Game {
+                world: CellWorld::new(14, Diet::Herbivore), seed: 14, diet: Diet::Herbivore,
+                paused: false, elapsed: 0., notice: String::new(), rebuild: true,
+                save_path: PathBuf::from("unused"), shot: None, demo_seconds: Some(1.0),
+                capture_frame: None, frames: 0,
+            })
+            .add_systems(Update, drive);
+        app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(100));
+        app.update();
+        assert_eq!(app.world().resource::<Game>().elapsed, 0.0);
+        assert_eq!(app.world().resource::<Game>().world.tick, 0);
+        app.world_mut().resource_mut::<OffscreenSimulationReady>().0 = true;
+        app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(100));
+        app.update();
+        assert!((app.world().resource::<Game>().elapsed - 0.1).abs() < 1e-12);
+        assert!(app.world().resource::<Game>().world.tick > 0);
+    }
+
     #[test]
     fn keyboard_mapping_controls_the_same_simulation_input_as_gameplay() {
         let mut keys = ButtonInput::default();
@@ -957,6 +1145,15 @@ mod tests {
         }
         creation.palette[0] = [0.8, 0.2, 0.4];
         creation
+    }
+
+    #[test]
+    fn source_inspection_rejects_authored_snapshot_without_changing_it() {
+        let mut world = CellWorld::new(77, Diet::Carnivore);
+        world.apply_creation(authored_creation()).unwrap();
+        assert!(validate_source_snapshot(&world, true).unwrap_err().contains("authored creation"));
+        assert!(validate_source_snapshot(&world, false).is_ok());
+        assert!(validate_source_snapshot(&CellWorld::new(14, Diet::Herbivore), true).is_ok());
     }
 
     #[test]

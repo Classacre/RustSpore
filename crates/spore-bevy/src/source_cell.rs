@@ -148,7 +148,7 @@ pub(crate) struct SourceCellMaterial {
     pub textures: Vec<spore_core::shader_binding::TextureBinding>,
 }
 
-fn source_skin_sampler(asset: &SourceCellAsset) -> Result<ImageSamplerDescriptor, String> {
+pub(crate) fn source_skin_sampler(asset: &SourceCellAsset) -> Result<ImageSamplerDescriptor, String> {
     let mut settings = None;
     for material in &asset.native_materials {
         let binding = material.textures.iter().rev().find(|binding| binding.sampler == 0)
