@@ -56,6 +56,9 @@ transient replacement. Payload hashes bind the bytes handed to the fixture.
 This is an explicit package fixture, not evidence of the original manager's
 mounted winner, native fixup execution, actor creation or gameplay reachability.
 No original-game program was executed for this gate.
+The same hash-bound test now also passes the original record bytes to the
+restricted size/RNG model with explicitly synthetic runtime inputs; see
+[cell-start-equal-size-model-v1.md](cell-start-equal-size-model-v1.md).
 
 ## Reproduction
 

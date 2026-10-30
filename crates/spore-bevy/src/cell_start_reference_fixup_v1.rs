@@ -281,6 +281,18 @@ mod tests {
         assert_eq!(table.len(), 1);
         assert_eq!(table.get(result.handle), Some(Entry { id: 0xcbcd_1287, descriptor }));
         assert_eq!(result.cell_definition().structure_id(), 0xcbcd_1287);
+        // Explicit synthetic runtime inputs: these do not assert a live actor,
+        // original FP environment, native RNG seed, or package selection.
+        let size = spore_core::cell_start_equal_size_v1::candidate_start_size(
+            spore_core::cell_start_equal_size_v1::AdmittedCellKey {
+                instance: cell_key.instance_id, type_id: cell_key.type_id, scope: cell_key.group_id,
+            },
+            result.cell_definition(), cell_globals::parse(&globals).unwrap(),
+            1.0, 1.0, 1, 0x027f,
+        ).expect("bounded size transition with explicit synthetic inputs");
+        assert_eq!(size.sampled_bits, 0x3e8c_cccd);
+        assert_eq!(size.actor_scale_bits, 0x3e8c_cccd);
+        assert_eq!(size.rng_state_after, 0x278d_de6d);
         let other = HandleTable::new().unwrap();
         assert_eq!(other.get(result.handle), None);
     }

@@ -648,3 +648,8 @@
 /re/cell-start-reference-source-bound-test-plan-v1.md text eol=lf
 /re/cell-start-actor-constructor-static-v1.md text eol=lf
 /re/cell-start-actor-constructor-next-boundary-v1.md text eol=lf
+
+# Keep source start-size and orientation evidence stable on checkout.
+/re/cell-start-equal-size-model-v1.md text eol=lf
+/re/cell-start-equal-size-independent-validation-plan-v1.md text eol=lf
+/re/cell-start-null-orientation-static-v1.md text eol=lf

@@ -91,6 +91,7 @@ pub mod cell_runtime_fresh_loop;
 pub mod cell_runtime_fresh_sampled_channel_v2;
 pub mod cell_actor_pool_checked_v1;
 pub mod cell_source_sweep_pairs_v1;
+pub mod cell_start_equal_size_v1;
 pub mod cell_swimming;
 pub mod civilization;
 pub mod blockdata;
