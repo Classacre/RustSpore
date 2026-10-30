@@ -65,6 +65,8 @@ Its controlled size-to-orientation-to-selection handoff is described in
 [cell-start-orientation-model-v1.md](cell-start-orientation-model-v1.md).
 The same admitted orientation also feeds the bounded matrix model described in
 [cell-start-quaternion-matrix-model-v1.md](cell-start-quaternion-matrix-model-v1.md).
+An explicit synthetic actor/cache handoff is described in
+[cell-actor-geometry-projection-model-v1.md](cell-actor-geometry-projection-model-v1.md).
 
 ## Reproduction
 

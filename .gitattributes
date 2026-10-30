@@ -668,3 +668,9 @@
 # Keep source quaternion matrix evidence stable on checkout.
 /re/cell-start-quaternion-matrix-static-v1.md text eol=lf
 /re/cell-start-quaternion-matrix-model-v1.md text eol=lf
+
+# Keep Cell actor geometry and capability evidence stable on checkout.
+/re/cell-actor-geometry-projection-model-v1.md text eol=lf
+/re/cell-actor-geometry-consumer-static-v1.md text eol=lf
+/re/cell-start-geometry-handoff-test-plan-v1.md text eol=lf
+/re/cell-capability-zero-flag-source-bridge-v1.md text eol=lf

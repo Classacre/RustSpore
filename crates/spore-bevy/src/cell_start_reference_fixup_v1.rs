@@ -346,6 +346,37 @@ mod tests {
             triple: [0xe219_e5d3, 0x3d97_a8e4, 7], selected: 2,
             rng_state: 0x492c_37f9, draws: 4,
         });
+        // All actor fields and cache contents below are synthetic fixture
+        // admissions. The selected word is only a symbolic first-word key;
+        // it does not establish a live handle, cache, actor, provider, or
+        // resource winner. The earlier no-intervening-RNG assumption applies.
+        use spore_core::cell_actor_geometry_projection_v1::{
+            project, ActorInput, AdmittedCacheSnapshot, Error as ProjectionError, Output,
+        };
+        use spore_core::native_sse::Policy;
+        let key = match &chained {
+            spore_core::cell_kind4_cache_selection_v1::ResultV1::Selected { triple, .. } => triple[0],
+            _ => panic!("fixture selection did not produce a triple"),
+        };
+        assert_eq!(key, 0xe219_e5d3);
+        let actor = ActorInput {
+            handle_fc: key,
+            position: [10.0f32.to_bits(), 20.0f32.to_bits(), 30.0f32.to_bits()],
+            scalar: 2.0f32.to_bits(), flags_48: 2, matrix,
+        };
+        let snapshot = AdmittedCacheSnapshot {
+            key_fc: key, center: [0, 0, 1.0f32.to_bits()], scalar: 3.0f32.to_bits(),
+        };
+        assert_eq!(project(actor, Some(snapshot), Policy::Mxcsr1f80), Ok(Output {
+            center: [0x4120_0000, 0x41a0_0000, 0x4200_0000], scalar: 0x40c0_0000,
+        }));
+        let wrong = AdmittedCacheSnapshot { key_fc: key ^ 1, ..snapshot };
+        assert_eq!(project(actor, Some(wrong), Policy::Mxcsr1f80), Err(ProjectionError::WrongCacheKey));
+        assert_eq!(project(actor, None, Policy::Mxcsr1f80), Err(ProjectionError::MissingCache));
+        let no_handle = ActorInput { handle_fc: 0, ..actor };
+        assert_eq!(project(no_handle, None, Policy::Mxcsr1f80), Ok(Output {
+            center: actor.position, scalar: actor.scalar,
+        }));
         let other = HandleTable::new().unwrap();
         assert_eq!(other.get(result.handle), None);
     }
