@@ -602,3 +602,14 @@
 /re/cell-creature-mip-inspection-v1.md text eol=lf
 /re/cell-kind4-integer-filter-v1.md text eol=lf
 /re/cell-kind4-integer-filter-source-comparison-v1.md text eol=lf
+
+# Preserve source-stencil and selector evidence on checkout.
+/crates/spore-core/examples/cell_manual_selector_context_v1.rs -text whitespace=cr-at-eol
+/tools/cell_manual_selector_context_v1.py -text whitespace=cr-at-eol
+/re/cell-fallback-original-program-v1.md text eol=lf
+/re/cell-fallback-pixel-token-audit-v1.md text eol=lf
+/re/cell-fallback-source-stencil-v1.md text eol=lf
+/re/cell-kind4-filter-iterator-boundaries-v1.md text eol=lf
+/re/cell-manual-selector-context-v1.md text eol=lf
+/re/cell-ui-paired-control-trace-v1.md text eol=lf
+/re/d3d9-stencil-coverage-synthetic-v1.md text eol=lf

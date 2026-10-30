@@ -8,6 +8,7 @@ struct Options {
     install: PathBuf,
     creature: u64,
     shot: PathBuf,
+    coverage: Option<PathBuf>,
 }
 impl Options {
     fn parse(args: &[String]) -> Result<Self, String> {
@@ -16,6 +17,7 @@ impl Options {
             .unwrap_or_else(|| PathBuf::from("D:/Games/SPORE Collection"));
         let mut creature = None;
         let mut shot = None;
+        let mut coverage = None;
         let mut index = 0;
         while index < args.len() {
             let value = args
@@ -24,15 +26,24 @@ impl Options {
             match args[index].as_str() {
                 "--install" => install = PathBuf::from(value),
                 "--creature" => creature = Some(crate::parse_hex_arg(value, "creature")?),
-                "--shot" => shot = Some(PathBuf::from(value)),
+                "--shot" if shot.is_none() => shot = Some(PathBuf::from(value)),
+                "--coverage" if coverage.is_none() => coverage = Some(PathBuf::from(value)),
                 other => return Err(format!("unknown source creature option {other:?}")),
             }
             index += 2;
         }
+        let creature = creature.ok_or("--source-creature requires --creature <hex>")?;
+        let shot = shot.ok_or("--source-creature requires --shot <new.png>")?;
+        if shot.file_name().is_none() || coverage.as_ref().is_some_and(|path| path.file_name().is_none()) {
+            return Err("shot and coverage require file paths".into());
+        }
+        if coverage.as_ref().is_some_and(|path| path == &shot) { return Err("coverage and shot must use different paths".into()); }
+        if coverage.is_some() && creature != 0x4061_6200_a1c4_6df2 { return Err("coverage is restricted to Creature 40616200A1C46DF2".into()); }
         Ok(Self {
             install,
-            creature: creature.ok_or("--source-creature requires --creature <hex>")?,
-            shot: shot.ok_or("--source-creature requires --shot <new.png>")?,
+            creature,
+            shot,
+            coverage,
         })
     }
 }
@@ -42,6 +53,7 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
     if options.shot.exists() {
         return Err("capture output already exists; choose a new path".into());
     }
+    if options.coverage.as_ref().is_some_and(|path| path.exists()) { return Err("coverage output already exists; choose a new path".into()); }
     let source = AssetSource::open(options.install.join("Data/PatchData.package"))?
         .with_set(PackageSet::discover(&options.install));
     let authored = source
@@ -54,6 +66,7 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
         &options.install,
         &options.shot,
         authored.model,
+        options.coverage.as_deref(),
     )
     .map_err(|e| e.to_string());
     #[cfg(not(all(windows, feature = "native_renderer")))]
@@ -97,5 +110,11 @@ mod tests {
             "target/test.png"
         ]))
         .is_err());
+        assert!(Options::parse(&args(&["--creature", "40616200A1C46DF2", "--shot", "same.png", "--coverage", "same.png"])).is_err());
+        assert!(Options::parse(&args(&["--creature", "406B62000660EACA", "--shot", "color.png", "--coverage", "mask.png"])).is_err());
+        assert!(Options::parse(&args(&["--creature", "40616200A1C46DF2", "--shot", "color.png", "--coverage"])).is_err());
+        assert!(Options::parse(&args(&["--creature", "40616200A1C46DF2", "--shot", "color.png", "--coverage", ""])).is_err());
+        assert!(Options::parse(&args(&["--creature", "40616200A1C46DF2", "--shot", "color.png", "--coverage", "mask.png", "--coverage", "other.png"])).is_err());
+        assert_eq!(Options::parse(&args(&["--creature", "40616200A1C46DF2", "--shot", "color.png", "--coverage", "mask.png"])).unwrap().coverage, Some(PathBuf::from("mask.png")));
     }
 }

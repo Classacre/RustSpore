@@ -32,6 +32,45 @@ pub struct OffscreenDevice {
 }
 
 impl OffscreenDevice {
+    /// Read a binary mask from stencil value one after a completed draw.
+    /// This mutates render state and the color target, so call only after color readback.
+    pub unsafe fn read_stencil_mask(&self) -> Result<Vec<u8>, Failure> {
+        #[repr(C)]
+        struct Vertex { x: f32, y: f32, z: f32, rhw: f32, color: u32 }
+        let vertices = [
+            Vertex { x: -0.5, y: -0.5, z: 0.0, rhw: 1.0, color: 0xffffffff },
+            Vertex { x: self.width as f32 - 0.5, y: -0.5, z: 0.0, rhw: 1.0, color: 0xffffffff },
+            Vertex { x: -0.5, y: self.height as f32 - 0.5, z: 0.0, rhw: 1.0, color: 0xffffffff },
+            Vertex { x: self.width as f32 - 0.5, y: self.height as f32 - 0.5, z: 0.0, rhw: 1.0, color: 0xffffffff },
+        ];
+        let d = &self.device;
+        d.Clear(0, ptr::null(), D3DCLEAR_TARGET as u32, 0xff000000, 1.0, 0)?;
+        d.BeginScene()?;
+        for (state, value) in [(D3DRS_ZENABLE, 0), (D3DRS_ZWRITEENABLE, 0),
+            (D3DRS_ALPHABLENDENABLE, 0), (D3DRS_ALPHATESTENABLE, 0), (D3DRS_LIGHTING, 0),
+            (D3DRS_CULLMODE, D3DCULL_NONE.0 as u32), (D3DRS_SRGBWRITEENABLE, 0),
+            (D3DRS_COLORWRITEENABLE, 15), (D3DRS_STENCILENABLE, 1),
+            (D3DRS_TWOSIDEDSTENCILMODE, 0), (D3DRS_STENCILFUNC, D3DCMP_EQUAL.0 as u32),
+            (D3DRS_STENCILREF, 1), (D3DRS_STENCILMASK, 0xff), (D3DRS_STENCILWRITEMASK, 0),
+            (D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP.0 as u32),
+            (D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP.0 as u32),
+            (D3DRS_STENCILPASS, D3DSTENCILOP_KEEP.0 as u32)] { d.SetRenderState(state, value)?; }
+        d.SetVertexShader(None::<&IDirect3DVertexShader9>)?;
+        d.SetPixelShader(None::<&IDirect3DPixelShader9>)?;
+        d.SetFVF(D3DFVF_XYZRHW | D3DFVF_DIFFUSE)?;
+        d.SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1.0 as u32)?;
+        d.SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_DIFFUSE)?;
+        d.SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1.0 as u32)?;
+        d.SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_DIFFUSE)?;
+        d.SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE.0 as u32)?;
+        d.DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, vertices.as_ptr().cast(), std::mem::size_of::<Vertex>() as u32)?;
+        d.EndScene()?;
+        let rgba = self.read_rgba()?;
+        if rgba.chunks_exact(4).any(|pixel| pixel != [0, 0, 0, 255] && pixel != [255, 255, 255, 255]) {
+            return Err("stencil readback is not binary opaque black/white".into());
+        }
+        Ok(rgba)
+    }
     pub unsafe fn new(width: u32, height: u32) -> Result<Self, Failure> {
         if width == 0 || height == 0 || width > 4096 || height > 4096 {
             return Err("unsupported offscreen target extent".into());

@@ -1,0 +1,19 @@
+# Synthetic D3D9 stencil coverage fixture v1
+
+The retained `target/d3d9-stencil-fixture-v3/report.json` records a successful **synthetic** D3D9 fixture on an NVIDIA GeForce RTX 3060 Laptop GPU, adapter 0, vendor `10DE`. The 64×64 analytic fixture produced 512 covered pixels. It uses no original game assets or shader and does not prove source-shader, retail rendering, dynamic integration, or final visibility after later occlusion.
+
+The fixture compiles a synthetic pixel shader containing `texkill`, checks the compiled instruction stream, and draws with a depth occluder and enabled alpha test. Its accepted black foreground matches the black clear color, so coverage is checked against an analytic geometry/clip/depth/alpha mask rather than an RGB color key or guessed alpha. It checks binary mask values and full-frame agreement with that analytic mask; the baseline and stencil-instrumented color buffers must agree byte for byte. The controlled stencil pass observes this fixture's coverage on the tested hardware and driver; it does not establish behavior for an untested original shader or later draws. Readback, fixed raster coordinates and state are fixture choices, not a native Cell scene.
+
+The first v1 attempt failed at GPU selection: the coordinating agent reported that only AMD was enumerated because the fixture lacked the MSVC NVIDIA export. The fixture was updated with the export; the coordinator reports a subsequent one-off PE inspection found non-forwarded `NvOptimusEnablement` at RVA `0x25da0`, with file-backed value `1`. That inspection was not retained as a report, and the export itself is a selection hint. The v3 stdout-derived adapter record separately identifies the NVIDIA device.
+
+The reported v3 command was:
+
+```powershell
+python tools/d3d9_stencil_texkill_fixture_v1.py --example target/debug/examples/d3d9_stencil_texkill_fixture_v1.exe --example-sha256 f76cfa351fa6678409979d5e668c7732b6b4ff08ff1a57845c6c665478da8001 --source-sha256 375afc8a913ea1fb0c5c065ea5cc73a052237654a9ba0e06be3d3f048fe5b24c --shader-sha256 e135dac7c0bc0117713f25ae56cc76bfaee91df9902d872f24d3999f4a593ea4 --d3d9-source-sha256 afdad13ec0c85545e18f7ccf2699d1f4da680691e9affe51b5b985bddb1aa796 --d3dx-source-sha256 96bcc3491913d1f42efb8ba242bc0153605e92163a1f86a39a56e0e9e9a8c864 --compiler 'C:\Windows\System32\d3dx9_27.dll' --compiler-sha256 f9dd288c9895973f8db1856d172779041c6dee173ad1ef53b1727fc85cb6b75f --out target/d3d9-stencil-fixture-v3
+```
+
+The wrapper runs a no-device preflight, checks the loaded compiler path and synthetic shader hash before the GPU run, then checks both again and rehashes inputs. Its report SHA-256 is `b0c9b559af4b57d745f7e8a9d921722617cb8e5dca0849461c1c532ced583759`; it records 236 compiled shader bytes, preflight stdout SHA-256 `0fe81d7f7ada10f2aaef81e1815bf6cbaf1f6f3cac213c792f46633d5a47450a`, and fixture stdout SHA-256 `f82a19ab430ad86e3c23ae7512666bb8f988d39dff7e1336a15079ce0a5c0bad`. Source, helpers, executable and compiler hashes matched before and after. These checks do not bind the executable to a build command or eliminate transient file replacement. The local wrapper at documentation time hashes to `cec5a70fa87a77d52da33eb48df0d4cd06e0a45a855cdf60851c3000c42e002a`; the receipt does not bind its hash.
+
+The `native_d3d9.rs` hash `afdad13ec0c85545e18f7ccf2699d1f4da680691e9affe51b5b985bddb1aa796` is historical for the synthetic fixture run. That helper was subsequently extended for the source stencil diagnostic; the command's helper pin therefore requires the matching earlier helper bytes. A run with current helper source requires a fresh review, build, and pins, and produces new evidence rather than reproducing the historical receipt.
+
+The note author inspected the report and its hash and did not run Cargo, native code or a GPU fixture. A repeat requires the pinned trusted inputs and a new output directory.

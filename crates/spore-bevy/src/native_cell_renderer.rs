@@ -271,6 +271,7 @@ mod probe {
         model_key: Option<NativeResourceKey>,
         creature_camera: bool,
         diagnostic_skin_translation: bool,
+        coverage: Option<&Path>,
     ) -> Result<(), Failure> {
         if output.exists() {
             return Err("capture output already exists".into());
@@ -284,6 +285,10 @@ mod probe {
             None => sources.read(0x00e6bce5, instance)?,
         };
         let model = gmdl::parse(&raw)?;
+        if coverage.is_some() && (instance != 0x4061_7100_a1c4_6df2 || model_key.is_none()
+            || !creature_camera || diagnostic_skin_translation || model.meshes.len() != 1) {
+            return Err("coverage requires the exact one-mesh Creature inspection model".into());
+        }
         let tail = gmdl_skin::parse(&raw, &model)?.ok_or("source GMDL has no material tail")?;
         if tail.materials.len() != model.meshes.len() {
             return Err("material slot mismatch".into());
@@ -470,6 +475,27 @@ mod probe {
         println!("SOURCE_3D_CONTEXT model={instance:016X} profile=3 builder=generic_static render_type=0 unpack_enabled=true light=40200100FCED73A2 light_frame=identity lighting_world=fresh sh_extra219=source_initial_zero camera={camera_key:016X} editor_setup={setup_key:016X} fit=inspection material_color=white tint=fallback_white retail_fidelity=false sh_band_roundtrip=true");
         let target = unsafe { OffscreenDevice::new(768, 768)? };
         let device = &target.device;
+        if let Some(mask_path) = coverage {
+            if mask_path.exists() || mask_path == output { return Err("coverage output must be a distinct new path".into()); }
+            for path in [output, mask_path] {
+                if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) { std::fs::create_dir_all(parent)?; }
+            }
+            let resolved = |path: &Path| -> Result<std::path::PathBuf, Failure> {
+                let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+                Ok(parent.canonicalize()?.join(path.file_name().ok_or("output needs filename")?))
+            };
+            if resolved(output)? == resolved(mask_path)? { return Err("coverage and color paths alias".into()); }
+            let mut caps = D3DCAPS9::default();
+            unsafe { device.GetDeviceCaps(&mut caps)?; }
+            let required = (D3DSTENCILCAPS_KEEP | D3DSTENCILCAPS_REPLACE) as u32;
+            if caps.StencilCaps & required != required || caps.ZCmpCaps & D3DPCMPCAPS_LESSEQUAL as u32 == 0 {
+                return Err("required stencil/depth capabilities unavailable".into());
+            }
+        }
+        let mut baseline = None;
+        let mut rgba = Vec::new();
+        let mut total_triangles = 0;
+        for instrumented in if coverage.is_some() { vec![false, true] } else { vec![false] } {
         unsafe {
             for (state, value) in [
                 (D3DRS_ZENABLE, 1),
@@ -484,17 +510,28 @@ mod probe {
             ] {
                 device.SetRenderState(state, value)?;
             }
+            if coverage.is_some() {
+                device.SetRenderState(D3DRS_STENCILENABLE, u32::from(instrumented))?;
+                if instrumented {
+                    for (state, value) in [(D3DRS_TWOSIDEDSTENCILMODE, 0),
+                        (D3DRS_STENCILFUNC, D3DCMP_ALWAYS.0 as u32), (D3DRS_STENCILREF, 1),
+                        (D3DRS_STENCILMASK, 0xff), (D3DRS_STENCILWRITEMASK, 0xff),
+                        (D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP.0 as u32),
+                        (D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP.0 as u32),
+                        (D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE.0 as u32)] { device.SetRenderState(state, value)?; }
+                }
+            }
             device.Clear(
                 0,
                 ptr::null(),
-                (D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER) as u32,
+                (D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER | if coverage.is_some() { D3DCLEAR_STENCIL } else { 0 }) as u32,
                 0xff18202e,
                 1.,
                 0,
             )?;
             device.BeginScene()?;
         }
-        let mut total_triangles = 0;
+        total_triangles = 0;
         for (i, mesh) in model.meshes.iter().enumerate() {
             let vb = model
                 .vertex_buffers
@@ -745,7 +782,20 @@ mod probe {
         unsafe {
             device.EndScene()?;
         }
-        let rgba = unsafe { target.read_rgba()? };
+        rgba = unsafe { target.read_rgba()? };
+        if coverage.is_some() {
+            if instrumented {
+                if baseline.as_ref() != Some(&rgba) { return Err("stencil instrumentation changed source color".into()); }
+            } else { baseline = Some(rgba.clone()); }
+        }
+        }
+        let mask = if coverage.is_some() {
+            let mask = unsafe { target.read_stencil_mask()? };
+            let count = mask.chunks_exact(4).filter(|p| *p == [255, 255, 255, 255]).count();
+            if mask.len() != rgba.len() || count == 0 { return Err("stencil coverage is empty or has wrong extent".into()); }
+            println!("SOURCE_3D_COVERAGE pixels={count} color_equal=true synthetic_fixture_basis=true runtime_retail_unverified=true");
+            Some(mask)
+        } else { None };
         let changed = rgba
             .chunks_exact(4)
             .filter(|p| *p != [0x18, 0x20, 0x2e, 0xff])
@@ -765,6 +815,12 @@ mod probe {
                 .open(output)?,
         )
         .write_image(&rgba, 768, 768, image::ExtendedColorType::Rgba8)?;
+        if let (Some(mask_path), Some(mask)) = (coverage, mask) {
+            let file = std::fs::OpenOptions::new().write(true).create_new(true).open(mask_path)
+                .map_err(|error| format!("color saved to {}; coverage file creation failed: {error}", output.display()))?;
+            image::codecs::png::PngEncoder::new(file).write_image(&mask, 768, 768, image::ExtendedColorType::Rgba8)
+                .map_err(|error| format!("color saved to {}; coverage write failed at {}: {error}", output.display(), mask_path.display()))?;
+        }
         println!("SOURCE_3D_RESULT triangles={total_triangles} non_background_pixels={changed} output={output:?} presented=false");
         Ok(())
     }
@@ -775,7 +831,7 @@ pub fn capture(
     output: &std::path::Path,
     instance: u64,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    probe::render(install, output, instance, None, false, false)
+    probe::render(install, output, instance, None, false, false, None)
 }
 #[cfg(windows)]
 pub fn capture_key(
@@ -784,7 +840,7 @@ pub fn capture_key(
     model: dbpf::native_index::NativeResourceKey,
     diagnostic_skin_translation: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    probe::render(install, output, model.scoped_instance(), Some(model), false, diagnostic_skin_translation)
+    probe::render(install, output, model.scoped_instance(), Some(model), false, diagnostic_skin_translation, None)
 }
 
 #[cfg(windows)]
@@ -792,8 +848,9 @@ pub fn capture_creature_key(
     install: &std::path::Path,
     output: &std::path::Path,
     model: dbpf::native_index::NativeResourceKey,
+    coverage: Option<&std::path::Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    probe::render(install, output, model.scoped_instance(), Some(model), true, false)
+    probe::render(install, output, model.scoped_instance(), Some(model), true, false, coverage)
 }
 #[cfg(not(windows))]
 pub fn capture(

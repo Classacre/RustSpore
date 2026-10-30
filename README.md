@@ -32,6 +32,12 @@ executes original shaders and source mip chains offscreen. The measured fresh
 lighting context and original editor thumbnail camera are inspection controls.
 All 704 creations with explicit model links pass hidden RTX captures, including
 expansion assets. Complete animated creatures and retail scenes remain in progress.
+
+For the explicitly reviewed source creature `40616200A1C46DF2`, add
+`--coverage target/creature-mask.png` to a `--source-creature --shot` command
+to produce a separate binary stencil mask for the controlled original-program
+draw. The mask is an inspection diagnostic; live scene depth, animation and
+original gameplay selection remain unverified.
 The canonical asset catalog now agrees independently on all 158,720 native keys
 in 82 packages. All 704 linked creations also pass strict CPU mesh/material intake
 with their own painted maps, including version9 expansion models.
