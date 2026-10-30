@@ -109,6 +109,33 @@ pub struct TextureData {
     pub rgba: Vec<u8>,
 }
 
+/// All declared, validated standalone RASTER levels in largest-first order.
+pub struct TextureMipChain {
+    pub levels: Vec<TextureData>,
+}
+
+fn decode_standalone_raster_mips(data: &[u8]) -> Result<TextureMipChain, String> {
+    if data.len() > 128 * 1024 * 1024 { return Err("source raster payload exceeds limit".into()); }
+    let raster = spore_core::raster::parse(data).map_err(|e| e.to_string())?;
+    if raster.width == 0 || raster.height == 0 || raster.width > 4096 || raster.height > 4096 {
+        return Err("source raster mip dimensions unsupported".into());
+    }
+    let source_levels = raster.mip_levels().map_err(|e| e.to_string())?;
+    let mut levels = Vec::with_capacity(source_levels.len());
+    let mut total = 0usize;
+    for level in source_levels {
+        let size = (level.width as usize).checked_mul(level.height as usize)
+            .and_then(|n| n.checked_mul(4)).ok_or("source raster mip extent overflow")?;
+        total = total.checked_add(size).ok_or("source raster mip total overflow")?;
+        if total > 128 * 1024 * 1024 { return Err("source raster mip chain exceeds limit".into()); }
+        let rgba = spore_core::raster::decode_pixels(raster.format, level.width, level.height, level.data)
+            .map_err(|e| e.to_string())?;
+        if rgba.len() != size { return Err("source raster mip decoded extent mismatch".into()); }
+        levels.push(TextureData { width: level.width, height: level.height, rgba });
+    }
+    Ok(TextureMipChain { levels })
+}
+
 /// An exact authored LOD reference at the source creation's own PROP instance.
 #[derive(Debug, Clone, Copy)]
 pub struct AuthoredCreatureModel {
@@ -366,6 +393,13 @@ pub struct AssetSource {
 }
 
 impl AssetSource {
+    /// Read the exact saved sampler texture as a complete standalone RASTER chain.
+    /// RW4 texture chains are a separate format and are deliberately rejected here.
+    pub fn authored_creature_raster_mips(&self, key: NativeResourceKey) -> Result<TextureMipChain, String> {
+        if key.type_id != RASTER { return Err("source Creature mip chain requires standalone RASTER; RW4 unsupported".into()); }
+        let data = self.read(key.type_id, key.scoped_instance()).ok_or("source Creature raster unreadable")?;
+        decode_standalone_raster_mips(&data)
+    }
     pub fn open(path: impl AsRef<Path>) -> Result<Self, String> {
         let file = NativePackageIndex::open(path).map_err(|e| e.to_string())?;
         let mut meshes = Vec::new();
@@ -996,6 +1030,58 @@ impl AssetSource {
 #[cfg(test)]
 mod authored_tests {
     use super::*;
+    #[test]
+    fn standalone_raster_mips_decode_each_level_and_reject_bad_framing() {
+        let mut data = Vec::new();
+        for word in [1u32, 2, 2, 2, 8, spore_core::raster::FORMAT_L8, 4] {
+            data.extend_from_slice(&word.to_le_bytes());
+        }
+        data.extend_from_slice(&[1, 2, 3, 4]);
+        data.extend_from_slice(&1u32.to_le_bytes());
+        data.push(9);
+        let chain = decode_standalone_raster_mips(&data).unwrap();
+        assert_eq!(chain.levels.len(), 2);
+        assert_eq!((chain.levels[0].width, chain.levels[0].height), (2, 2));
+        assert_eq!(chain.levels[0].rgba, [1,1,1,255, 2,2,2,255, 3,3,3,255, 4,4,4,255]);
+        assert_eq!((chain.levels[1].width, chain.levels[1].height), (1, 1));
+        assert_eq!(chain.levels[1].rgba, [9,9,9,255]);
+        assert!(decode_standalone_raster_mips(&data[..data.len()-1]).is_err());
+        data[32..36].copy_from_slice(&2u32.to_le_bytes());
+        assert!(decode_standalone_raster_mips(&data).is_err());
+    }
+    #[test]
+    fn standalone_dxt5_odd_mips_decode_blocks_and_reject_bad_length() {
+        fn block(rgb565: u16) -> [u8; 16] {
+            let mut bytes = [0u8; 16];
+            bytes[0] = 255;
+            bytes[1] = 255;
+            bytes[8..10].copy_from_slice(&rgb565.to_le_bytes());
+            bytes[10..12].copy_from_slice(&rgb565.to_le_bytes());
+            bytes
+        }
+        let mut data = Vec::new();
+        for word in [1u32, 5, 3, 3, 8, spore_core::raster::FORMAT_DXT5, 32] {
+            data.extend_from_slice(&word.to_le_bytes());
+        }
+        data.extend_from_slice(&block(0xf800));
+        data.extend_from_slice(&block(0x07e0));
+        data.extend_from_slice(&16u32.to_le_bytes());
+        data.extend_from_slice(&block(0x001f));
+        data.extend_from_slice(&16u32.to_le_bytes());
+        data.extend_from_slice(&block(0xf800));
+
+        let chain = decode_standalone_raster_mips(&data).unwrap();
+        assert_eq!(chain.levels.iter().map(|level| (level.width, level.height, level.rgba.len())).collect::<Vec<_>>(),
+                   [(5, 3, 60), (2, 1, 8), (1, 1, 4)]);
+        for row in chain.levels[0].rgba.chunks_exact(20) {
+            for pixel in row[..16].chunks_exact(4) { assert_eq!(pixel, [255, 0, 0, 255]); }
+            assert_eq!(&row[16..20], &[0, 255, 0, 255]);
+        }
+        assert_eq!(chain.levels[1].rgba, [0, 0, 255, 255, 0, 0, 255, 255]);
+        assert_eq!(chain.levels[2].rgba, [255, 0, 0, 255]);
+        data[60..64].copy_from_slice(&15u32.to_le_bytes());
+        assert!(decode_standalone_raster_mips(&data).is_err());
+    }
     use spore_core::gmdl_skin::{GmdlMaterial, GmdlShaderData, GmdlSkin};
     use spore_core::prop::{idents, types};
     use spore_core::shader_binding::TextureBinding;

@@ -75,6 +75,7 @@ struct OffscreenSimulationReady(bool);
 struct SourcePlayer {
     mesh: spore_core::mesh::MeshData,
     skin: crate::assets::TextureData,
+    mips: Option<crate::assets::TextureMipChain>,
     sampler: ImageSamplerDescriptor,
     center: Vec3,
     scale: f32,
@@ -99,7 +100,30 @@ fn creature_inspection_rotation() -> Quat {
     Quat::from_xyzw(-0.5, -0.5, -0.5, 0.5)
 }
 
-fn load_source_creature(install: &Path, instance: u64) -> Result<(spore_core::mesh::MeshData, crate::assets::TextureData, ImageSamplerDescriptor), String> {
+fn inspection_mip_lod_max(filter: i32, levels: usize) -> f32 {
+    if filter == 0 { 0.0 } else { levels.saturating_sub(1) as f32 }
+}
+
+fn creature_mip_chain_required(texture_type: u32, filter: i32) -> Result<bool, String> {
+    match (texture_type, filter) {
+        (crate::assets::RASTER, _) => Ok(true),
+        (crate::assets::RW4, 0) => Ok(false),
+        (crate::assets::RW4, _) => Err("source Creature RW4 mip chain unsupported when mip filtering is enabled".into()),
+        _ => Err("source Creature texture type unsupported".into()),
+    }
+}
+
+fn inspection_image(texture: &crate::assets::TextureData, mips: Option<&crate::assets::TextureMipChain>, sampler: &ImageSamplerDescriptor) -> Image {
+    let mut image = Image::new(Extent3d { width: texture.width, height: texture.height, depth_or_array_layers: 1 }, TextureDimension::D2, texture.rgba.clone(), TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::default());
+    if let Some(mips) = mips {
+        image.texture_descriptor.mip_level_count = mips.levels.len() as u32;
+        image.data = Some(mips.levels.iter().flat_map(|level| level.rgba.iter().copied()).collect());
+    }
+    image.sampler = ImageSampler::Descriptor(sampler.clone());
+    image
+}
+
+fn load_source_creature(install: &Path, instance: u64) -> Result<(spore_core::mesh::MeshData, crate::assets::TextureData, Option<crate::assets::TextureMipChain>, ImageSamplerDescriptor), String> {
     let base = install.join("Data/Spore_Content.package");
     let paths = crate::assets::PackageSet::discover(install).paths().to_vec();
     let source = crate::assets::AssetSource::open(&base)?
@@ -124,8 +148,18 @@ fn load_source_creature(install: &Path, instance: u64) -> Result<(spore_core::me
         Some(0 | 1) => ImageFilterMode::Nearest, Some(2) => ImageFilterMode::Linear,
         _ => return Err("source sampler mip filtering unsupported".into()),
     };
+    let mip_filter = binding.mip_filter().unwrap();
+    let mips = if creature_mip_chain_required(asset.texture_key.type_id, mip_filter)? {
+        let chain = source.authored_creature_raster_mips(asset.texture_key)?;
+        let first = chain.levels.first().ok_or("source Creature mip chain empty")?;
+        if first.width != tex.width || first.height != tex.height || first.rgba != tex.rgba {
+            return Err("source Creature base mip differs from texture".into());
+        }
+        Some(chain)
+    } else { None };
     let sampler = ImageSamplerDescriptor { address_mode_u: address, address_mode_v: address, address_mode_w: address,
-        min_filter: filter, mag_filter: filter, mipmap_filter: mip, lod_min_clamp: 0.0, lod_max_clamp: 0.0, ..default() };
+        min_filter: filter, mag_filter: filter, mipmap_filter: mip, lod_min_clamp: 0.0,
+        lod_max_clamp: inspection_mip_lod_max(mip_filter, mips.as_ref().map_or(1, |chain| chain.levels.len())), ..default() };
     let lookup = crate::assets::PackageSet::from_paths(paths);
     for (role, key) in [("creature", asset.reference.creature), ("prop", asset.reference.prop),
         ("model", asset.reference.model), ("texture", asset.texture_key)] {
@@ -134,8 +168,8 @@ fn load_source_creature(install: &Path, instance: u64) -> Result<(spore_core::me
         };
         println!("CELL_SOURCE_CREATURE_RESOURCE role={role} package={} key={key}", path.display());
     }
-    println!("CELL_SOURCE_CREATURE_INSPECTION instance={instance:016X} assignment=controlled_prototype_player renderer=pbr static=true original_animation=false runtime_selection=unverified overlay=inspection-order basis=source_y_z_x_inference mip_chain=base_only");
-    Ok((asset.mesh, asset.texture, sampler))
+    println!("CELL_SOURCE_CREATURE_INSPECTION instance={instance:016X} assignment=controlled_prototype_player renderer=pbr static=true original_animation=false runtime_selection=unverified overlay=inspection-order basis=source_y_z_x_inference mip_chain={} levels={}", if mips.is_some() { "declared" } else { "base_only_filter_disabled" }, mips.as_ref().map_or(1, |chain| chain.levels.len()));
+    Ok((asset.mesh, asset.texture, mips, sampler))
 }
 
 #[derive(Component)]
@@ -244,19 +278,19 @@ pub fn run(args: &[String]) -> Result<(), String> {
             }
             (asset.mesh, asset.skin, sampler)
         };
-        Some((mesh, skin, sampler, Quat::from_rotation_z(std::f32::consts::FRAC_PI_2), SourceKind::Cell))
+        Some((mesh, skin, None, sampler, Quat::from_rotation_z(std::f32::consts::FRAC_PI_2), SourceKind::Cell))
     } else if let (Some(install), Some(instance)) = (&creature_install, creature_instance) {
-        let (mesh, skin, sampler) = load_source_creature(install, instance)?;
-        Some((mesh, skin, sampler, creature_inspection_rotation(), SourceKind::Creature))
+        let (mesh, skin, mips, sampler) = load_source_creature(install, instance)?;
+        Some((mesh, skin, mips, sampler, creature_inspection_rotation(), SourceKind::Creature))
     } else { None };
-    let source_player = if let Some((mesh, skin, sampler, rotation, kind)) = selected_art {
+    let source_player = if let Some((mesh, skin, mips, sampler, rotation, kind)) = selected_art {
         let (min, max) = mesh.bounds().ok_or("source inspection mesh is empty")?;
         let center = Vec3::new((min.x + max.x) * 0.5, (min.y + max.y) * 0.5, (min.z + max.z) * 0.5);
         let extent = (max.x - min.x).max(max.y - min.y).max(max.z - min.z);
         if !center.is_finite() || !extent.is_finite() || extent <= 1e-6 {
             return Err("source inspection mesh has invalid or degenerate bounds".into());
         }
-        Some(SourcePlayer { mesh, skin, sampler, center, scale: 2.0 / extent, rotation, kind })
+        Some(SourcePlayer { mesh, skin, mips, sampler, center, scale: 2.0 / extent, rotation, kind })
     } else { None };
     let world = configured_world(seed, diet, explicit_diet, creation_path.as_deref())?;
     diet = world.player.diet;
@@ -387,8 +421,7 @@ fn setup(
         mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, data.uvs.clone());
         mesh.insert_indices(Indices::U32(data.indices.clone()));
         let texture = &source.skin;
-        let mut image = Image::new(Extent3d { width: texture.width, height: texture.height, depth_or_array_layers: 1 }, TextureDimension::D2, texture.rgba.clone(), TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::default());
-        image.sampler = ImageSampler::Descriptor(source.sampler.clone());
+        let image = inspection_image(texture, source.mips.as_ref(), &source.sampler);
         let image = images.add(image);
         if let Some(readiness) = readiness.as_mut() { readiness.require_image(&image); }
         let material = source_materials.add(StandardMaterial { base_color: Color::WHITE, base_color_texture: Some(image), perceptual_roughness: 0.7, metallic: 0.0, cull_mode: None, double_sided: true, ..default() });
@@ -1069,6 +1102,29 @@ mod tests {
         assert!((rotation * Vec3::X - Vec3::Z).length() < 1e-6);
         assert!((rotation * Vec3::Y - Vec3::X).length() < 1e-6);
         assert!((rotation * Vec3::Z - Vec3::Y).length() < 1e-6);
+    }
+
+    #[test]
+    fn inspection_image_uploads_levels_in_source_order() {
+        use crate::assets::{TextureData, TextureMipChain};
+        let texture = TextureData { width: 2, height: 2, rgba: vec![7; 16] };
+        let chain = TextureMipChain { levels: vec![
+            TextureData { width: 2, height: 2, rgba: vec![7; 16] },
+            TextureData { width: 1, height: 1, rgba: vec![9; 4] },
+        ] };
+        let sampler = ImageSamplerDescriptor::default();
+        let image = inspection_image(&texture, Some(&chain), &sampler);
+        assert_eq!(image.texture_descriptor.mip_level_count, 2);
+        assert_eq!(image.data.unwrap(), [vec![7; 16], vec![9; 4]].concat());
+        assert_eq!(inspection_image(&texture, None, &sampler).texture_descriptor.mip_level_count, 1);
+        assert_eq!(inspection_mip_lod_max(0, 2), 0.0);
+        assert_eq!(inspection_mip_lod_max(1, 2), 1.0);
+        assert_eq!(inspection_mip_lod_max(2, 2), 1.0);
+        assert_eq!(creature_mip_chain_required(crate::assets::RASTER, 0).unwrap(), true);
+        assert_eq!(creature_mip_chain_required(crate::assets::RW4, 0).unwrap(), false);
+        assert!(creature_mip_chain_required(crate::assets::RW4, 1).is_err());
+        assert!(creature_mip_chain_required(crate::assets::RW4, 2).is_err());
+        assert!(creature_mip_chain_required(0, 0).is_err());
     }
 
     #[test]

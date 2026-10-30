@@ -597,3 +597,8 @@
 /re/cell-kind4-metadata-reader-index-v1.md text eol=lf
 /re/hash-pairs-source-comparison-v1.md text eol=lf
 /re/cell-source-creature-inspection-v1.md text eol=lf
+
+# Keep Cell mip and filter evidence stable on checkout.
+/re/cell-creature-mip-inspection-v1.md text eol=lf
+/re/cell-kind4-integer-filter-v1.md text eol=lf
+/re/cell-kind4-integer-filter-source-comparison-v1.md text eol=lf

@@ -62,6 +62,7 @@ pub mod cell_movement_animation_gate_v1;
 pub mod cell_screen_quad_v1;
 pub mod cell_world_population_view_v1;
 pub mod cell_kind4_list_disk_v1;
+pub mod cell_kind4_integer_filter_v1;
 pub mod cell_world_lighting_v1;
 pub mod anim_cid_child_mode2_v1;
 pub mod cell_effdir_framing_v3;

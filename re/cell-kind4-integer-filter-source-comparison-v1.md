@@ -1,0 +1,15 @@
+# Kind-4 integer filter source comparison
+
+A bounded comparison used 2,590 installed `02D5C9AF` metadata records and 38,014 section-zero triples bearing integer marker `02E1A75D`. It assigns synthetic ordinals in sorted package-and-native-key order and compares the Rust integer set projection with a Python direct existential scan. These ordinals are not native manager ordinals. The comparison does not establish live registration, complete native filter semantics, provider precedence, actor selection, or playback; reversed ranges and duplicate elimination are projection behavior, not verified native behavior. The source-side global adjustments to list words were not reconstructed.
+
+The retained report `target/cell-kind4-integer-filter-source-v1/report.json` has SHA-256 `f3a59315eb2935a95cf8d1ae79cb04aff53d1094a768ad89df20b387bef26248`. It reports 25 matching cases. The type condition returns 42 synthetic ordinals; the explicit empty-universe case returns zero. All eight illustrative source-list-word cases return zero in this disk projection, which does not establish an empty live query: runtime registration, dynamically supplied fields, and global adjustment are unknown. Other cases cover signed values, endpoints, omitted and sentinel ranges, absent fields and duplicates.
+
+Both complete Python and Rust output SHA-256 values are `89b9dd3b204d8b031e1c7598de1cb56e48dcabcdb82fb07690d7bbbfa7afc0f0`. The synthetic ordinal manifest hash is `c8e7244d6c3871141b0b650888e366091d930ccf213dbb9baf33a9e33fc99ccc`; the input batch hash is `b10cc2856e19fa7bc3abcbce716c236f88fa0e97db2029f6235d7d2311d0e7b5`. The census hash before and after is `3de1933446c61546f8afcf44e22c1010a5405baf353d0d5c9259ea6071f4e7c6`. The report records unchanged before/after hashes for Spore_Content (`0b849bd79d9c13dec5737159655bf7e2b7763cc2b79949c81370fa0490256e8c`), EP1 Content 01 (`d5377275dab759e68de822682cc2ee1787dc542e558f5eb43522290bdb3b0699`), EP1 Content 02 (`87f8a4b7965b8e1038599d10a469036a33869c7096b6c4975716097a0616ad42`), and EP1 Data (`5acecfc2a1e3bdd43b5d46dfefcfe79e16511c5e79edd17dc733d0415af7bd71`). Hash checks do not exclude transient replacement between reads.
+
+The coordinating agent reported the following command and four passing focused unit tests; the receipt does not independently bind a build command, source files, or test log to the example executable:
+
+```powershell
+python tools/cell_kind4_integer_filter_source_compare_v1.py 'D:\Games\SPORE Collection' --census target/native-archive-index-census-v1/records.tsv --example target/debug/examples/cell_kind4_integer_filter_compare_v1.exe --example-sha256 46047646b4361650a31dcc69ca2477352901f8205a6950f03230e02564d166ab --out target/cell-kind4-integer-filter-source-v1
+```
+
+The example hash before and after matches the supplied pin. Repetition requires the matching trusted executable and source packages and a new output directory. Source records and batch data remain in memory; the ignored report retains aggregate counts and hashes. The note author checked the report hash and did not run Cargo or native code.
