@@ -7,8 +7,10 @@ Layout (all big-endian):
     section 2: u32 count_b, then count_b * 12-byte records
     total = 12 + 12*(count_a + count_b)
 
-Each 12-byte record is (hash, 0x02E1A75D, value); the middle word is a constant
-record-type marker.
+Each projected 12-byte record consists of three raw words. This historical
+validator checks framing only; it does not validate or classify middle words.
+The first section contains both 0x02E1A75D and 0x02E1A7FF in the wider corpus,
+and the meaning of the second section's middle words remains unverified.
 """
 
 import struct

@@ -588,3 +588,12 @@
 /re/cell-model-world-loader-source-v1.md text eol=lf
 /re/cell-kind4-source-list-v1.md text eol=lf
 /re/cell-kind4-query-manager-v1.md text eol=lf
+
+# Preserve source-bound audit script and metadata evidence.
+/tools/cell_kind4_candidate_asset_audit_v1.py -text whitespace=cr-at-eol
+/re/cell-kind4-candidate-assets-v1.md text eol=lf
+/re/cell-kind4-metadata-census-v1.md text eol=lf
+/re/cell-kind4-metadata-index-v1.md text eol=lf
+/re/cell-kind4-metadata-reader-index-v1.md text eol=lf
+/re/hash-pairs-source-comparison-v1.md text eol=lf
+/re/cell-source-creature-inspection-v1.md text eol=lf

@@ -7,7 +7,7 @@ mod cell_kind0_inspection;
 use bevy::{
     asset::RenderAssetUsages,
     camera::{visibility::RenderLayers, ScalingMode},
-    image::{ImageSampler, ImageSamplerDescriptor},
+    image::{ImageSampler, ImageSamplerDescriptor, ImageAddressMode, ImageFilterMode},
     mesh::Indices,
     prelude::*,
     render::{
@@ -22,7 +22,7 @@ use spore_core::cell::{
 use spore_core::editor::{Creation, CreationKind, EditorSnapshot, MAX_SAVE_BYTES};
 use std::{
     collections::{HashMap, HashSet},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 #[derive(Resource)]
@@ -78,7 +78,12 @@ struct SourcePlayer {
     sampler: ImageSamplerDescriptor,
     center: Vec3,
     scale: f32,
+    rotation: Quat,
+    kind: SourceKind,
 }
+
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
+enum SourceKind { Cell, Creature }
 
 #[derive(Resource)]
 struct SourcePlayerRender {
@@ -86,6 +91,51 @@ struct SourcePlayerRender {
     material: Handle<StandardMaterial>,
     center: Vec3,
     scale: f32,
+    rotation: Quat,
+}
+
+/// Inspection-only basis: source (x,y,z) to screen-facing (y,z,x).
+fn creature_inspection_rotation() -> Quat {
+    Quat::from_xyzw(-0.5, -0.5, -0.5, 0.5)
+}
+
+fn load_source_creature(install: &Path, instance: u64) -> Result<(spore_core::mesh::MeshData, crate::assets::TextureData, ImageSamplerDescriptor), String> {
+    let base = install.join("Data/Spore_Content.package");
+    let paths = crate::assets::PackageSet::discover(install).paths().to_vec();
+    let source = crate::assets::AssetSource::open(&base)?
+        .with_set(crate::assets::PackageSet::from_paths(paths.clone()));
+    let asset = source.authored_creature_asset(instance, 0).map_err(|e| e.to_string())?;
+    let tex = &asset.texture;
+    if tex.width == 0 || tex.height == 0 || tex.width > 4096 || tex.height > 4096
+        || (tex.width as usize).checked_mul(tex.height as usize).and_then(|n| n.checked_mul(4)) != Some(tex.rgba.len()) {
+        return Err("source Creature texture dimensions or decoded extent unsupported".into());
+    }
+    let binding = asset.texture_binding;
+    if binding.availability() != Some(1) { return Err("source sampler unavailable".into()); }
+    let address = match binding.address_mode() {
+        Some(1) => ImageAddressMode::Repeat, Some(2) => ImageAddressMode::MirrorRepeat,
+        Some(3) => ImageAddressMode::ClampToEdge, _ => return Err("source sampler addressing unsupported".into()),
+    };
+    let filter = match binding.min_mag_filter() {
+        Some(1) => ImageFilterMode::Nearest, Some(2) => ImageFilterMode::Linear,
+        _ => return Err("source sampler filtering unsupported".into()),
+    };
+    let mip = match binding.mip_filter() {
+        Some(0 | 1) => ImageFilterMode::Nearest, Some(2) => ImageFilterMode::Linear,
+        _ => return Err("source sampler mip filtering unsupported".into()),
+    };
+    let sampler = ImageSamplerDescriptor { address_mode_u: address, address_mode_v: address, address_mode_w: address,
+        min_filter: filter, mag_filter: filter, mipmap_filter: mip, lod_min_clamp: 0.0, lod_max_clamp: 0.0, ..default() };
+    let lookup = crate::assets::PackageSet::from_paths(paths);
+    for (role, key) in [("creature", asset.reference.creature), ("prop", asset.reference.prop),
+        ("model", asset.reference.model), ("texture", asset.texture_key)] {
+        let path = if source.resource_keys().any(|k| k == key) { base.clone() } else {
+            lookup.locate(key.type_id, key.scoped_instance()).ok_or("source resource provenance unavailable")?
+        };
+        println!("CELL_SOURCE_CREATURE_RESOURCE role={role} package={} key={key}", path.display());
+    }
+    println!("CELL_SOURCE_CREATURE_INSPECTION instance={instance:016X} assignment=controlled_prototype_player renderer=pbr static=true original_animation=false runtime_selection=unverified overlay=inspection-order basis=source_y_z_x_inference mip_chain=base_only");
+    Ok((asset.mesh, asset.texture, sampler))
 }
 
 #[derive(Component)]
@@ -104,6 +154,8 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let mut demo_seconds = None;
     let mut source_install: Option<PathBuf> = None;
     let mut source_id: Option<u32> = None;
+    let mut creature_install: Option<PathBuf> = None;
+    let mut creature_instance: Option<u64> = None;
     let mut offscreen = false;
     let mut save_path = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
@@ -124,6 +176,13 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
         match args[i].as_str() {
             "--source-cell-install" => source_install = Some(PathBuf::from(value()?)),
+            "--source-creature-install" => creature_install = Some(PathBuf::from(value()?)),
+            "--source-creature-instance" => {
+                let text = value()?.trim();
+                let text = text.strip_prefix("0x").or_else(|| text.strip_prefix("0X")).unwrap_or(text);
+                if text.len() != 16 { return Err("source Creature instance must be exactly 16 hexadecimal digits".into()); }
+                creature_instance = Some(u64::from_str_radix(text, 16).map_err(|_| "source Creature instance must be exactly 16 hexadecimal digits".to_string())?);
+            }
             "--source-cell-id" => {
                 let text = value()?.trim();
                 let text = text.strip_prefix("0x").or_else(|| text.strip_prefix("0X")).unwrap_or(text);
@@ -158,13 +217,19 @@ pub fn run(args: &[String]) -> Result<(), String> {
     if source_install.is_some() != source_id.is_some() {
         return Err("--source-cell-install and --source-cell-id must be provided together".into());
     }
-    if source_install.is_some() && creation_path.is_some() {
-        return Err("source Cell inspection art cannot be combined with --creation".into());
+    if creature_install.is_some() != creature_instance.is_some() {
+        return Err("--source-creature-install and --source-creature-instance must be provided together".into());
+    }
+    if source_install.is_some() && creature_install.is_some() {
+        return Err("source Cell and source Creature inspection art cannot be combined".into());
+    }
+    if (source_install.is_some() || creature_install.is_some()) && creation_path.is_some() {
+        return Err("source inspection art cannot be combined with --creation".into());
     }
     if offscreen && shot.is_none() {
         return Err("--offscreen requires --shot <new PNG>".into());
     }
-    let source_player = if let (Some(install), Some(id)) = (&source_install, source_id) {
+    let selected_art = if let (Some(install), Some(id)) = (&source_install, source_id) {
         let (mesh, skin, sampler) = if id == cell_kind0_inspection::CELL_ID {
             let asset = cell_kind0_inspection::load(install)?;
             (asset.mesh, asset.texture, asset.sampler)
@@ -179,13 +244,19 @@ pub fn run(args: &[String]) -> Result<(), String> {
             }
             (asset.mesh, asset.skin, sampler)
         };
-        let (min, max) = mesh.bounds().ok_or("source Cell mesh is empty")?;
+        Some((mesh, skin, sampler, Quat::from_rotation_z(std::f32::consts::FRAC_PI_2), SourceKind::Cell))
+    } else if let (Some(install), Some(instance)) = (&creature_install, creature_instance) {
+        let (mesh, skin, sampler) = load_source_creature(install, instance)?;
+        Some((mesh, skin, sampler, creature_inspection_rotation(), SourceKind::Creature))
+    } else { None };
+    let source_player = if let Some((mesh, skin, sampler, rotation, kind)) = selected_art {
+        let (min, max) = mesh.bounds().ok_or("source inspection mesh is empty")?;
         let center = Vec3::new((min.x + max.x) * 0.5, (min.y + max.y) * 0.5, (min.z + max.z) * 0.5);
         let extent = (max.x - min.x).max(max.y - min.y).max(max.z - min.z);
         if !center.is_finite() || !extent.is_finite() || extent <= 1e-6 {
-            return Err("source Cell mesh has invalid or degenerate bounds".into());
+            return Err("source inspection mesh has invalid or degenerate bounds".into());
         }
-        Some(SourcePlayer { mesh, skin, sampler, center, scale: 2.0 / extent })
+        Some(SourcePlayer { mesh, skin, sampler, center, scale: 2.0 / extent, rotation, kind })
     } else { None };
     let world = configured_world(seed, diet, explicit_diet, creation_path.as_deref())?;
     diet = world.player.diet;
@@ -213,7 +284,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             ..default()
         }));
     }
-    if let Some(source) = source_player { app.insert_resource(source); }
+    if let Some(source) = source_player { app.insert_resource(source.kind); app.insert_resource(source); }
     app.insert_resource(ClearColor(Color::srgb(0.012, 0.032, 0.046)))
         .insert_resource(Game {
             world,
@@ -307,6 +378,7 @@ fn setup(
             ..OrthographicProjection::default_2d()
         }),
     ));
+    let creature_mode = source.as_ref().is_some_and(|source| source.kind == SourceKind::Creature);
     if let Some(source) = source {
         let data = &source.mesh;
         let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
@@ -320,13 +392,14 @@ fn setup(
         let image = images.add(image);
         if let Some(readiness) = readiness.as_mut() { readiness.require_image(&image); }
         let material = source_materials.add(StandardMaterial { base_color: Color::WHITE, base_color_texture: Some(image), perceptual_roughness: 0.7, metallic: 0.0, cull_mode: None, double_sided: true, ..default() });
-        commands.insert_resource(SourcePlayerRender { mesh: meshes.add(mesh), material, center: source.center, scale: source.scale });
+        commands.insert_resource(SourcePlayerRender { mesh: meshes.add(mesh), material, center: source.center, scale: source.scale, rotation: source.rotation });
         commands.spawn((Camera3d::default(), Camera { order: 1, clear_color: ClearColorConfig::None, ..default() },
             Projection::Orthographic(OrthographicProjection { scaling_mode: ScalingMode::FixedVertical { viewport_height: 76.0 }, ..OrthographicProjection::default_3d() }),
             Transform::from_xyz(0., 0., 100.), RenderLayers::layer(1), IsDefaultUiCamera,
             AmbientLight { color: Color::WHITE, brightness: 300., ..default() }));
         commands.spawn((DirectionalLight { illuminance: 9000., ..default() }, Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.4, -0.35, 0.)), RenderLayers::layer(1)));
-        commands.spawn((Text::new("SOURCE CELL: static PBR inspection art; experimental gameplay"), TextFont { font_size: 14., ..default() }, TextColor(Color::WHITE), Node { position_type: PositionType::Absolute, right: px(20), top: px(16), ..default() }));
+        let label = if source.kind == SourceKind::Creature { "SOURCE CREATURE: static PBR inspection art; experimental gameplay" } else { "SOURCE CELL: static PBR inspection art; experimental gameplay" };
+        commands.spawn((Text::new(label), TextFont { font_size: 14., ..default() }, TextColor(Color::WHITE), Node { position_type: PositionType::Absolute, right: px(20), top: px(16), ..default() }));
     }
     let circle = meshes.add(Circle::new(1.0));
     let line = meshes.add(Rectangle::new(1.0, 1.0));
@@ -453,7 +526,8 @@ fn setup(
                     });
             }
         });
-    commands.spawn((Text::new("W/S swim   A/D turn   Shift boost   Space bite   P pause\nR restart   1/2/3 diet   F5 save   F9 load   Esc exit"), TextFont { font_size: 14.0, ..default() }, TextColor(Color::srgb(0.61, 0.77, 0.77)), Node { position_type: PositionType::Absolute, left: px(28), bottom: px(22), ..default() }));
+    let controls = if creature_mode { "W/S swim   A/D turn   Shift boost   Space bite   P pause\nR restart   1/2/3 diet   Esc exit" } else { "W/S swim   A/D turn   Shift boost   Space bite   P pause\nR restart   1/2/3 diet   F5 save   F9 load   Esc exit" };
+    commands.spawn((Text::new(controls), TextFont { font_size: 14.0, ..default() }, TextColor(Color::srgb(0.61, 0.77, 0.77)), Node { position_type: PositionType::Absolute, left: px(28), bottom: px(22), ..default() }));
     commands.spawn((
         Text::new(""),
         TextFont {
@@ -534,7 +608,7 @@ fn offscreen_step_delta(delta: f64, elapsed: f64, duration: f64, ready: bool) ->
     delta.min(0.1).min((duration - elapsed).max(0.0))
 }
 
-fn drive(time: Res<Time>, mut keys: ResMut<ButtonInput<KeyCode>>, mut game: ResMut<Game>, source: Option<Res<SourcePlayer>>, ready: Option<Res<OffscreenSimulationReady>>) {
+fn drive(time: Res<Time>, mut keys: ResMut<ButtonInput<KeyCode>>, mut game: ResMut<Game>, source: Option<Res<SourceKind>>, ready: Option<Res<OffscreenSimulationReady>>) {
     // Render preparation, text layout, and capture continue in their own systems.
     // Do not let pipeline compilation time advance the offscreen simulation.
     if ready.as_ref().is_some_and(|ready| !ready.0) { return; }
@@ -570,6 +644,9 @@ fn drive(time: Res<Time>, mut keys: ResMut<ButtonInput<KeyCode>>, mut game: ResM
         game.notice.clear();
     }
     if keys.just_pressed(KeyCode::F5) {
+        if source.as_deref() == Some(&SourceKind::Creature) {
+            game.notice = "Save unavailable during source Creature inspection".into();
+        } else {
         let result = game
             .world
             .snapshot()
@@ -580,8 +657,12 @@ fn drive(time: Res<Time>, mut keys: ResMut<ButtonInput<KeyCode>>, mut game: ResM
             Ok(()) => "Saved".into(),
             Err(e) => format!("Save failed: {e}"),
         };
+        }
     }
     if keys.just_pressed(KeyCode::F9) {
+        if source.as_deref() == Some(&SourceKind::Creature) {
+            game.notice = "Load unavailable during source Creature inspection".into();
+        } else {
         let result = read_save(&game.save_path)
             .map_err(|e| e.to_string())
             .and_then(|bytes| CellSnapshot::from_bytes(&bytes).map_err(|e| e.to_string()))
@@ -603,6 +684,7 @@ fn drive(time: Res<Time>, mut keys: ResMut<ButtonInput<KeyCode>>, mut game: ResM
                 game.notice = "Loaded".into();
             }
             Err(e) => game.notice = format!("Load failed: {e}"),
+        }
         }
     }
     let dt = if ready.is_some() {
@@ -770,11 +852,9 @@ fn sync_scene(
             if is_player {
                 if let Some(source) = &source {
                     return commands.spawn((Transform::default(), Visibility::Visible)).with_children(|parent| {
-                        // Source thumbnail camera uses screen right +Y and up -X.
-                        // A half turn of that view puts Jawhead's mouth toward the
-                        // prototype's +X heading. Gameplay-facing convention is
-                        // not established for the wider source asset corpus.
-                        let rotation = Quat::from_rotation_z(std::f32::consts::FRAC_PI_2);
+                        // The selected inspection path supplies its own inferred basis;
+                        // neither establishes original gameplay-facing orientation.
+                        let rotation = source.rotation;
                         parent.spawn((Mesh3d(source.mesh.clone()), MeshMaterial3d(source.material.clone()),
                             Transform::from_translation(-(rotation * source.center) * source.scale)
                                 .with_rotation(rotation).with_scale(Vec3::splat(source.scale)), RenderLayers::layer(1)));
@@ -971,6 +1051,58 @@ mod tests {
             .unwrap_err().contains("hexadecimal u32"));
         assert!(run(&args(&["--offscreen"]))
             .unwrap_err().contains("requires --shot"));
+        assert!(run(&args(&["--source-creature-install", "missing-install"]))
+            .unwrap_err().contains("must be provided together"));
+        assert!(run(&args(&["--source-creature-instance", "40616200A1C46DF2"]))
+            .unwrap_err().contains("must be provided together"));
+        assert!(run(&args(&["--source-creature-instance", "A1C46DF2"]))
+            .unwrap_err().contains("16 hexadecimal digits"));
+        assert!(run(&args(&["--source-creature-install", "missing", "--source-creature-instance", "40616200A1C46DF2", "--creation", "unused.rsc"]))
+            .unwrap_err().contains("cannot be combined"));
+        assert!(run(&args(&["--source-cell-install", "missing", "--source-cell-id", "FD24574B", "--source-creature-install", "missing", "--source-creature-instance", "40616200A1C46DF2"]))
+            .unwrap_err().contains("cannot be combined"));
+    }
+
+    #[test]
+    fn source_creature_basis_maps_axes_for_inspection() {
+        let rotation = creature_inspection_rotation();
+        assert!((rotation * Vec3::X - Vec3::Z).length() < 1e-6);
+        assert!((rotation * Vec3::Y - Vec3::X).length() < 1e-6);
+        assert!((rotation * Vec3::Z - Vec3::Y).length() < 1e-6);
+    }
+
+    #[test]
+    fn creature_inspection_denies_save_load_and_retains_mode_on_restart() {
+        let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let path = std::env::temp_dir().join(format!("rustspore-cell-creature-{}-{nonce}.rsp", std::process::id()));
+        std::fs::write(&path, b"existing sentinel").unwrap();
+        let mut app = App::new();
+        app.insert_resource(Time::<()>::default())
+            .insert_resource(ButtonInput::<KeyCode>::default())
+            .insert_resource(SourceKind::Creature)
+            .insert_resource(Game {
+                world: CellWorld::new(14, Diet::Herbivore), seed: 14, diet: Diet::Herbivore,
+                paused: false, elapsed: 0., notice: String::new(), rebuild: false,
+                save_path: path.clone(), shot: None, demo_seconds: None, capture_frame: None, frames: 0,
+            }).add_systems(Update, drive);
+        let step = |app: &mut App, key: KeyCode| {
+            let mut input = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            input.reset_all(); input.press(key);
+            drop(input);
+            app.update();
+        };
+        step(&mut app, KeyCode::F5);
+        assert!(app.world().resource::<Game>().notice.contains("Save unavailable"));
+        assert_eq!(std::fs::read(&path).unwrap(), b"existing sentinel");
+        let before = app.world().resource::<Game>().world.clone();
+        step(&mut app, KeyCode::F9);
+        assert!(app.world().resource::<Game>().notice.contains("Load unavailable"));
+        assert_eq!(app.world().resource::<Game>().world, before);
+        step(&mut app, KeyCode::KeyR);
+        assert_eq!(app.world().resource::<Game>().world, CellWorld::new(14, Diet::Herbivore));
+        assert!(*app.world().resource::<SourceKind>() == SourceKind::Creature);
+        assert!(app.world().resource::<Game>().rebuild);
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]

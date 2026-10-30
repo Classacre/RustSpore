@@ -1,7 +1,7 @@
 //! Parser for the SPORE hash-pair table (type `0x02D5C9AF`).
 //!
-//! Status: **100% validated (1,631 of 1,631).** The Python reference validator is
-//! `tools/type_02d5_validate.py`. Every sample is a two-section table:
+//! The historical Python validator `tools/type_02d5_validate.py` observed
+//! version-4 framing in 1,631 samples from its measured package set:
 //!
 //! ```text
 //! BE u32 version = 4
@@ -9,12 +9,13 @@
 //! section 2: BE u32 count_b, then count_b * 12-byte records
 //! ```
 //!
-//! Each 12-byte record is `(hash, 0x02E1A75D, value)`; the middle word
-//! `0x02E1A75D` is a constant record-type marker.
+//! Each projected 12-byte record contains three raw words. Native code
+//! distinguishes record types in the first section; the meaning of the middle
+//! word in other sections remains unverified. Preserve all words and sections.
 
 use std::fmt;
 
-/// The constant middle word of every record.
+/// A source-observed integer record marker.
 pub const RECORD_MARKER: u32 = 0x02E1A75D;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,10 +40,11 @@ impl fmt::Display for HashPairsError {
 
 impl std::error::Error for HashPairsError {}
 
-/// One 12-byte record: a hash, the constant marker, and a value.
+/// One projected 12-byte record, preserving its middle word and raw value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HashPair {
     pub hash: u32,
+    pub marker: u32,
     pub value: u32,
 }
 
@@ -54,6 +56,10 @@ pub struct HashPairs {
     pub section_a: Vec<HashPair>,
     /// Section 2 records.
     pub section_b: Vec<HashPair>,
+    /// Subsequent sections, if any, in their original order.
+    pub extra_sections: Vec<Vec<HashPair>>,
+    /// Number of sections encountered, including any empty sections.
+    pub section_count: usize,
     /// Whether the walk consumed exactly the whole buffer.
     pub exact: bool,
     /// Total bytes consumed.
@@ -92,23 +98,27 @@ pub fn parse(data: &[u8]) -> Result<HashPairs, HashPairsError> {
         let mut recs = Vec::with_capacity(count.min(4096));
         for _ in 0..count {
             let hash = be_u32(data, p);
-            // data[p+4..p+8] is the constant marker RECORD_MARKER
+            let marker = be_u32(data, p + 4);
             let value = be_u32(data, p + 8);
-            recs.push(HashPair { hash, value });
+            recs.push(HashPair { hash, marker, value });
             p += 12;
         }
         sections.push(recs);
     }
 
     let exact = p == n;
+    let section_count = sections.len();
     let mut it = sections.into_iter();
     let section_a = it.next().unwrap_or_default();
     let section_b = it.next().unwrap_or_default();
+    let extra_sections = it.collect();
 
     Ok(HashPairs {
         version,
         section_a,
         section_b,
+        extra_sections,
+        section_count,
         exact,
         consumed: p,
     })
@@ -147,8 +157,8 @@ mod tests {
         assert_eq!(t.version, 4);
         assert_eq!(t.section_a.len(), 1);
         assert_eq!(t.section_b.len(), 2);
-        assert_eq!(t.section_a[0], HashPair { hash: 0x02DD90AF, value: 0x438F6347 });
-        assert_eq!(t.section_b[1], HashPair { hash: 0x03CC89B1, value: 0x913B23BE });
+        assert_eq!(t.section_a[0], HashPair { hash: 0x02DD90AF, marker: RECORD_MARKER, value: 0x438F6347 });
+        assert_eq!(t.section_b[1], HashPair { hash: 0x03CC89B1, marker: RECORD_MARKER, value: 0x913B23BE });
         assert!(t.exact);
         assert_eq!(t.consumed, d.len());
     }
@@ -179,5 +189,33 @@ mod tests {
         let d = build(&[(1, 2)], &[]);
         let cut = &d[..d.len() - 1];
         assert!(matches!(parse(cut), Err(HashPairsError::Truncated)));
+    }
+
+    #[test]
+    fn preserves_unknown_markers_and_additional_sections() {
+        let mut data = build(&[(1, 2)], &[]);
+        data[12..16].copy_from_slice(&0x02E1A7FFu32.to_be_bytes());
+        push_be(&mut data, 1);
+        push_be(&mut data, 3);
+        push_be(&mut data, 0xDEADBEEF);
+        push_be(&mut data, 4);
+        let table = parse(&data).unwrap();
+        assert_eq!(table.section_a[0].marker, 0x02E1A7FF);
+        assert_eq!(table.extra_sections, vec![vec![HashPair { hash: 3, marker: 0xDEADBEEF, value: 4 }]]);
+        assert_eq!(table.section_count, 3);
+        assert!(table.exact);
+        assert_eq!(table.consumed, data.len());
+    }
+
+    #[test]
+    fn reports_missing_second_section_and_rejects_partial_extra_section() {
+        let mut data = Vec::new();
+        push_be(&mut data, 4);
+        push_be(&mut data, 0);
+        let table = parse(&data).unwrap();
+        assert_eq!(table.section_count, 1);
+        assert!(table.section_b.is_empty());
+        data.push(0);
+        assert_eq!(parse(&data).unwrap_err(), HashPairsError::Truncated);
     }
 }

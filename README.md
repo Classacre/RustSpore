@@ -146,6 +146,17 @@ Creature transition and editor integration are still open. `--demo` drives the
 same keyboard input mapping with an automated food-seeking controller, captures
 after the requested duration, and exits. Screenshot outputs must be new paths.
 
+For a controlled Cell prototype inspection using an explicitly chosen installed
+Creature, provide the install directory and a 16-digit source instance:
+
+```powershell
+target\debug\rustspore.exe --experimental --cell --source-creature-install "C:/path/to/SPORE Collection" --source-creature-instance 40616200A1C46DF2 --offscreen --demo 2 --shot target/cell-source-creature.png
+```
+
+This assigns the chosen source art to the prototype player in a static PBR view.
+The axis mapping is inferred, original animation and runtime selection remain
+unverified, and saving and loading are disabled in this source-Creature mode.
+
 ### Creature gameplay foundation
 
 ```powershell
