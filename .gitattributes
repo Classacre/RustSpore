@@ -613,3 +613,8 @@
 /re/cell-manual-selector-context-v1.md text eol=lf
 /re/cell-ui-paired-control-trace-v1.md text eol=lf
 /re/d3d9-stencil-coverage-synthetic-v1.md text eol=lf
+
+# Keep prepared renderer and Cell trace evidence stable on checkout.
+/re/cell-source-prepared-two-frame-v1.md text eol=lf
+/re/cell-actor-model-transform-trace-v1.md text eol=lf
+/re/cell-gameplay-camera-static-v1.md text eol=lf

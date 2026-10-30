@@ -1,0 +1,21 @@
+# Prepared two-frame source-program inspection
+
+This opt-in diagnostic prepares one explicitly selected Creature model and its source-program resources once within a process, then performs two controlled offscreen frames. It does not retain resources across separate runs or integrate a persistent renderer into the Cell stage. The selected Creature is `40616200A1C46DF2`, with one-mesh LOD0 model `40617100A1C46DF2`. The camera and lighting remain fixed inspection inputs; neither frame establishes actual Cell runtime selection, actor movement, animation, scene occlusion or retail fidelity.
+
+Each frame is rendered both without and with stencil instrumentation, and the complete RGBA color readbacks must match. The first frame must also match the supplied earlier one-shot PNG at the pixel level. The stencil mask is an inspection-draw coverage observation, subject to the separate fixture and limitations in [the source stencil note](cell-fallback-source-stencil-v1.md). A zero offset additionally requires the second frame's color and mask to equal the first.
+
+The coordinating agent reports three focused source-Creature CLI tests passed and supplied zero-offset and `0.25,0,0` runs. A repeat may use the following template with fresh, distinct output paths and an existing matching one-shot reference; the options are explicit, and the second offset is an inspection translation:
+
+```powershell
+target/debug/rustspore.exe --source-creature --install 'D:\Games\SPORE Collection' --creature 40616200A1C46DF2 --shot target/source-creatures/prepared-NEW-first.png --coverage target/source-creatures/prepared-NEW-first-mask.png --reference-shot target/source-creatures/cell-fallback-original-program-v1.png --second-shot target/source-creatures/prepared-NEW-second.png --second-mask target/source-creatures/prepared-NEW-second-mask.png --second-offset 0.25,0,0
+```
+
+For the retained zero and moved runs, both first-color PNGs and the zero-offset second-color PNG hash to `2e189579eb312fc9b1e63a53c766b5aef745fbe387ba6bf98a62f32edfd20dc0`, the same as the earlier noninstrumented source capture. Both first masks and the zero-offset second mask hash to `c84ef180987a0e02d570a20c941a0d5e2faf2647b992e72b2bba4c54ac4cc246`, matching the prior source stencil mask. The `0.25,0,0` second-color PNG hashes to `5dd465c17e1988870aacf81b341aef2f4a564799196540bc306b2bd2aa52e16e`; its second mask hashes to `ef5e6544021868a0817554fa8f088bffde45239ac19f315e370ede01b1e346cb`.
+
+Independent image inspection finds the first mask has 52,364 white pixels and bounds `(119, 285, 607, 489)`; the moved mask has 53,726 white pixels and bounds `(171, 301, 663, 507)`, with exclusive right and bottom coordinates. Comparing first and moved colors gives 66,738 RGB-changed pixels and 66,775 RGBA-changed pixels, including 37 with alpha-only changes. This confirms a difference between these controlled outputs, not original actor movement or final scene visibility.
+
+The zero-run stdout `target/source-creatures/prepared-zero-v1.stdout.log` SHA-256 is `deb2014686f0d9b343e9cc2f806bee5ba4287e964a1f3b65329287ceea8075fd`; moved stdout `prepared-moved-v1.stdout.log` is `9e5e9f47a0b803575feedc06abcbd065b1720ad04a02d6ffadabeae486dcbae8`. Both identify an NVIDIA GeForce RTX 3060 Laptop GPU and report `first_reference_equal=true` and `second_color_equal=true`; both stderr logs are empty. At documentation time `target/debug/rustspore.exe` SHA-256 was `ee4d5d16de4deb138b4887f67e4b3f493d1dfbfce44cec1dae0d5edeb3d03e71`; this hash and the reported tests are not independently bound to the capture processes or test log.
+
+The retained full workspace test log `target/workspace-tests-20261030-resume-v54.log` has SHA-256 `3a6b8b188eadfad8bd30ce86de21607752bcb1fc0b178f3f7c3d8b9b3fa474d9`. Its test-result summaries total 775 passed, zero failed and two ignored. The log alone does not bind its binaries to the capture processes.
+
+A separate two-mesh Jawhead one-shot regression `target/source-cell/jawhead-prepared-regression-v1.png` has SHA-256 `b06a039f1c3d8ff838a699ba991cc480a9cb973ac66059a51d94d074f96ebfad`, matching retained `jawhead-baseline-20261028-v2.png`. This is a static screenshot comparison, not proof of every source renderer path. Capture artifacts and source assets remain under ignored `target/` or the local installation.

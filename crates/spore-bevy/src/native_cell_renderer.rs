@@ -16,6 +16,9 @@ mod native_d3d9;
 #[cfg(windows)]
 #[path = "native_d3dx.rs"]
 mod native_d3dx;
+#[cfg(windows)]
+#[path = "native_source_frame_v1.rs"]
+mod native_source_frame_v1;
 
 #[cfg(windows)]
 mod probe {
@@ -264,6 +267,116 @@ mod probe {
         }
         Ok(())
     }
+    struct SourceGeometry<'a> {
+        vertex_buffer: &'a gmdl::VertexBuffer,
+        format: &'a gmdl::VertexFormat,
+        triangles: &'a gmdl::TriangleBuffer,
+        vertices: &'a [u8],
+    }
+    // Validates the same physical source extents used by the one-shot draw.
+    fn source_geometry<'a>(model: &'a gmdl::Gmdl, raw: &'a [u8], mesh: &gmdl::Mesh,
+        diagnostic: Option<&'a [u8]>) -> Result<SourceGeometry<'a>, Failure> {
+        let vb = model.vertex_buffers.get(usize::try_from(mesh.vertex_index)?).ok_or("invalid vertex reference")?;
+        let format = model.vertex_formats.get(usize::try_from(vb.format_index)?).ok_or("invalid declaration reference")?;
+        let triangles = model.triangle_buffers.get(usize::try_from(mesh.triangle_index)?).ok_or("invalid triangle reference")?;
+        if triangles.primitive_type != 4 || triangles.indices.len() % 3 != 0
+            || triangles.indices.iter().any(|v| *v >= vb.vertex_count as u32)
+            || vb.vertex_count <= 0 || vb.buffer_size < 0 || vb.stride == 0
+            || vb.stride.checked_mul(vb.vertex_count as usize) != Some(vb.buffer_size as usize) {
+            return Err("unsupported source vertex/triangle extent".into());
+        }
+        let end = vb.data_offset.checked_add(vb.buffer_size as usize).ok_or("source vertex extent overflow")?;
+        let original = raw.get(vb.data_offset..end).ok_or("source vertex data truncated")?;
+        let vertices = diagnostic.unwrap_or(original);
+        if vertices.len() != original.len() { return Err("diagnostic vertex extent mismatch".into()); }
+        Ok(SourceGeometry { vertex_buffer: vb, format, triangles, vertices })
+    }
+    fn source_vertex_elements(format: &gmdl::VertexFormat, stride: usize) -> Result<Vec<D3DVERTEXELEMENT9>, Failure> {
+        let mut elements = Vec::new();
+        for e in &format.elements {
+            if e.stream != 0
+                || e.offset < 0
+                || e.method != 0
+                || !(0..=16).contains(&e.element_type)
+                || !(0..=13).contains(&e.usage)
+                || e.usage_index < 0
+                || e.offset as usize + e.size() > stride
+            {
+                return Err("unsupported source declaration element".into());
+            }
+            elements.push(D3DVERTEXELEMENT9 {
+                Stream: 0,
+                Offset: e.offset as u16,
+                Type: e.element_type as u8,
+                Method: e.method as u8,
+                Usage: e.usage as u8,
+                UsageIndex: e.usage_index as u8,
+            });
+        }
+        elements.push(D3DVERTEXELEMENT9 {
+            Stream: 255,
+            Type: D3DDECLTYPE_UNUSED.0 as u8,
+            ..Default::default()
+        });
+        Ok(elements)
+    }
+    struct PreparedSourceMesh {
+        vertices: Vec<u8>,
+        indices: Vec<u32>,
+        vertex_count: u32,
+        stride: u32,
+        declaration: IDirect3DVertexDeclaration9,
+        vertex_shader: IDirect3DVertexShader9,
+        pixel_shader: IDirect3DPixelShader9,
+        vertex_program: shader_pack::CompiledProgram,
+        pixel_program: shader_pack::CompiledProgram,
+        textures: Vec<(u32, IDirect3DTexture9, i32, i32, i32, u64)>,
+        params: [f32; 4],
+        texture_bytes: usize,
+        vertex_recipe: Vec<u8>,
+        pixel_recipe: Vec<u8>,
+    }
+    // Shared exact binding operation for a source texture. Resource selection,
+    // device ownership and supported-state checks remain with the caller.
+    unsafe fn bind_source_texture(
+        device: &IDirect3DDevice9,
+        slot: u32,
+        texture: &IDirect3DTexture9,
+        address: i32,
+        filter: i32,
+        mip: i32,
+    ) -> Result<(), Failure> {
+        device.SetTexture(slot, texture)?;
+        for (state, value) in [
+            (D3DSAMP_ADDRESSU, address),
+            (D3DSAMP_ADDRESSV, address),
+            (D3DSAMP_ADDRESSW, address),
+            (D3DSAMP_MINFILTER, filter),
+            (D3DSAMP_MAGFILTER, filter),
+            (D3DSAMP_MIPFILTER, mip),
+            (D3DSAMP_SRGBTEXTURE, 0),
+        ] {
+            device.SetSamplerState(slot, state, value as u32)?;
+        }
+        Ok(())
+    }
+    // No filesystem access, shader compilation, texture upload, or device creation.
+    // Caller sets target, viewport, draw state and scene boundaries.
+    unsafe fn draw_prepared_source(device: &IDirect3DDevice9, mesh: &PreparedSourceMesh,
+        inputs: &Inputs) -> Result<u32, Failure> {
+        for (slot, texture, address, filter, mip, _) in &mesh.textures {
+            bind_source_texture(device, *slot, texture, *address, *filter, *mip)?;
+        }
+        let count = u32::try_from(mesh.indices.len() / 3)?;
+        device.SetVertexDeclaration(&mesh.declaration)?;
+        device.SetVertexShader(&mesh.vertex_shader)?;
+        device.SetPixelShader(&mesh.pixel_shader)?;
+        upload(device, &mesh.vertex_program, inputs, true)?;
+        upload(device, &mesh.pixel_program, inputs, false)?;
+        device.DrawIndexedPrimitiveUP(D3DPT_TRIANGLELIST, 0, mesh.vertex_count, count,
+            mesh.indices.as_ptr().cast(), D3DFMT_INDEX32, mesh.vertices.as_ptr().cast(), mesh.stride)?;
+        Ok(count)
+    }
     pub fn render(
         install: &Path,
         output: &Path,
@@ -272,6 +385,7 @@ mod probe {
         creature_camera: bool,
         diagnostic_skin_translation: bool,
         coverage: Option<&Path>,
+        second: Option<&super::SecondFrame<'_>>,
     ) -> Result<(), Failure> {
         if output.exists() {
             return Err("capture output already exists".into());
@@ -492,78 +606,17 @@ mod probe {
                 return Err("required stencil/depth capabilities unavailable".into());
             }
         }
-        let mut baseline = None;
-        let mut rgba = Vec::new();
-        let mut total_triangles = 0;
-        for instrumented in if coverage.is_some() { vec![false, true] } else { vec![false] } {
-        unsafe {
-            for (state, value) in [
-                (D3DRS_ZENABLE, 1),
-                (D3DRS_ZWRITEENABLE, 1),
-                (D3DRS_ZFUNC, D3DCMP_LESSEQUAL.0 as u32),
-                (D3DRS_LIGHTING, 0),
-                (D3DRS_ALPHABLENDENABLE, 0),
-                (D3DRS_ALPHATESTENABLE, 0),
-                (D3DRS_CULLMODE, D3DCULL_NONE.0 as u32),
-                (D3DRS_SRGBWRITEENABLE, 0),
-                (D3DRS_COLORWRITEENABLE, 15),
-            ] {
-                device.SetRenderState(state, value)?;
-            }
-            if coverage.is_some() {
-                device.SetRenderState(D3DRS_STENCILENABLE, u32::from(instrumented))?;
-                if instrumented {
-                    for (state, value) in [(D3DRS_TWOSIDEDSTENCILMODE, 0),
-                        (D3DRS_STENCILFUNC, D3DCMP_ALWAYS.0 as u32), (D3DRS_STENCILREF, 1),
-                        (D3DRS_STENCILMASK, 0xff), (D3DRS_STENCILWRITEMASK, 0xff),
-                        (D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP.0 as u32),
-                        (D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP.0 as u32),
-                        (D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE.0 as u32)] { device.SetRenderState(state, value)?; }
-                }
-            }
-            device.Clear(
-                0,
-                ptr::null(),
-                (D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER | if coverage.is_some() { D3DCLEAR_STENCIL } else { 0 }) as u32,
-                0xff18202e,
-                1.,
-                0,
-            )?;
-            device.BeginScene()?;
-        }
-        total_triangles = 0;
+        let mut prepared = Vec::with_capacity(model.meshes.len());
         for (i, mesh) in model.meshes.iter().enumerate() {
-            let vb = model
-                .vertex_buffers
-                .get(usize::try_from(mesh.vertex_index)?)
-                .ok_or("invalid vertex reference")?;
-            let format = model
-                .vertex_formats
-                .get(usize::try_from(vb.format_index)?)
-                .ok_or("invalid declaration reference")?;
-            let triangles = model
-                .triangle_buffers
-                .get(usize::try_from(mesh.triangle_index)?)
-                .ok_or("invalid triangle reference")?;
-            if triangles.primitive_type != 4
-                || triangles.indices.len() % 3 != 0
-                || triangles
-                    .indices
-                    .iter()
-                    .any(|v| *v >= vb.vertex_count as u32)
-                || vb.vertex_count <= 0
-                || vb.buffer_size < 0
-                || vb.stride == 0
-                || vb.buffer_size as usize != vb.stride * vb.vertex_count as usize
-            {
-                return Err("unsupported source vertex/triangle extent".into());
+            let geometry = source_geometry(&model, &raw, mesh,
+                diagnostic_buffers.as_ref().map(|buffers| buffers[i].as_slice()))?;
+            let vb = geometry.vertex_buffer;
+            let format = geometry.format;
+            let triangles = geometry.triangles;
+            let vertices = geometry.vertices;
+            if second.is_some() && (vertices.len() > 16*1024*1024 || triangles.indices.len().checked_mul(4).is_none_or(|n| n > 16*1024*1024)) {
+                return Err("diagnostic geometry budget exceeded".into());
             }
-            let vertices = raw
-                .get(vb.data_offset..vb.data_offset + vb.buffer_size as usize)
-                .ok_or("source vertex data truncated")?;
-            let vertices = if let Some(buffers) = &diagnostic_buffers {
-                buffers[i].as_slice()
-            } else { vertices };
             let material = &tail.materials[i];
             let mut data: BTreeMap<u16, Vec<u8>> = material
                 .shader_data
@@ -579,6 +632,7 @@ mod probe {
             )?;
             let mut samplers = BTreeSet::new();
             let mut textures = Vec::new();
+            let mut texture_bytes = 0usize;
             for binding in &bindings {
                 if binding.availability() != Some(1) {
                     return Err("unestablished source sampler availability".into());
@@ -587,6 +641,8 @@ mod probe {
                     return Err("unsupported or duplicate source sampler".into());
                 }
                 let raster = sources.raster(binding.raster_instance)?;
+                texture_bytes = texture_bytes.checked_add(raster.data.len()).ok_or("texture budget overflow")?;
+                if second.is_some() && texture_bytes > 64*1024*1024 { return Err("diagnostic texture budget exceeded".into()); }
                 let texture = unsafe { target.upload_raster(&raster)? };
                 let address = binding
                     .address_mode()
@@ -601,24 +657,10 @@ mod probe {
                 {
                     return Err("unsupported source sampler value".into());
                 }
-                unsafe {
-                    device.SetTexture(binding.sampler, &texture)?;
-                    for (state, value) in [
-                        (D3DSAMP_ADDRESSU, address),
-                        (D3DSAMP_ADDRESSV, address),
-                        (D3DSAMP_ADDRESSW, address),
-                        (D3DSAMP_MINFILTER, filter),
-                        (D3DSAMP_MAGFILTER, filter),
-                        (D3DSAMP_MIPFILTER, mip),
-                        (D3DSAMP_SRGBTEXTURE, 0),
-                    ] {
-                        device.SetSamplerState(binding.sampler, state, value as u32)?;
-                    }
-                }
                 println!("SOURCE_3D_TEXTURE mesh={i} sampler={} resource={:016X} size={}x{} mips={} format={:08X} source_blocks=true",
                     binding.sampler,binding.raster_instance,raster.width,raster.height,raster.mipmaps,raster.format);
                 samplers.insert(u16::try_from(binding.sampler)?);
-                textures.push(texture);
+                textures.push((binding.sampler, texture, address, filter, mip, binding.raster_instance));
             }
             if !samplers.contains(&0) {
                 return Err("source diffuse sampler absent".into());
@@ -719,65 +761,96 @@ mod probe {
             };
             let vs_tokens = native_d3d9::tokens(&vs_program.bytecode, 0xfffe0300)?;
             let ps_tokens = native_d3d9::tokens(&ps_program.bytecode, 0xffff0300)?;
-            let mut elements = Vec::new();
-            for e in &format.elements {
-                if e.stream != 0
-                    || e.offset < 0
-                    || e.method != 0
-                    || !(0..=16).contains(&e.element_type)
-                    || !(0..=13).contains(&e.usage)
-                    || e.usage_index < 0
-                    || e.offset as usize + e.size() > vb.stride
-                {
-                    return Err("unsupported source declaration element".into());
-                }
-                elements.push(D3DVERTEXELEMENT9 {
-                    Stream: 0,
-                    Offset: e.offset as u16,
-                    Type: e.element_type as u8,
-                    Method: e.method as u8,
-                    Usage: e.usage as u8,
-                    UsageIndex: e.usage_index as u8,
-                });
-            }
-            elements.push(D3DVERTEXELEMENT9 {
-                Stream: 255,
-                Type: D3DDECLTYPE_UNUSED.0 as u8,
-                ..Default::default()
+            let elements = source_vertex_elements(format, vb.stride)?;
+            let params = MaterialParams::decode(data.get(&0x210).ok_or("source material params absent")?)?.float4();
+            let declaration = unsafe { device.CreateVertexDeclaration(elements.as_ptr())? };
+            let vertex_shader = unsafe { device.CreateVertexShader(vs_tokens.as_ptr())? };
+            let pixel_shader = unsafe { device.CreatePixelShader(ps_tokens.as_ptr())? };
+            prepared.push(PreparedSourceMesh {
+                vertices: vertices.to_vec(), indices: triangles.indices.clone(),
+                vertex_count: u32::try_from(vb.vertex_count)?, stride: u32::try_from(vb.stride)?,
+                declaration, vertex_shader, pixel_shader,
+                vertex_program: vs_program.clone(), pixel_program: ps_program.clone(), textures, params, texture_bytes,
+                vertex_recipe: vs.fragment_ids.clone(), pixel_recipe: ps.fragment_ids.clone(),
             });
-            let inputs = Inputs {
-                model: model_matrix,
-                clip,
-                direction: forward.extend(0.).to_array(),
-                sh: sh.clone(),
-                fresh_world_sh_extra,
-                camera_distance,
-                params: MaterialParams::decode(
-                    data.get(&0x210).ok_or("source material params absent")?,
-                )?
-                .float4(),
-                lights,
-            };
-            let count = u32::try_from(triangles.indices.len() / 3)?;
-            unsafe {
-                device.SetVertexDeclaration(&device.CreateVertexDeclaration(elements.as_ptr())?)?;
-                device.SetVertexShader(&device.CreateVertexShader(vs_tokens.as_ptr())?)?;
-                device.SetPixelShader(&device.CreatePixelShader(ps_tokens.as_ptr())?)?;
-                upload(device, vs_program, &inputs, true)?;
-                upload(device, ps_program, &inputs, false)?;
-                device.DrawIndexedPrimitiveUP(
-                    D3DPT_TRIANGLELIST,
-                    0,
-                    vb.vertex_count as u32,
-                    count,
-                    triangles.indices.as_ptr().cast(),
-                    D3DFMT_INDEX32,
-                    vertices.as_ptr().cast(),
-                    vb.stride as u32,
-                )?;
+        }
+        if second.is_some() {
+            if coverage.is_none() || prepared.len() != 1 || instance != 0x4061_7100_a1c4_6df2 {
+                return Err("second frame requires exact one-mesh source coverage".into());
             }
+            let mesh = &prepared[0];
+            for (program, limit) in [(&mesh.vertex_program, 256u32), (&mesh.pixel_program, 224u32)] {
+                if program.uniforms.len() != program.uniform_words.len() || program.uniforms.len() > 256 {
+                    return Err("diagnostic uniform count unsupported".into());
+                }
+                for (raw, start) in program.uniforms.iter().zip(&program.uniform_words) {
+                    let count = u32::from(UniformDescriptor { raw: *raw }.register_count());
+                    if start.checked_add(count).is_none_or(|end| end > limit) {
+                        return Err("diagnostic uniform register extent unsupported".into());
+                    }
+                }
+            }
+            let mut identities: Vec<_> = mesh.textures.iter().map(|t| (t.0, t.5)).collect();
+            identities.sort_unstable();
+            if identities != [(0, 0x4061_2900_a1c4_6df2), (1, 0x4061_2901_a1c4_6df2), (2, 0x0000_0000_552a_5077)]
+                || mesh.vertex_recipe != [0x14,0x17,0x19,0x15,0x31,0x30,0x29,0x01]
+                || mesh.pixel_recipe != [0x05,0x09,0x0c,0x11,0x3b,0x19,0x2a]
+                || mesh.vertex_count != 2866 || mesh.indices.len() != 4840 * 3
+                || mesh.vertices.len() > 16*1024*1024 || mesh.indices.len().checked_mul(4).is_none_or(|n| n > 16*1024*1024)
+                || mesh.texture_bytes > 64*1024*1024 || mesh.vertex_program.bytecode.len() > 4*1024*1024
+                || mesh.pixel_program.bytecode.len() > 4*1024*1024 {
+                return Err("unsupported candidate source bindings or geometry".into());
+            }
+        }
+        let mut baseline = None;
+        let mut rgba = Vec::new();
+        let mut total_triangles = 0;
+        for instrumented in if coverage.is_some() { vec![false, true] } else { vec![false] } {
+        unsafe {
+            for (state, value) in [
+                (D3DRS_ZENABLE, 1),
+                (D3DRS_ZWRITEENABLE, 1),
+                (D3DRS_ZFUNC, D3DCMP_LESSEQUAL.0 as u32),
+                (D3DRS_LIGHTING, 0),
+                (D3DRS_ALPHABLENDENABLE, 0),
+                (D3DRS_ALPHATESTENABLE, 0),
+                (D3DRS_CULLMODE, D3DCULL_NONE.0 as u32),
+                (D3DRS_SRGBWRITEENABLE, 0),
+                (D3DRS_COLORWRITEENABLE, 15),
+            ] {
+                device.SetRenderState(state, value)?;
+            }
+            if coverage.is_some() {
+                device.SetRenderState(D3DRS_STENCILENABLE, u32::from(instrumented))?;
+                if instrumented {
+                    for (state, value) in [(D3DRS_TWOSIDEDSTENCILMODE, 0),
+                        (D3DRS_STENCILFUNC, D3DCMP_ALWAYS.0 as u32), (D3DRS_STENCILREF, 1),
+                        (D3DRS_STENCILMASK, 0xff), (D3DRS_STENCILWRITEMASK, 0xff),
+                        (D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP.0 as u32),
+                        (D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP.0 as u32),
+                        (D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE.0 as u32)] { device.SetRenderState(state, value)?; }
+                }
+            }
+            device.Clear(
+                0,
+                ptr::null(),
+                (D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER | if coverage.is_some() { D3DCLEAR_STENCIL } else { 0 }) as u32,
+                0xff18202e,
+                1.,
+                0,
+            )?;
+            device.BeginScene()?;
+        }
+        total_triangles = 0;
+        for (i, mesh) in prepared.iter().enumerate() {
+            let inputs = Inputs {
+                model: model_matrix, clip, direction: forward.extend(0.).to_array(), sh: sh.clone(),
+                fresh_world_sh_extra, camera_distance, params: mesh.params, lights,
+            };
+            let count = unsafe { draw_prepared_source(device, mesh, &inputs)? };
             total_triangles += count;
-            println!("SOURCE_3D_DRAW mesh={i} vertices={} triangles={count} vs={:02X?} ps={:02X?} untouched_vertex_bytes={}",vb.vertex_count,vs.fragment_ids,ps.fragment_ids,!diagnostic_skin_translation);
+            println!("SOURCE_3D_DRAW mesh={i} vertices={} triangles={count} vs={:02X?} ps={:02X?} untouched_vertex_bytes={}",
+                mesh.vertex_count, mesh.vertex_recipe, mesh.pixel_recipe, !diagnostic_skin_translation);
         }
         unsafe {
             device.EndScene()?;
@@ -805,21 +878,99 @@ mod probe {
                 format!("source draw produced only {changed} non-background pixels").into(),
             );
         }
-        if let Some(parent) = output.parent().filter(|p| !p.as_os_str().is_empty()) {
-            std::fs::create_dir_all(parent)?;
+        let mut encoded_primary = Vec::new();
+        image::codecs::png::PngEncoder::new(&mut encoded_primary).write_image(&rgba,768,768,image::ExtendedColorType::Rgba8)?;
+        let mut encoded_primary_mask = None;
+        if let Some(mask_data) = &mask {
+            let mut bytes = Vec::new();
+            image::codecs::png::PngEncoder::new(&mut bytes).write_image(mask_data,768,768,image::ExtendedColorType::Rgba8)?;
+            encoded_primary_mask = Some(bytes);
         }
-        image::codecs::png::PngEncoder::new(
-            std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(output)?,
-        )
-        .write_image(&rgba, 768, 768, image::ExtendedColorType::Rgba8)?;
-        if let (Some(mask_path), Some(mask)) = (coverage, mask) {
-            let file = std::fs::OpenOptions::new().write(true).create_new(true).open(mask_path)
-                .map_err(|error| format!("color saved to {}; coverage file creation failed: {error}", output.display()))?;
-            image::codecs::png::PngEncoder::new(file).write_image(&mask, 768, 768, image::ExtendedColorType::Rgba8)
-                .map_err(|error| format!("color saved to {}; coverage write failed at {}: {error}", output.display(), mask_path.display()))?;
+        if let Some(second) = second {
+            if !second.offset.iter().all(|v| v.is_finite() && v.abs() <= 10.0) {
+                return Err("second-frame offset must be finite and within +/-10".into());
+            }
+            if std::fs::metadata(second.reference)?.len() > 16 * 1024 * 1024 { return Err("reference image too large".into()); }
+            let reference_bytes = std::fs::read(second.reference)?;
+            if reference_bytes.len() > 16 * 1024 * 1024 || reference_bytes.len() < 24
+                || &reference_bytes[..8] != b"\x89PNG\r\n\x1a\n" || &reference_bytes[12..16] != b"IHDR"
+                || u32::from_be_bytes(reference_bytes[16..20].try_into()?) != 768
+                || u32::from_be_bytes(reference_bytes[20..24].try_into()?) != 768 {
+                return Err("invalid bounded reference PNG".into());
+            }
+            let reference = image::load_from_memory_with_format(&reference_bytes, image::ImageFormat::Png)?.to_rgba8();
+            if reference.dimensions() != (768, 768) || reference.as_raw() != &rgba {
+                return Err("prepared first frame differs from supplied one-shot reference".into());
+            }
+            let translation = Vec3::from_array(second.offset);
+            let frame = super::native_source_frame_v1::FrameInput {
+                width: 768, height: 768, model: Mat4::from_translation(translation) * model_matrix,
+                view, projection: Mat4::perspective_lh(fov, 1., near, far), camera_world: eye,
+            }.validate().map_err(|error| format!("invalid explicit frame: {error:?}"))?;
+            let distance = shader_binding::camera_distance_constant(frame.model.w_axis.truncate().to_array(),
+                frame.camera_world.to_array(), spore_core::native_x87::Context::from_control_word(0x027f)?)?;
+            let mut second_baseline = None;
+            let mut second_rgba = Vec::new();
+            for instrumented in [false, true] {
+            unsafe {
+                for slot in 0..8 { device.SetTexture(slot, None::<&IDirect3DBaseTexture9>)?; }
+                for (state,value) in [(D3DRS_ZENABLE,1),(D3DRS_ZWRITEENABLE,1),
+                    (D3DRS_ZFUNC,D3DCMP_LESSEQUAL.0 as u32),(D3DRS_LIGHTING,0),
+                    (D3DRS_ALPHABLENDENABLE,0),(D3DRS_ALPHATESTENABLE,0),
+                    (D3DRS_CULLMODE,D3DCULL_NONE.0 as u32),(D3DRS_SRGBWRITEENABLE,0),
+                    (D3DRS_COLORWRITEENABLE,15),(D3DRS_SCISSORTESTENABLE,0),(D3DRS_STENCILENABLE,u32::from(instrumented)),(D3DRS_TWOSIDEDSTENCILMODE,0),
+                    (D3DRS_STENCILFUNC,D3DCMP_ALWAYS.0 as u32),(D3DRS_STENCILREF,1),
+                    (D3DRS_STENCILMASK,0xff),(D3DRS_STENCILWRITEMASK,0xff),
+                    (D3DRS_STENCILFAIL,D3DSTENCILOP_KEEP.0 as u32),(D3DRS_STENCILZFAIL,D3DSTENCILOP_KEEP.0 as u32),
+                    (D3DRS_STENCILPASS,D3DSTENCILOP_REPLACE.0 as u32)] { device.SetRenderState(state,value)?; }
+                device.SetViewport(&D3DVIEWPORT9 { X:0, Y:0, Width:768, Height:768, MinZ:0., MaxZ:1. })?;
+                device.Clear(0, ptr::null(), (D3DCLEAR_TARGET|D3DCLEAR_ZBUFFER|D3DCLEAR_STENCIL) as u32, 0xff18202e, 1., 0)?;
+                device.BeginScene()?;
+                let inputs = Inputs { model: frame.model, clip: frame.clip, direction: forward.extend(0.).to_array(),
+                    sh: sh.clone(), fresh_world_sh_extra, camera_distance: distance, params: prepared[0].params, lights };
+                draw_prepared_source(device, &prepared[0], &inputs)?;
+                device.EndScene()?;
+            }
+            second_rgba = unsafe { target.read_rgba()? };
+            if instrumented {
+                if second_baseline.as_ref() != Some(&second_rgba) { return Err("second-frame stencil changed source color".into()); }
+            } else { second_baseline = Some(second_rgba.clone()); }
+            }
+            let second_mask = unsafe { target.read_stencil_mask()? };
+            if second_rgba.len() != 768*768*4 || second_mask.len() != second_rgba.len()
+                || !second_mask.chunks_exact(4).any(|p| p == [255,255,255,255]) {
+                return Err("second-frame extent or coverage invalid".into());
+            }
+            if second.offset == [0.,0.,0.] && (second_rgba != rgba || mask.as_ref() != Some(&second_mask)) {
+                return Err("zero-offset frame differs after state restoration".into());
+            }
+            let mut encoded_shot = Vec::new();
+            let mut encoded_mask = Vec::new();
+            image::codecs::png::PngEncoder::new(&mut encoded_shot).write_image(&second_rgba,768,768,image::ExtendedColorType::Rgba8)?;
+            image::codecs::png::PngEncoder::new(&mut encoded_mask).write_image(&second_mask,768,768,image::ExtendedColorType::Rgba8)?;
+            let mut shot_file = std::fs::OpenOptions::new().write(true).create_new(true).open(second.shot)
+                .map_err(|error| format!("second color was not created at {}: {error}", second.shot.display()))?;
+            std::io::Write::write_all(&mut shot_file, &encoded_shot)
+                .map_err(|error| format!("second color may be partial at {}: {error}", second.shot.display()))?;
+            let mut mask_file = std::fs::OpenOptions::new().write(true).create_new(true).open(second.mask)
+                .map_err(|error| format!("second color saved to {}; second mask not created at {}: {error}", second.shot.display(), second.mask.display()))?;
+            std::io::Write::write_all(&mut mask_file, &encoded_mask)
+                .map_err(|error| format!("second color saved to {}; second mask may be partial at {}: {error}", second.shot.display(), second.mask.display()))?;
+            println!("SOURCE_3D_TWO_FRAME first_reference_equal=true second_color_equal=true second_offset={:?} runtime_retail_unverified=true", second.offset);
+        }
+        let prior = if let Some(frame) = second { format!("second color {} and mask {} already saved; ", frame.shot.display(), frame.mask.display()) } else { String::new() };
+        if let Some(parent) = output.parent().filter(|p| !p.as_os_str().is_empty()) {
+            std::fs::create_dir_all(parent).map_err(|error| format!("{prior}first output directory creation failed: {error}"))?;
+        }
+        let mut primary = std::fs::OpenOptions::new().write(true).create_new(true).open(output)
+            .map_err(|error| format!("{prior}first color not created at {}: {error}", output.display()))?;
+        std::io::Write::write_all(&mut primary, &encoded_primary)
+            .map_err(|error| format!("{prior}first color may be partial at {}: {error}", output.display()))?;
+        if let (Some(mask_path), Some(bytes)) = (coverage, encoded_primary_mask) {
+            let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(mask_path)
+                .map_err(|error| format!("{prior}first color saved to {}; first mask not created at {}: {error}", output.display(), mask_path.display()))?;
+            std::io::Write::write_all(&mut file, &bytes)
+                .map_err(|error| format!("{prior}first color saved to {}; first mask may be partial at {}: {error}", output.display(), mask_path.display()))?;
         }
         println!("SOURCE_3D_RESULT triangles={total_triangles} non_background_pixels={changed} output={output:?} presented=false");
         Ok(())
@@ -831,7 +982,7 @@ pub fn capture(
     output: &std::path::Path,
     instance: u64,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    probe::render(install, output, instance, None, false, false, None)
+    probe::render(install, output, instance, None, false, false, None, None)
 }
 #[cfg(windows)]
 pub fn capture_key(
@@ -840,17 +991,25 @@ pub fn capture_key(
     model: dbpf::native_index::NativeResourceKey,
     diagnostic_skin_translation: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    probe::render(install, output, model.scoped_instance(), Some(model), false, diagnostic_skin_translation, None)
+    probe::render(install, output, model.scoped_instance(), Some(model), false, diagnostic_skin_translation, None, None)
 }
 
+#[cfg(windows)]
+pub struct SecondFrame<'a> {
+    pub reference: &'a std::path::Path,
+    pub shot: &'a std::path::Path,
+    pub mask: &'a std::path::Path,
+    pub offset: [f32; 3],
+}
 #[cfg(windows)]
 pub fn capture_creature_key(
     install: &std::path::Path,
     output: &std::path::Path,
     model: dbpf::native_index::NativeResourceKey,
     coverage: Option<&std::path::Path>,
+    second: Option<&SecondFrame<'_>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    probe::render(install, output, model.scoped_instance(), Some(model), true, false, coverage)
+    probe::render(install, output, model.scoped_instance(), Some(model), true, false, coverage, second)
 }
 #[cfg(not(windows))]
 pub fn capture(
