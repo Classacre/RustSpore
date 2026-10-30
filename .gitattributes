@@ -674,3 +674,10 @@
 /re/cell-actor-geometry-consumer-static-v1.md text eol=lf
 /re/cell-start-geometry-handoff-test-plan-v1.md text eol=lf
 /re/cell-capability-zero-flag-source-bridge-v1.md text eol=lf
+
+# Keep Cell broadphase and capability-join evidence stable on checkout.
+/re/cell-broadphase-gate-static-v1.md text eol=lf
+/re/cell-broadphase-gate-model-v1.md text eol=lf
+/re/cell-capability-source-join-v1.md text eol=lf
+/re/cell-capability-retained-host-evidence-v1.md text eol=lf
+/re/cell-capability-source-bound-join-plan-v1.md text eol=lf

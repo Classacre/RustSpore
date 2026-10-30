@@ -367,9 +367,26 @@ mod tests {
         let snapshot = AdmittedCacheSnapshot {
             key_fc: key, center: [0, 0, 1.0f32.to_bits()], scalar: 3.0f32.to_bits(),
         };
-        assert_eq!(project(actor, Some(snapshot), Policy::Mxcsr1f80), Ok(Output {
+        let projected = project(actor, Some(snapshot), Policy::Mxcsr1f80).unwrap();
+        assert_eq!(projected, Output {
             center: [0x4120_0000, 0x41a0_0000, 0x4200_0000], scalar: 0x40c0_0000,
-        }));
+        });
+        // The second output is synthetic fixture data. These numerical gate
+        // checks establish no second actor, pair, contact, event or source
+        // provenance for either geometry input.
+        let second = Output {
+            center: [22.0f32.to_bits(), 20.0f32.to_bits(), 32.0f32.to_bits()],
+            scalar: 6.0f32.to_bits(),
+        };
+        let equal = spore_core::cell_broadphase_gate_v1::evaluate(projected, second, Policy::Mxcsr1f80).unwrap();
+        assert_eq!(equal.squared_distance, 144.0f32.to_bits());
+        assert_eq!(equal.squared_sum, 144.0f32.to_bits());
+        assert!(!equal.passes);
+        let closer = Output { center: [21.0f32.to_bits(), second.center[1], second.center[2]], ..second };
+        let inside = spore_core::cell_broadphase_gate_v1::evaluate(projected, closer, Policy::Mxcsr1f80).unwrap();
+        assert_eq!(inside.squared_distance, 121.0f32.to_bits());
+        assert_eq!(inside.squared_sum, 144.0f32.to_bits());
+        assert!(inside.passes);
         let wrong = AdmittedCacheSnapshot { key_fc: key ^ 1, ..snapshot };
         assert_eq!(project(actor, Some(wrong), Policy::Mxcsr1f80), Err(ProjectionError::WrongCacheKey));
         assert_eq!(project(actor, None, Policy::Mxcsr1f80), Err(ProjectionError::MissingCache));
