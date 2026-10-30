@@ -19,6 +19,8 @@ use spore_core::GameStage;
 mod animation_viewer;
 mod assets;
 mod cell_game;
+#[allow(dead_code)]
+mod cell_start_reference_fixup_v1;
 mod civilization_game;
 mod creature_game;
 mod editor;

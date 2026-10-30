@@ -35,3 +35,6 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61.3", optional = true, features = ["Win32_Foundation", "Win32_Graphics_Direct3D9", "Win32_System_LibraryLoader", "Win32_UI_WindowsAndMessaging"] }
+
+[dev-dependencies]
+sha2 = "0.10"

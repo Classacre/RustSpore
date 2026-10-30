@@ -642,3 +642,9 @@
 /re/cell-source-actor-sweep-integration-plan-v1.md text eol=lf
 /re/cell-player-start-definition-static-v1.md text eol=lf
 /re/cell-definition-only-intake-v1.md text eol=lf
+
+# Keep Cell start-fixup and constructor evidence stable on checkout.
+/re/cell-start-reference-fixup-fixture-v1.md text eol=lf
+/re/cell-start-reference-source-bound-test-plan-v1.md text eol=lf
+/re/cell-start-actor-constructor-static-v1.md text eol=lf
+/re/cell-start-actor-constructor-next-boundary-v1.md text eol=lf
