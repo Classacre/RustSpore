@@ -253,6 +253,7 @@ mod tests {
         let package = NativePackageIndex::open(&path).expect("open explicitly selected PatchData");
         let globals_key = NativeResourceKey { instance_id: GLOBALS_ID, type_id: GLOBALS_TYPE, group_id: 0 };
         let cell_key = NativeResourceKey { instance_id: 0xcbcd_1287, type_id: CELL_TYPE, group_id: 0 };
+        let list_key = NativeResourceKey { instance_id: 0x9a39_1385, type_id: 0xf9c3_d770, group_id: 0 };
         let read = |key: NativeResourceKey| {
             let mut matches = package.entries().iter().filter(|entry| entry.key == key);
             let entry = matches.next().expect("exact scope-zero key absent");
@@ -261,11 +262,14 @@ mod tests {
         };
         let globals = read(globals_key);
         let cell = read(cell_key);
+        let list = read(list_key);
         assert_eq!(file_hash(&path), before, "selected package changed across extraction");
         assert_eq!(format!("{:x}", Sha256::digest(&globals)),
             "e8c4b80348fd8f3a1821533c87110315ba584f66f081d46305ff61ab6cbf8c72");
         assert_eq!(format!("{:x}", Sha256::digest(&cell)),
             "f12d98c0f59af6d4d58174016f1e04d709647480310103341193df9b0fa76542");
+        assert_eq!(format!("{:x}", Sha256::digest(&list)),
+            "29b0f195b26bf2480586518e385933284819ff360a991ea706a939717a5d5f8a");
         assert_eq!(cell_globals::parse(&globals).unwrap().start_cell(), 0xcbcd_1287);
         let mut table = HandleTable::new().unwrap();
         // Symbolic descriptor identity and package label are explicit fixture
@@ -293,6 +297,19 @@ mod tests {
         assert_eq!(size.sampled_bits, 0x3e8c_cccd);
         assert_eq!(size.actor_scale_bits, 0x3e8c_cccd);
         assert_eq!(size.rng_state_after, 0x278d_de6d);
+        // This admits the parsed disk rows as a runtime snapshot for this
+        // fixture only. Cache, structure handle, RNG, control and third word
+        // are synthetic and do not establish an original source selection.
+        let rows = spore_core::cell_kind4_list_disk_v1::parse(&list).expect("selected source list");
+        let mut cache = spore_core::cell_kind4_cache_selection_v1::Cache::default();
+        let selected = spore_core::cell_kind4_cache_selection_v1::select(
+            &mut cache, 0x42, Some(&rows), 1, 0x027f, 7,
+            spore_core::cell_kind4_cache_selection_v1::SnapshotAdmission,
+        );
+        assert_eq!(selected, spore_core::cell_kind4_cache_selection_v1::ResultV1::Selected {
+            triple: [0xe219_e5d0, 0x3d97_a8e4, 7], selected: 1,
+            rng_state: 0xd369_bf11, draws: 4,
+        });
         let other = HandleTable::new().unwrap();
         assert_eq!(other.get(result.handle), None);
     }

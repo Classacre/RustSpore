@@ -31,6 +31,8 @@ pub enum X87Error {
     ReservedPrecision,
     SinArgumentOutsideBound,
     SinArgumentReductionIncomplete,
+    CosArgumentOutsideBound,
+    CosArgumentReductionIncomplete,
 }
 impl fmt::Display for X87Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -305,6 +307,42 @@ impl Context {
         }
     }
 
+    /// Retained host hardware FCOS for finite |argument| <= 4 radians.
+    /// C2 is checked immediately; no library cosine or range reduction is
+    /// substituted. Results depend on the processor's approximation and do
+    /// not establish the original game's control word or floating-point flags.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn cos_magnitude_at_most_four(self, value: Extended) -> Result<Extended, X87Error> {
+        if self.compare(value.abs(), Extended::from_i32(4))? == Ordering::Greater {
+            return Err(X87Error::CosArgumentOutsideBound);
+        }
+        let mut environment = Environment([0; 32]);
+        let control = self.control_word();
+        let mut result = [0u8; 10];
+        let status: u16;
+        // SAFETY: bounded canonical storage; one x87 entry is loaded and
+        // popped, C2 is captured immediately, and the saved environment is
+        // restored within the block. All x87 registers are declared clobbered.
+        unsafe {
+            std::arch::asm!(
+                "fnstenv [{environment}]", "fldcw [{control}]",
+                "fld tbyte ptr [{value}]", "fcos", "fnstsw ax",
+                "fstp tbyte ptr [{result}]", "fldenv [{environment}]",
+                environment = in(reg) &mut environment, control = in(reg) &control,
+                value = in(reg) value.0.as_ptr(), result = in(reg) result.as_mut_ptr(),
+                out("ax") status,
+                out("st(0)") _, out("st(1)") _, out("st(2)") _, out("st(3)") _,
+                out("st(4)") _, out("st(5)") _, out("st(6)") _, out("st(7)") _,
+                options(nostack),
+            );
+        }
+        if status & 0x0400 != 0 {
+            Err(X87Error::CosArgumentReductionIncomplete)
+        } else {
+            Extended::checked(result)
+        }
+    }
+
     /// FST/FSTP binary32 commit, leaving the supplied retained value available.
     /// Store rounding is controlled by RC, not by PC's significand size.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -390,6 +428,10 @@ impl Context {
     }
     #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
     pub fn sin_magnitude_at_most_four(self, _: Extended) -> Result<Extended, X87Error> {
+        Err(X87Error::UnsupportedArchitecture)
+    }
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+    pub fn cos_magnitude_at_most_four(self, _: Extended) -> Result<Extended, X87Error> {
         Err(X87Error::UnsupportedArchitecture)
     }
     #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
@@ -490,6 +532,7 @@ mod tests {
             let result = ctx.sqrt(ctx.div(load(2.), load(3.)).unwrap()).unwrap();
             let _ = ctx.store_f32(result).unwrap();
             let _ = ctx.sin_magnitude_at_most_two(result).unwrap();
+            let _ = ctx.cos_magnitude_at_most_four(result).unwrap();
             assert_eq!(ctx.compare(result, load(1.)), Ok(Ordering::Less));
             assert_eq!(word(), before);
         }
@@ -536,5 +579,30 @@ mod tests {
             ctx.sin_magnitude_at_most_four(Extended::from_i32(5)),
             Err(X87Error::SinArgumentOutsideBound)
         );
+    }
+
+    #[test]
+    fn retained_cosine_accepts_boundaries_and_rejects_values_beyond_them() {
+        // Exercise all supported PC/rounding combinations; this is host
+        // instruction coverage, not evidence of the game's runtime state.
+        for control in [
+            0x007f, 0x047f, 0x087f, 0x0c7f, // PC24
+            0x027f, 0x067f, 0x0a7f, 0x0e7f, // PC53
+            0x037f, 0x077f, 0x0b7f, 0x0f7f, // PC64
+        ] {
+            let ctx = Context::from_control_word(control).unwrap();
+            for zero in [0.0, -0.0] {
+                assert_eq!(ctx.cos_magnitude_at_most_four(load(zero)), Ok(load(1.0)));
+            }
+            let positive = ctx.cos_magnitude_at_most_four(load(4.0)).unwrap();
+            let negative = ctx.cos_magnitude_at_most_four(load(-4.0)).unwrap();
+            assert_eq!(positive, negative);
+            assert_eq!(ctx.compare(positive, load(0.0)), Ok(Ordering::Less));
+            let outside = f32::from_bits(4.0f32.to_bits() + 1);
+            for value in [outside, -outside] {
+                assert_eq!(ctx.cos_magnitude_at_most_four(load(value)),
+                    Err(X87Error::CosArgumentOutsideBound));
+            }
+        }
     }
 }

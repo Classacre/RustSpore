@@ -653,3 +653,10 @@
 /re/cell-start-equal-size-model-v1.md text eol=lf
 /re/cell-start-equal-size-independent-validation-plan-v1.md text eol=lf
 /re/cell-start-null-orientation-static-v1.md text eol=lf
+
+# Keep Cell kind-4 and orientation evidence stable on checkout.
+/re/cell-start-fcos-host-v1.md text eol=lf
+/re/cell-start-null-orientation-feasibility-v1.md text eol=lf
+/re/cell-kind4-cache-selection-static-v1.md text eol=lf
+/re/cell-kind4-cache-selection-model-v1.md text eol=lf
+/re/cell-constructor-orientation-selection-rng-gap-v1.md text eol=lf
