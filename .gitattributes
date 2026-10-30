@@ -664,3 +664,7 @@
 # Keep bounded Cell orientation evidence stable on checkout.
 /re/cell-start-orientation-model-v1.md text eol=lf
 /re/cell-start-orientation-native-host-plan-v1.md text eol=lf
+
+# Keep source quaternion matrix evidence stable on checkout.
+/re/cell-start-quaternion-matrix-static-v1.md text eol=lf
+/re/cell-start-quaternion-matrix-model-v1.md text eol=lf

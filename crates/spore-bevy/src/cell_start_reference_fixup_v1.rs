@@ -311,6 +311,16 @@ mod tests {
         assert!(orientation.quaternion_bits.iter().all(|&bits| f32::from_bits(bits).is_finite()));
         assert_eq!(orientation.quaternion_bits[2], orientation.sine_bits);
         assert_eq!(orientation.quaternion_bits[3], orientation.cosine_bits);
+        // Matrix input is the synthetic orientation above under the same
+        // no-intervening-state admission; no live actor transform is implied.
+        let matrix = spore_core::cell_start_quaternion_matrix_v1::matrix_words(
+            orientation.quaternion_bits, spore_core::native_sse::Policy::Mxcsr1f80,
+        ).expect("bounded matrix fixture");
+        assert!(matrix.iter().all(|&bits| f32::from_bits(bits).is_finite()));
+        assert_eq!(matrix[8], 1.0f32.to_bits());
+        for index in [2, 5, 6, 7] { assert_eq!(matrix[index] & 0x7fff_ffff, 0); }
+        assert_eq!(matrix[0], matrix[4]);
+        assert_eq!(f32::from_bits(matrix[1]), -f32::from_bits(matrix[3]));
         // This admits the parsed disk rows as a runtime snapshot for this
         // fixture only. Cache, structure handle, RNG, control and third word
         // are synthetic and do not establish an original source selection.

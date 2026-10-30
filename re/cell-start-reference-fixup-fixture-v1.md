@@ -63,6 +63,8 @@ It also checks the hash-bound kind-4 list under explicit fixture assumptions;
 see [cell-kind4-cache-selection-model-v1.md](cell-kind4-cache-selection-model-v1.md).
 Its controlled size-to-orientation-to-selection handoff is described in
 [cell-start-orientation-model-v1.md](cell-start-orientation-model-v1.md).
+The same admitted orientation also feeds the bounded matrix model described in
+[cell-start-quaternion-matrix-model-v1.md](cell-start-quaternion-matrix-model-v1.md).
 
 ## Reproduction
 

@@ -94,6 +94,7 @@ pub mod cell_actor_pool_checked_v1;
 pub mod cell_source_sweep_pairs_v1;
 pub mod cell_start_equal_size_v1;
 pub mod cell_start_null_orientation_v1;
+pub mod cell_start_quaternion_matrix_v1;
 pub mod cell_swimming;
 pub mod civilization;
 pub mod blockdata;
