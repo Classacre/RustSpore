@@ -623,3 +623,7 @@
 /re/blockdata-native-sample-static-v1.md text eol=lf
 /re/cell-source-renderer-owner-v1.md text eol=lf
 /re/blockdata-query-interpolation-static-v1.md text eol=lf
+
+# Keep source query and consumer evidence stable on checkout.
+/re/blockdata-query-model-comparison-v1.md text eol=lf
+/re/blockdata-caller-producer-linkage-v1.md text eol=lf
