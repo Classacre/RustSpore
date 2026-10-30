@@ -32,7 +32,8 @@ const CELL_EDITOR_SETUP: u64 = 0x4060_0100_3615_A30B;
 const CAMERA_NAMESPACE: u64 = 0x4041_0100_0000_0000;
 const THUMBNAIL_CAMERA_KEY: u32 = 0xB02D_871C;
 
-/// Full on-disk identity, including the package providing the overlay winner.
+/// Exact on-disk identity selected by this loader's explicit inspection order;
+/// this does not establish the retail resource-manager overlay winner.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SourceIdentity {
     pub package: PathBuf,
@@ -374,9 +375,17 @@ impl SourceCellLibrary {
         Err(format!("source resource missing {type_id:08X}:{instance:016X}"))
     }
 
-    pub fn definition(&self, id: u32) -> Result<SourceCellDefinition, String> {
+    /// Load only the explicitly requested CELL record and its exact package/key.
+    /// Package precedence is this library's inspection order, not verified
+    /// retail resource resolution or evidence of runtime actor selection.
+    pub fn definition_record(&self, id: u32) -> Result<(SourceIdentity, CellRecord), String> {
         let (cell, bytes) = self.read(CELL, u64::from(id))?;
         let record = CellRecord::parse(&bytes)?;
+        Ok((cell, record))
+    }
+
+    pub fn definition(&self, id: u32) -> Result<SourceCellDefinition, String> {
+        let (cell, record) = self.definition_record(id)?;
         let (structure, bytes) = self.read(STRUCTURE, u64::from(record.structure_id))?;
         let structure_data = CellStructure::parse(&bytes)?;
         let creation_instance = structure_data.baked_creation()?;
@@ -958,6 +967,61 @@ mod tests {
     }
 
     #[test]
+    fn definition_record_uses_inspection_order_without_requiring_structure_art() {
+        fn archive(path: &Path, rows: &[(u32, Vec<u8>)]) {
+            let mut bytes = vec![0u8; 0x60];
+            bytes[..4].copy_from_slice(b"DBPF");
+            bytes[4..8].copy_from_slice(&3u32.to_le_bytes());
+            bytes[0x24..0x28].copy_from_slice(&(rows.len() as u32).to_le_bytes());
+            let mut entries = Vec::new();
+            for (id, payload) in rows {
+                entries.push((*id, bytes.len() as u32, payload.len() as u32));
+                bytes.extend_from_slice(payload);
+            }
+            let offset = bytes.len() as u32;
+            bytes[0x40..0x44].copy_from_slice(&offset.to_le_bytes());
+            bytes[0x2c..0x30].copy_from_slice(&(8 + entries.len() as u32 * 28).to_le_bytes());
+            bytes.extend_from_slice(&4u32.to_le_bytes());
+            bytes.extend_from_slice(&0u32.to_le_bytes());
+            for (id, offset, length) in entries {
+                for word in [CELL, 0, id, offset, length | 0x8000_0000, length, 0x0001_0000] {
+                    bytes.extend_from_slice(&word.to_le_bytes());
+                }
+            }
+            std::fs::write(path, bytes).unwrap();
+        }
+        fn record(name: char) -> Vec<u8> {
+            let mut bytes = vec![0; 796];
+            bytes[4..6].copy_from_slice(&(name as u16).to_le_bytes());
+            bytes
+        }
+        let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("rustspore_cell_definition_{}_{nonce}", std::process::id()));
+        std::fs::create_dir(&dir).unwrap();
+        let first = dir.join("first.package");
+        let second = dir.join("second.package");
+        archive(&first, &[(1, record('A')), (3, vec![0; 12])]);
+        archive(&second, &[(1, record('B')), (2, record('C')), (3, record('D'))]);
+        let source = SourceCellLibrary { packages: vec![NativePackageIndex::open(&first).unwrap(),
+                                                         NativePackageIndex::open(&second).unwrap()] };
+        let (identity, definition) = source.definition_record(1).unwrap();
+        assert_eq!(identity.package, first);
+        assert_eq!(identity.key, NativeResourceKey::from_scoped_instance(CELL, 1));
+        assert_eq!(definition.embedded_name, "A");
+        assert_eq!(definition.raw, record('A'));
+        assert!(source.definition(1).is_err(), "art path still requires its structure");
+        let (identity, definition) = source.definition_record(2).unwrap();
+        assert_eq!(identity.package, second);
+        assert_eq!(definition.embedded_name, "C");
+        assert!(source.definition_record(3).is_err(), "malformed first winner must not fall back");
+        assert!(source.definition_record(4).is_err(), "missing definition stays an error");
+        drop(source);
+        std::fs::remove_file(first).unwrap();
+        std::fs::remove_file(second).unwrap();
+        std::fs::remove_dir(dir).unwrap();
+    }
+
+    #[test]
     fn measured_structure_entries_preserve_effects_and_reject_ambiguous_creations() {
         let mut bytes = vec![0u8; 108];
         bytes[20..24].copy_from_slice(&28u32.to_le_bytes());
@@ -989,6 +1053,24 @@ mod tests {
         bytes[24..28].copy_from_slice(&u32::MAX.to_le_bytes());
         assert!(CellStructure::parse(&bytes).is_err());
         assert!(decode_thumbnail(b"not a PNG").is_err());
+    }
+
+    /// Explicit source key intake only; this does not establish retail selection.
+    #[test]
+    #[ignore = "requires the local SPORE installation; run with --ignored --nocapture"]
+    fn installed_definition_only_reads_explicit_start_cell_candidate() {
+        let install = std::env::var_os("RUSTSPORE_INSTALL")
+            .map(PathBuf::from).unwrap_or_else(|| PathBuf::from("D:/Games/SPORE Collection"));
+        let source = SourceCellLibrary::open_install(&install).unwrap();
+        let (identity, record) = source.definition_record(0xCBCD_1287).unwrap();
+        assert_eq!(identity.key, NativeResourceKey { type_id: CELL, group_id: 0, instance_id: 0xCBCD_1287 });
+        assert!(identity.package.ends_with("PatchData.package"));
+        assert_eq!(record.raw.len(), 796);
+        let (raw_identity, raw) = source.read(CELL, identity.key.scoped_instance()).unwrap();
+        assert_eq!(identity, raw_identity);
+        assert_eq!(record.raw, raw);
+        println!("CELL_DEFINITION_INSPECTION package={:?} key={} bytes={} structure_id={:08X}",
+                 identity.package, identity.key, record.raw.len(), record.structure_id);
     }
 
     /// Explicit opt-in corpus test reads the user's install and no bundled art.

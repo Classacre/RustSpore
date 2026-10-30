@@ -633,3 +633,12 @@
 /re/cell-source-health-integration-proposal-v1.md text eol=lf
 /re/cell-source-health-update-admission-v1.md text eol=lf
 /re/cell-source-feeding-handoff-prerequisites-v1.md text eol=lf
+
+# Keep Cell identity and source-definition evidence stable on checkout.
+/re/cell-actor-pool-handle-static-v1.md text eol=lf
+/re/cell-actor-pool-definition-handle-static-v1.md text eol=lf
+/re/cell-actor-pool-checked-model-v1.md text eol=lf
+/re/cell-source-sweep-model-v1.md text eol=lf
+/re/cell-source-actor-sweep-integration-plan-v1.md text eol=lf
+/re/cell-player-start-definition-static-v1.md text eol=lf
+/re/cell-definition-only-intake-v1.md text eol=lf
