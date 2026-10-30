@@ -660,3 +660,7 @@
 /re/cell-kind4-cache-selection-static-v1.md text eol=lf
 /re/cell-kind4-cache-selection-model-v1.md text eol=lf
 /re/cell-constructor-orientation-selection-rng-gap-v1.md text eol=lf
+
+# Keep bounded Cell orientation evidence stable on checkout.
+/re/cell-start-orientation-model-v1.md text eol=lf
+/re/cell-start-orientation-native-host-plan-v1.md text eol=lf

@@ -227,6 +227,7 @@ mod tests {
     /// Precondition: the package is stable and is not concurrently modified or
     /// replaced throughout the test. Hashes before/after cannot rule out a
     /// transient replacement, because the index reader reopens the path.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[test]
     #[ignore = "requires a local SPORE install; explicit PatchData fixture only"]
     fn explicit_patchdata_candidate_uses_canonical_keys() {
@@ -297,6 +298,19 @@ mod tests {
         assert_eq!(size.sampled_bits, 0x3e8c_cccd);
         assert_eq!(size.actor_scale_bits, 0x3e8c_cccd);
         assert_eq!(size.rng_state_after, 0x278d_de6d);
+        // This direct fixture handoff assumes no intervening RNG changes. The
+        // actual allocation, intervening effects, runtime global/axis values
+        // and original floating-point state are not established here.
+        let orientation = spore_core::cell_start_null_orientation_v1::null_orientation(
+            size.rng_state_after, 0x40c9_0fdb, [0, 0, 0x3f80_0000], 0x027f,
+            spore_core::native_sse::Policy::Mxcsr1f80,
+        ).expect("bounded null-orientation fixture");
+        assert_eq!(orientation.rng_state_after, 0xfb53_3a69);
+        assert_eq!(orientation.quaternion_bits[0], 0);
+        assert_eq!(orientation.quaternion_bits[1], 0);
+        assert!(orientation.quaternion_bits.iter().all(|&bits| f32::from_bits(bits).is_finite()));
+        assert_eq!(orientation.quaternion_bits[2], orientation.sine_bits);
+        assert_eq!(orientation.quaternion_bits[3], orientation.cosine_bits);
         // This admits the parsed disk rows as a runtime snapshot for this
         // fixture only. Cache, structure handle, RNG, control and third word
         // are synthetic and do not establish an original source selection.
@@ -309,6 +323,18 @@ mod tests {
         assert_eq!(selected, spore_core::cell_kind4_cache_selection_v1::ResultV1::Selected {
             triple: [0xe219_e5d0, 0x3d97_a8e4, 7], selected: 1,
             rng_state: 0xd369_bf11, draws: 4,
+        });
+        // A separate fresh cache chains the orientation state only under the
+        // fixture assumption of no intervening RNG mutation. Neither the
+        // actor nor the original cache or source selection is established.
+        let mut chained_cache = spore_core::cell_kind4_cache_selection_v1::Cache::default();
+        let chained = spore_core::cell_kind4_cache_selection_v1::select(
+            &mut chained_cache, 0x42, Some(&rows), orientation.rng_state_after, 0x027f, 7,
+            spore_core::cell_kind4_cache_selection_v1::SnapshotAdmission,
+        );
+        assert_eq!(chained, spore_core::cell_kind4_cache_selection_v1::ResultV1::Selected {
+            triple: [0xe219_e5d3, 0x3d97_a8e4, 7], selected: 2,
+            rng_state: 0x492c_37f9, draws: 4,
         });
         let other = HandleTable::new().unwrap();
         assert_eq!(other.get(result.handle), None);
