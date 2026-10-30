@@ -93,6 +93,7 @@ pub mod cell_swimming;
 pub mod civilization;
 pub mod blockdata;
 pub mod blockdata_query_v1;
+pub mod blockdata_lookup_v1;
 pub mod content_manifest;
 pub mod creature_data;
 pub mod creature_game;

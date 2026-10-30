@@ -627,3 +627,9 @@
 # Keep source query and consumer evidence stable on checkout.
 /re/blockdata-query-model-comparison-v1.md text eol=lf
 /re/blockdata-caller-producer-linkage-v1.md text eol=lf
+
+# Keep lookup and Cell event admission evidence stable on checkout.
+/re/blockdata-lookup-wrapper-v1.md text eol=lf
+/re/cell-source-health-integration-proposal-v1.md text eol=lf
+/re/cell-source-health-update-admission-v1.md text eol=lf
+/re/cell-source-feeding-handoff-prerequisites-v1.md text eol=lf
