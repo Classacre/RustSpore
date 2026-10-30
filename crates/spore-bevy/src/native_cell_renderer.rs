@@ -377,19 +377,84 @@ mod probe {
             mesh.indices.as_ptr().cast(), D3DFMT_INDEX32, mesh.vertices.as_ptr().cast(), mesh.stride)?;
         Ok(count)
     }
-    pub fn render(
+    // Own the fixed target and everything created on its device together. D3D9
+    // was created without MULTITHREADED; keep creation, use and destruction on
+    // the creating thread. Fields drop in declaration order, so the prepared
+    // COM resources are released before the target and its hidden window.
+    struct PreparedSourceRenderer {
+        prepared: Vec<PreparedSourceMesh>,
+        target: OffscreenDevice,
+        allow_inspection_frames: bool,
+        _thread_affinity: std::marker::PhantomData<std::rc::Rc<()>>,
+    }
+    impl PreparedSourceRenderer {
+        fn new(target: OffscreenDevice, prepared: Vec<PreparedSourceMesh>, allow_inspection_frames: bool) -> Self {
+            Self { prepared, target, allow_inspection_frames, _thread_affinity: std::marker::PhantomData }
+        }
+
+        // A fixed-size inspection frame, not a live Cell camera or scene. The
+        // stencil pass mutates the color target, hence color is read first.
+        unsafe fn render_inspection_frame(&self, inputs: &Inputs) -> Result<(Vec<u8>, Vec<u8>), Failure> {
+            if !self.allow_inspection_frames || self.prepared.len() != 1 {
+                return Err("inspection frame requires validated candidate preparation".into());
+            }
+            let device = &self.target.device;
+            let mut baseline = None;
+            let mut rgba = Vec::new();
+            for instrumented in [false, true] {
+                for slot in 0..8 { device.SetTexture(slot, None::<&IDirect3DBaseTexture9>)?; }
+                for (state,value) in [(D3DRS_ZENABLE,1),(D3DRS_ZWRITEENABLE,1),
+                    (D3DRS_ZFUNC,D3DCMP_LESSEQUAL.0 as u32),(D3DRS_LIGHTING,0),
+                    (D3DRS_ALPHABLENDENABLE,0),(D3DRS_ALPHATESTENABLE,0),
+                    (D3DRS_CULLMODE,D3DCULL_NONE.0 as u32),(D3DRS_SRGBWRITEENABLE,0),
+                    (D3DRS_COLORWRITEENABLE,15),(D3DRS_SCISSORTESTENABLE,0),(D3DRS_STENCILENABLE,u32::from(instrumented)),(D3DRS_TWOSIDEDSTENCILMODE,0),
+                    (D3DRS_STENCILFUNC,D3DCMP_ALWAYS.0 as u32),(D3DRS_STENCILREF,1),
+                    (D3DRS_STENCILMASK,0xff),(D3DRS_STENCILWRITEMASK,0xff),
+                    (D3DRS_STENCILFAIL,D3DSTENCILOP_KEEP.0 as u32),(D3DRS_STENCILZFAIL,D3DSTENCILOP_KEEP.0 as u32),
+                    (D3DRS_STENCILPASS,D3DSTENCILOP_REPLACE.0 as u32)] { device.SetRenderState(state,value)?; }
+                device.SetViewport(&D3DVIEWPORT9 { X:0, Y:0, Width:768, Height:768, MinZ:0., MaxZ:1. })?;
+                device.Clear(0, ptr::null(), (D3DCLEAR_TARGET|D3DCLEAR_ZBUFFER|D3DCLEAR_STENCIL) as u32, 0xff18202e, 1., 0)?;
+                device.BeginScene()?;
+                draw_prepared_source(device, &self.prepared[0], inputs)?;
+                device.EndScene()?;
+                rgba = self.target.read_rgba()?;
+                if instrumented {
+                    if baseline.as_ref() != Some(&rgba) { return Err("second-frame stencil changed source color".into()); }
+                } else { baseline = Some(rgba.clone()); }
+            }
+            let mask = self.target.read_stencil_mask()?;
+            Ok((rgba, mask))
+        }
+    }
+    // Source-backed inspection data returned separately from the device owner;
+    // its camera fit and lighting are diagnostic, not a runtime scene contract.
+    struct InspectionContext {
+        model_matrix: Mat4,
+        clip: Mat4,
+        forward: Vec3,
+        sh: Vec<[f32; 4]>,
+        fresh_world_sh_extra: [f32; 4],
+        camera_distance: [f32; 4],
+        lights: [[f32; 4]; 2],
+        view: Mat4,
+        fov: f32,
+        near: f32,
+        far: f32,
+        eye: Vec3,
+    }
+
+    // Prepare once and return an owner usable for repeated inspection frames.
+    // Candidate-only repeated frames require both coverage and second=true;
+    // all resources are created on the owner's fixed-size D3D9 device.
+    fn prepare_source_renderer(
         install: &Path,
-        output: &Path,
         instance: u64,
         model_key: Option<NativeResourceKey>,
         creature_camera: bool,
         diagnostic_skin_translation: bool,
-        coverage: Option<&Path>,
-        second: Option<&super::SecondFrame<'_>>,
-    ) -> Result<(), Failure> {
-        if output.exists() {
-            return Err("capture output already exists".into());
-        }
+        coverage: bool,
+        second: bool,
+    ) -> Result<(PreparedSourceRenderer, InspectionContext), Failure> {
         let sources = Sources::open_install(install)?;
         let raw = match model_key {
             Some(key) if key.type_id == 0x00e6bce5 && key.scoped_instance() == instance => {
@@ -399,7 +464,7 @@ mod probe {
             None => sources.read(0x00e6bce5, instance)?,
         };
         let model = gmdl::parse(&raw)?;
-        if coverage.is_some() && (instance != 0x4061_7100_a1c4_6df2 || model_key.is_none()
+        if coverage && (instance != 0x4061_7100_a1c4_6df2 || model_key.is_none()
             || !creature_camera || diagnostic_skin_translation || model.meshes.len() != 1) {
             return Err("coverage requires the exact one-mesh Creature inspection model".into());
         }
@@ -589,16 +654,7 @@ mod probe {
         println!("SOURCE_3D_CONTEXT model={instance:016X} profile=3 builder=generic_static render_type=0 unpack_enabled=true light=40200100FCED73A2 light_frame=identity lighting_world=fresh sh_extra219=source_initial_zero camera={camera_key:016X} editor_setup={setup_key:016X} fit=inspection material_color=white tint=fallback_white retail_fidelity=false sh_band_roundtrip=true");
         let target = unsafe { OffscreenDevice::new(768, 768)? };
         let device = &target.device;
-        if let Some(mask_path) = coverage {
-            if mask_path.exists() || mask_path == output { return Err("coverage output must be a distinct new path".into()); }
-            for path in [output, mask_path] {
-                if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) { std::fs::create_dir_all(parent)?; }
-            }
-            let resolved = |path: &Path| -> Result<std::path::PathBuf, Failure> {
-                let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
-                Ok(parent.canonicalize()?.join(path.file_name().ok_or("output needs filename")?))
-            };
-            if resolved(output)? == resolved(mask_path)? { return Err("coverage and color paths alias".into()); }
+        if coverage {
             let mut caps = D3DCAPS9::default();
             unsafe { device.GetDeviceCaps(&mut caps)?; }
             let required = (D3DSTENCILCAPS_KEEP | D3DSTENCILCAPS_REPLACE) as u32;
@@ -614,7 +670,7 @@ mod probe {
             let format = geometry.format;
             let triangles = geometry.triangles;
             let vertices = geometry.vertices;
-            if second.is_some() && (vertices.len() > 16*1024*1024 || triangles.indices.len().checked_mul(4).is_none_or(|n| n > 16*1024*1024)) {
+            if second && (vertices.len() > 16*1024*1024 || triangles.indices.len().checked_mul(4).is_none_or(|n| n > 16*1024*1024)) {
                 return Err("diagnostic geometry budget exceeded".into());
             }
             let material = &tail.materials[i];
@@ -642,7 +698,7 @@ mod probe {
                 }
                 let raster = sources.raster(binding.raster_instance)?;
                 texture_bytes = texture_bytes.checked_add(raster.data.len()).ok_or("texture budget overflow")?;
-                if second.is_some() && texture_bytes > 64*1024*1024 { return Err("diagnostic texture budget exceeded".into()); }
+                if second && texture_bytes > 64*1024*1024 { return Err("diagnostic texture budget exceeded".into()); }
                 let texture = unsafe { target.upload_raster(&raster)? };
                 let address = binding
                     .address_mode()
@@ -774,8 +830,8 @@ mod probe {
                 vertex_recipe: vs.fragment_ids.clone(), pixel_recipe: ps.fragment_ids.clone(),
             });
         }
-        if second.is_some() {
-            if coverage.is_none() || prepared.len() != 1 || instance != 0x4061_7100_a1c4_6df2 {
+        if second {
+            if !coverage || prepared.len() != 1 || instance != 0x4061_7100_a1c4_6df2 {
                 return Err("second frame requires exact one-mesh source coverage".into());
             }
             let mesh = &prepared[0];
@@ -802,6 +858,41 @@ mod probe {
                 return Err("unsupported candidate source bindings or geometry".into());
             }
         }
+        // The target and its resources now share a single thread-affine owner.
+        let renderer = PreparedSourceRenderer::new(target, prepared, second);
+        Ok((renderer, InspectionContext { model_matrix, clip, forward, sh, fresh_world_sh_extra,
+            camera_distance, lights, view, fov, near, far, eye }))
+    }
+
+    pub fn render(
+        install: &Path,
+        output: &Path,
+        instance: u64,
+        model_key: Option<NativeResourceKey>,
+        creature_camera: bool,
+        diagnostic_skin_translation: bool,
+        coverage: Option<&Path>,
+        second: Option<&super::SecondFrame<'_>>,
+    ) -> Result<(), Failure> {
+        if output.exists() {
+            return Err("capture output already exists".into());
+        }
+        if let Some(mask_path) = coverage {
+            if mask_path.exists() || mask_path == output { return Err("coverage output must be a distinct new path".into()); }
+            for path in [output, mask_path] {
+                if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) { std::fs::create_dir_all(parent)?; }
+            }
+            let resolved = |path: &Path| -> Result<std::path::PathBuf, Failure> {
+                let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+                Ok(parent.canonicalize()?.join(path.file_name().ok_or("output needs filename")?))
+            };
+            if resolved(output)? == resolved(mask_path)? { return Err("coverage and color paths alias".into()); }
+        }
+        let (renderer, context) = prepare_source_renderer(install, instance, model_key, creature_camera,
+            diagnostic_skin_translation, coverage.is_some(), second.is_some())?;
+        let InspectionContext { model_matrix, clip, forward, sh, fresh_world_sh_extra,
+            camera_distance, lights, view, fov, near, far, eye } = context;
+        let device = &renderer.target.device;
         let mut baseline = None;
         let mut rgba = Vec::new();
         let mut total_triangles = 0;
@@ -842,7 +933,7 @@ mod probe {
             device.BeginScene()?;
         }
         total_triangles = 0;
-        for (i, mesh) in prepared.iter().enumerate() {
+        for (i, mesh) in renderer.prepared.iter().enumerate() {
             let inputs = Inputs {
                 model: model_matrix, clip, direction: forward.extend(0.).to_array(), sh: sh.clone(),
                 fresh_world_sh_extra, camera_distance, params: mesh.params, lights,
@@ -855,7 +946,7 @@ mod probe {
         unsafe {
             device.EndScene()?;
         }
-        rgba = unsafe { target.read_rgba()? };
+        rgba = unsafe { renderer.target.read_rgba()? };
         if coverage.is_some() {
             if instrumented {
                 if baseline.as_ref() != Some(&rgba) { return Err("stencil instrumentation changed source color".into()); }
@@ -863,7 +954,7 @@ mod probe {
         }
         }
         let mask = if coverage.is_some() {
-            let mask = unsafe { target.read_stencil_mask()? };
+            let mask = unsafe { renderer.target.read_stencil_mask()? };
             let count = mask.chunks_exact(4).filter(|p| *p == [255, 255, 255, 255]).count();
             if mask.len() != rgba.len() || count == 0 { return Err("stencil coverage is empty or has wrong extent".into()); }
             println!("SOURCE_3D_COVERAGE pixels={count} color_equal=true synthetic_fixture_basis=true runtime_retail_unverified=true");
@@ -909,34 +1000,9 @@ mod probe {
             }.validate().map_err(|error| format!("invalid explicit frame: {error:?}"))?;
             let distance = shader_binding::camera_distance_constant(frame.model.w_axis.truncate().to_array(),
                 frame.camera_world.to_array(), spore_core::native_x87::Context::from_control_word(0x027f)?)?;
-            let mut second_baseline = None;
-            let mut second_rgba = Vec::new();
-            for instrumented in [false, true] {
-            unsafe {
-                for slot in 0..8 { device.SetTexture(slot, None::<&IDirect3DBaseTexture9>)?; }
-                for (state,value) in [(D3DRS_ZENABLE,1),(D3DRS_ZWRITEENABLE,1),
-                    (D3DRS_ZFUNC,D3DCMP_LESSEQUAL.0 as u32),(D3DRS_LIGHTING,0),
-                    (D3DRS_ALPHABLENDENABLE,0),(D3DRS_ALPHATESTENABLE,0),
-                    (D3DRS_CULLMODE,D3DCULL_NONE.0 as u32),(D3DRS_SRGBWRITEENABLE,0),
-                    (D3DRS_COLORWRITEENABLE,15),(D3DRS_SCISSORTESTENABLE,0),(D3DRS_STENCILENABLE,u32::from(instrumented)),(D3DRS_TWOSIDEDSTENCILMODE,0),
-                    (D3DRS_STENCILFUNC,D3DCMP_ALWAYS.0 as u32),(D3DRS_STENCILREF,1),
-                    (D3DRS_STENCILMASK,0xff),(D3DRS_STENCILWRITEMASK,0xff),
-                    (D3DRS_STENCILFAIL,D3DSTENCILOP_KEEP.0 as u32),(D3DRS_STENCILZFAIL,D3DSTENCILOP_KEEP.0 as u32),
-                    (D3DRS_STENCILPASS,D3DSTENCILOP_REPLACE.0 as u32)] { device.SetRenderState(state,value)?; }
-                device.SetViewport(&D3DVIEWPORT9 { X:0, Y:0, Width:768, Height:768, MinZ:0., MaxZ:1. })?;
-                device.Clear(0, ptr::null(), (D3DCLEAR_TARGET|D3DCLEAR_ZBUFFER|D3DCLEAR_STENCIL) as u32, 0xff18202e, 1., 0)?;
-                device.BeginScene()?;
-                let inputs = Inputs { model: frame.model, clip: frame.clip, direction: forward.extend(0.).to_array(),
-                    sh: sh.clone(), fresh_world_sh_extra, camera_distance: distance, params: prepared[0].params, lights };
-                draw_prepared_source(device, &prepared[0], &inputs)?;
-                device.EndScene()?;
-            }
-            second_rgba = unsafe { target.read_rgba()? };
-            if instrumented {
-                if second_baseline.as_ref() != Some(&second_rgba) { return Err("second-frame stencil changed source color".into()); }
-            } else { second_baseline = Some(second_rgba.clone()); }
-            }
-            let second_mask = unsafe { target.read_stencil_mask()? };
+            let inputs = Inputs { model: frame.model, clip: frame.clip, direction: forward.extend(0.).to_array(),
+                sh: sh.clone(), fresh_world_sh_extra, camera_distance: distance, params: renderer.prepared[0].params, lights };
+            let (second_rgba, second_mask) = unsafe { renderer.render_inspection_frame(&inputs)? };
             if second_rgba.len() != 768*768*4 || second_mask.len() != second_rgba.len()
                 || !second_mask.chunks_exact(4).any(|p| p == [255,255,255,255]) {
                 return Err("second-frame extent or coverage invalid".into());
@@ -944,6 +1010,17 @@ mod probe {
             if second.offset == [0.,0.,0.] && (second_rgba != rgba || mask.as_ref() != Some(&second_mask)) {
                 return Err("zero-offset frame differs after state restoration".into());
             }
+            // After the moved frame and its destructive stencil readback, draw
+            // the original inputs again on the same owner. This catches stale
+            // state and uniforms without creating another output artifact.
+            let original_inputs = Inputs { model: model_matrix, clip, direction: forward.extend(0.).to_array(),
+                sh: sh.clone(), fresh_world_sh_extra, camera_distance, params: renderer.prepared[0].params, lights };
+            let (restored_rgba, restored_mask) = unsafe { renderer.render_inspection_frame(&original_inputs) }
+                .map_err(|error| format!("third-frame restoration draw failed: {error}"))?;
+            if restored_rgba != rgba || mask.as_ref() != Some(&restored_mask) {
+                return Err("third-frame color or mask differs from first after state restoration".into());
+            }
+            println!("SOURCE_3D_THIRD_FRAME restored_color_and_mask_equal=true same_owner=true runtime_retail_unverified=true");
             let mut encoded_shot = Vec::new();
             let mut encoded_mask = Vec::new();
             image::codecs::png::PngEncoder::new(&mut encoded_shot).write_image(&second_rgba,768,768,image::ExtendedColorType::Rgba8)?;

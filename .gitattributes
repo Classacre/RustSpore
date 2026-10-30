@@ -618,3 +618,8 @@
 /re/cell-source-prepared-two-frame-v1.md text eol=lf
 /re/cell-actor-model-transform-trace-v1.md text eol=lf
 /re/cell-gameplay-camera-static-v1.md text eol=lf
+
+# Keep blockdata and persistent renderer evidence stable on checkout.
+/re/blockdata-native-sample-static-v1.md text eol=lf
+/re/cell-source-renderer-owner-v1.md text eol=lf
+/re/blockdata-query-interpolation-static-v1.md text eol=lf

@@ -21,9 +21,9 @@
 //!
 //! ## The decisive finding: a closed form from the flag context
 //!
-//! The data length is fully determined by the 8-byte flag context at offsets
-//! 28..36. Let `c` be the number of bytes equal to `0x04` in those 8 bytes.
-//! Then the quadtree level is `L = c - 1` (and `L` is undefined when `c == 0`,
+//! In the previously measured corpus, the data length correlates with the 8-byte
+//! context at offsets 28..36. Let `c` be the count of `0x04` bytes in that context.
+//! Then the measured size exponent is `L = c - 1` (and `L` is undefined when `c == 0`,
 //! which is the bare 36-byte header), and the data holds `4^L` records of 12
 //! bytes each:
 //!
@@ -35,10 +35,10 @@
 //! The eight observed size classes map one-to-one onto `c`:
 //! `c = 0..7` -> sizes `36, 48, 84, 228, 804, 3108, 12324, 49188`.
 //!
-//! This is an adaptive 4-ary quadtree: `L` is the subdivision depth and the
-//! record count is the leaf capacity `4^L`. The 12-byte record semantics (node
-//! child-mask vs. leaf data) are not decoded; this module validates and exposes
-//! the record bytes, not their meaning.
+//! Native routines instead read leading nonzero context bytes as dimensions and
+//! access three-byte samples in a last-axis-fastest table. The older parser below
+//! retains its empirical grouping for compatibility; `NativeSamples` exposes the
+//! bounded source layout. Neither establishes terrain or collision semantics.
 
 use crate::Vec3;
 use std::fmt;
@@ -77,7 +77,7 @@ pub struct Blockdata {
     pub unknown_float: f32,
     /// The 8-byte flag context at offsets 28..36.
     pub flag_context: [u8; 8],
-    /// Quadtree level `L` (`None` when the context has no `0x04` bytes).
+    /// Empirical size exponent `L` (`None` when no context byte equals `0x04`).
     pub level: Option<u32>,
     /// Number of 12-byte data records: `4^L`, or `0` when `level` is `None`.
     pub record_count: usize,
@@ -89,7 +89,7 @@ pub struct Blockdata {
     pub exact: bool,
 }
 
-/// Compute the quadtree level from the 8-byte flag context.
+/// Compute the measured size exponent from the 8-byte flag context.
 ///
 /// Returns `None` when no byte equals `0x04` (a bare 36-byte header), otherwise
 /// `Some(count - 1)` where `count` is the number of `0x04` bytes.
@@ -252,5 +252,182 @@ mod tests {
     fn too_short() {
         let data = vec![0u8; 10];
         assert!(matches!(parse(&data), Err(BlockdataError::TooShort)));
+    }
+}
+/// A checked view of the packed samples used by native routines 414FC0/415440.
+/// Dimensions end at the first zero. No gameplay or interpolation role is assumed.
+#[derive(Debug)]
+pub struct NativeSamples<'a> {
+    data: &'a [u8],
+    dimensions: &'a [u8],
+    count: usize,
+}
+
+/// The checked view rejects unsupported stream sizes and non-exact payloads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativeSamplesError {
+    TooShort,
+    TooLarge,
+    SizeOverflow,
+    SizeMismatch,
+    IndexOutOfBounds,
+    CoordinateOutOfBounds,
+}
+
+impl<'a> NativeSamples<'a> {
+    /// Validate the consumer's 36..100000 byte stream bound and exact table extent.
+    /// Exact extent is a safety restriction, not a native validation claim.
+    pub fn new(data: &'a [u8]) -> Result<Self, NativeSamplesError> {
+        if data.len() < HEADER_SIZE { return Err(NativeSamplesError::TooShort); }
+        if data.len() >= 100_000 { return Err(NativeSamplesError::TooLarge); }
+        let context = &data[28..36];
+        let dimension_count = context.iter().position(|&n| n == 0).unwrap_or(8);
+        let dimensions = &context[..dimension_count];
+        let count = if dimensions.is_empty() { 0 } else {
+            dimensions.iter().try_fold(1usize, |n, &d| n.checked_mul(usize::from(d)))
+                .ok_or(NativeSamplesError::SizeOverflow)?
+        };
+        let expected = count.checked_mul(3).and_then(|n| HEADER_SIZE.checked_add(n))
+            .ok_or(NativeSamplesError::SizeOverflow)?;
+        if data.len() != expected { return Err(NativeSamplesError::SizeMismatch); }
+        Ok(Self { data, dimensions, count })
+    }
+
+    pub fn dimensions(&self) -> &[u8] { self.dimensions }
+    pub fn sample_count(&self) -> usize { self.count }
+
+    /// Checked mixed-radix index; the last dimension changes fastest.
+    pub fn index(&self, coordinates: &[u8]) -> Result<usize, NativeSamplesError> {
+        if coordinates.len() != self.dimensions.len() || self.dimensions.is_empty() {
+            return Err(NativeSamplesError::CoordinateOutOfBounds);
+        }
+        let mut index = 0usize;
+        for (&coordinate, &dimension) in coordinates.iter().zip(self.dimensions) {
+            if coordinate >= dimension { return Err(NativeSamplesError::CoordinateOutOfBounds); }
+            index = index * usize::from(dimension) + usize::from(coordinate);
+        }
+        Ok(index)
+    }
+
+    /// Expand one packed sample into two triples using the observed arithmetic.
+    /// This is not interpolated output, and exceptional floats and alternate
+    /// floating-point control states have not been compared with native execution.
+    pub fn sample(&self, index: usize) -> Result<([f32; 3], [f32; 3]), NativeSamplesError> {
+        if index >= self.count { return Err(NativeSamplesError::IndexOutOfBounds); }
+        let mut first = [0.; 3];
+        let mut second = [0.; 3];
+        let value = |at: usize| f32::from_le_bytes(self.data[at..at + 4].try_into().unwrap());
+        let scale = value(24);
+        for axis in 0..3 {
+            let packed = self.data[HEADER_SIZE + index * 3 + axis];
+            first[axis] = value(axis * 4) - f32::from(packed >> 4) * scale;
+            second[axis] = (f32::from(packed & 15) * scale) + value(12 + axis * 4);
+        }
+        Ok((first, second))
+    }
+
+    /// Header triples, including the zero-dimension native fallback.
+    pub fn header_triples(&self) -> ([f32; 3], [f32; 3]) {
+        let value = |at: usize| f32::from_le_bytes(self.data[at..at + 4].try_into().unwrap());
+        ([value(0), value(4), value(8)], [value(12), value(16), value(20)])
+    }
+}
+
+#[cfg(test)]
+mod native_samples_tests {
+    use super::*;
+
+    fn fixture() -> Vec<u8> {
+        let mut bytes = vec![0; 36 + 3 * 6];
+        for (i, value) in [1.0f32, 2., 3., 4., 5., 6., 0.5].iter().enumerate() {
+            bytes[i*4..i*4+4].copy_from_slice(&value.to_le_bytes());
+        }
+        bytes[28..31].copy_from_slice(&[2, 3, 0]);
+        bytes[36 + 5*3..36 + 6*3].copy_from_slice(&[0x12, 0xf0, 0x0f]);
+        bytes
+    }
+
+    #[test]
+    fn mixed_radix_and_nibble_expansion() {
+        let data = fixture();
+        let samples = NativeSamples::new(&data).unwrap();
+        assert_eq!(samples.dimensions(), &[2, 3]);
+        assert_eq!(samples.sample_count(), 6);
+        assert_eq!(samples.index(&[1, 2]), Ok(5));
+        assert_eq!(samples.sample(5), Ok(([0.5, -5.5, 3.], [5., 5., 13.5])));
+        assert_eq!(samples.index(&[2, 0]), Err(NativeSamplesError::CoordinateOutOfBounds));
+        assert_eq!(samples.sample(6), Err(NativeSamplesError::IndexOutOfBounds));
+    }
+
+    #[test]
+    fn first_zero_terminates_dimensions_and_bare_fallback() {
+        let mut data = vec![0; 36];
+        data[29] = 4; // Native scan stops at byte 28; this suffix is ignored.
+        let samples = NativeSamples::new(&data).unwrap();
+        assert!(samples.dimensions().is_empty());
+        assert_eq!(samples.sample_count(), 0);
+        assert_eq!(samples.header_triples(), ([0.; 3], [0.; 3]));
+        assert_eq!(samples.sample(0), Err(NativeSamplesError::IndexOutOfBounds));
+    }
+
+    #[test]
+    fn malformed_lengths_and_limits_are_rejected() {
+        let mut data = fixture();
+        data.pop();
+        assert!(matches!(NativeSamples::new(&data), Err(NativeSamplesError::SizeMismatch)));
+        assert!(matches!(NativeSamples::new(&[0; 35]), Err(NativeSamplesError::TooShort)));
+        assert!(matches!(NativeSamples::new(&vec![0; 100_000]), Err(NativeSamplesError::TooLarge)));
+    }
+
+    #[test]
+    fn zero_dimension_header_preserves_all_float_bits() {
+        let words = [0x8000_0000u32, 0x7f80_0000, 0xff80_0000,
+                     0x7fc1_2345, 0x7f80_0001, 0x0000_0001];
+        let mut data = [0u8; 36];
+        for (index, bits) in words.iter().enumerate() {
+            data[index * 4..index * 4 + 4].copy_from_slice(&bits.to_le_bytes());
+        }
+        data[29..36].copy_from_slice(&[255, 1, 2, 3, 4, 5, 6]);
+        let samples = NativeSamples::new(&data).unwrap();
+        let (first, second) = samples.header_triples();
+        assert_eq!(first.map(f32::to_bits), [words[0], words[1], words[2]]);
+        assert_eq!(second.map(f32::to_bits), [words[3], words[4], words[5]]);
+        assert_eq!(samples.index(&[]), Err(NativeSamplesError::CoordinateOutOfBounds));
+    }
+
+    #[test]
+    fn exact_length_and_dimension_products_are_checked() {
+        let mut longer = fixture();
+        longer.push(0);
+        assert!(matches!(NativeSamples::new(&longer), Err(NativeSamplesError::SizeMismatch)));
+
+        let mut too_many_samples = [0u8; 36];
+        too_many_samples[28..36].copy_from_slice(&[255, 255, 1, 1, 1, 1, 1, 1]);
+        assert!(matches!(NativeSamples::new(&too_many_samples), Err(NativeSamplesError::SizeMismatch)));
+
+        let mut overflow = [0u8; 36];
+        overflow[28..36].fill(255);
+        assert!(matches!(NativeSamples::new(&overflow), Err(NativeSamplesError::SizeOverflow)));
+
+        let mut eight_dimensions = [0u8; 39];
+        eight_dimensions[28..36].fill(1);
+        let samples = NativeSamples::new(&eight_dimensions).unwrap();
+        assert_eq!(samples.dimensions(), &[1; 8]);
+        assert_eq!(samples.sample_count(), 1);
+        assert_eq!(samples.index(&[0; 8]), Ok(0));
+        assert_eq!(samples.index(&[0; 9]), Err(NativeSamplesError::CoordinateOutOfBounds));
+    }
+
+    #[test]
+    fn mixed_radix_unit_dimension_keeps_other_coordinates_distinct() {
+        let mut data = vec![0u8; 36 + 3 * 6];
+        data[28..32].copy_from_slice(&[2, 1, 3, 0]);
+        let samples = NativeSamples::new(&data).unwrap();
+        assert_eq!(samples.index(&[0, 0, 0]), Ok(0));
+        assert_eq!(samples.index(&[0, 0, 2]), Ok(2));
+        assert_eq!(samples.index(&[1, 0, 0]), Ok(3));
+        assert_eq!(samples.index(&[1, 0, 2]), Ok(5));
+        assert_eq!(samples.index(&[1, 1, 0]), Err(NativeSamplesError::CoordinateOutOfBounds));
+        assert_eq!(samples.index(&[1, 0]), Err(NativeSamplesError::CoordinateOutOfBounds));
     }
 }

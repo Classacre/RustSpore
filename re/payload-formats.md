@@ -17,7 +17,7 @@ mostly still open. It is deliberately blunt about that.
 | `0x2F4E681C` | RASTER | **decoded and validated.** DXT1, DXT5, and raw RGBA sub-formats. Extracted to PNG with zero errors. See below. |
 | `0x01C135DA` | gmsh mesh | **decoded. 100% (2,482 of 2,482).** Every sample fully parsed with valid indices. Index magic accepts `15 00 06 08` and the variant `14 00 06 08`. See below. |
 | `0xEE17C6AD` | anim | **Typed key parsing: 5,022 of 5,022 resources across 82 packages.** 48,700 channels and 878,791 rows independently digest-checked; generic safe sampling implemented, native rig binding/curves open. See below. |
-| `0x5CAA5E28` | blockdata | **decoded. 100% (3,098 of 3,098) structural.** 36-byte header + adaptive 4-ary quadtree; size is a closed form of the flag context (`36 + 12*4^(c-1)`). Record semantics (node vs leaf) still open. See below. |
+| `0x5CAA5E28` | blockdata | **Partial source layout recovered.** 36-byte header, dimensions and three-byte samples; 296,176 samples across 3,098 selected records agree with an independent decoder. Interpolation, caller semantics and terrain role remain open. See `re/blockdata-native-sample-static-v1.md`. |
 | `0xDFAD9F51` | Cell definition | **partially interpreted.** Fixed 796 bytes; structure reference and developer label identified. Earlier string-table/null-padding identification was incorrect. |
 | `0x02B9F662` | audio event | **decoded. 100% (16,841 of 16,841 across `PatchData` and `Spore_Audio2`).** Variable-length entries, prop-style array markers, length-prefixed string arrays, FNV-1 hashed keys. See below. |
 | `0x00E6BCE5` | gmdl model | **Typed geometry/tails independently checked on 11,041/11,041 across 82 indexes.** Versions 8/9; material payloads, part palettes and 46,576 external bone records preserved. Body hierarchy and ambiguous influence mappings remain open. See `re/gmdl-skin.md`. |
@@ -644,6 +644,10 @@ python tools/anim_channel_probe.py --out target/anim-channel-probe.json --digest
 
 ## blockdata, type `0x5CAA5E28`
 
+> The notes below are historical measurements and hypotheses. Source instructions
+> supersede the proposed 12-byte records and quadtree interpretation: see
+> [the native sample trace](blockdata-native-sample-static-v1.md).
+
 `[MEASURED]` Appears in `PatchData.package` (1,772) and `Spore_Game.package`
 (1,326). Full population **3,098**. No magic string. Size distribution: 36
 (424), 48 (660), 84 (930), 228 (738), 804 (256), 3108 (74), 12324 (14), 49188
@@ -686,11 +690,11 @@ context for the regular-grid cases (48/84/228: `L = 0/1/2`, field@32 = 0).
 
 `[MEASURED]` **The flag field alone does NOT determine `k`.** The flag context
 `0x04040404` at +28 is shared by the four largest sizes (804, 3108, 12324,
-49188) which have `k = 64, 256, 1024, 4096` respectively. Their discriminator is
-the field at +32: `0`, `0x04`, `0x404`, `0x40404`. So the full 8-byte context
-(+28..+35) is the real flag, and even then the relationship to `k` is not a
-simple closed form; the deep cases carry an **adaptive quadtree** whose leaf
-count depends on the actual tree, not just the flag.
+49188) which have `k = 64, 256, 1024, 4096` respectively. Their discriminator in the measured corpus is
+the field at +32: `0`, `0x04`, `0x404`, `0x40404`. The relationship between
+the complete 8-byte context and `k` is described by the empirical closed form
+below. This correlation alone does not establish the meaning of the context,
+a quadtree, or the behavior of unmeasured inputs.
 
 `[MEASURED]` The post-header region is **not** uniform 3-u32 groups. Dumped
 representatives show:
