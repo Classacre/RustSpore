@@ -19,6 +19,14 @@ mod native_d3dx;
 #[cfg(windows)]
 #[path = "native_source_frame_v1.rs"]
 mod native_source_frame_v1;
+#[cfg(windows)]
+#[path = "native_source_ui_renderer_v1.rs"]
+mod native_source_ui_renderer_v1;
+#[cfg(windows)]
+#[path = "native_source_ui_fixture_v1.rs"]
+mod native_source_ui_fixture_v1;
+#[cfg(windows)]
+pub use native_source_ui_fixture_v1::UiRequest;
 
 #[cfg(windows)]
 mod probe {
@@ -43,10 +51,28 @@ mod probe {
     use windows::Win32::Graphics::Direct3D9::*;
 
     use dbpf::native_index::{NativePackageIndex, NativeResourceKey};
+    use sha2::{Digest, Sha256};
 
-    struct Sources(Vec<NativePackageIndex>);
+    // This narrow profile is an inspection admission, not a retail provider claim.
+    const PLAYER_MODEL: u64 = 0x4061_7100_e219_e5d3;
+    const PLAYER_RASTER: u64 = 0x4061_2900_e219_e5d3;
+    const PLAYER_MODEL_SHA: &str = "95ba0f5e5e71761ccf0f2ef919cce9bcc8d40303be4b1b7a9fa954a7c7cb8ff4";
+    const PLAYER_RASTER_SHA: &str = "5c7889ac480c635daca5b27f7ae38ee0fc4fac5fc47b9040809f481354c5f89c";
+
+    struct Sources(Vec<NativePackageIndex>, bool);
+    fn trace_compiler(compiler: &native_d3dx::Compiler, stage: &str, image: &[u8], hlsl: &str) -> Result<(), Failure> {
+        use std::os::windows::ffi::OsStringExt;
+        use windows::Win32::System::LibraryLoader::GetModuleFileNameW;
+        let mut buffer = vec![0u16; 32768];
+        let length = unsafe { GetModuleFileNameW(Some(compiler.module_handle()), &mut buffer) } as usize;
+        if length == 0 || length >= buffer.len() { return Err("compiler module path unavailable or truncated".into()); }
+        let path = std::path::PathBuf::from(std::ffi::OsString::from_wide(&buffer[..length]));
+        let bytes = std::fs::read(&path)?;
+        println!("SOURCE_INPUT_COMPILER stage={stage} mode=generated module_path={path:?} disk_sha256={:x} executable_template_sha256={:x} hlsl_sha256={:x} module_disk_stability=caller_admitted mapped_image_equivalence=unverified version=unverified retail_compiler=unverified", Sha256::digest(&bytes), Sha256::digest(image), Sha256::digest(hlsl.as_bytes()));
+        Ok(())
+    }
     impl Sources {
-        fn open_install(install: &Path) -> Result<Self, Failure> {
+        fn open_install(install: &Path, trace: bool) -> Result<Self, Failure> {
             fn collect(root: &Path, paths: &mut Vec<std::path::PathBuf>) -> Result<(), Failure> {
                 for entry in std::fs::read_dir(root)? {
                     let entry = entry?;
@@ -84,7 +110,7 @@ mod probe {
                 .collect::<Result<Vec<_>, _>>()?;
             println!("SOURCE_3D_PACKAGES count={} precedence=inspection_base_then_path_order retail_precedence=false", packages.len());
             println!("SOURCE_3D_INDEX layout=native_flag_driven key=instance_type_scope metadata=current_record");
-            Ok(Self(packages))
+            Ok(Self(packages, trace))
         }
         fn read_key(&self, key: NativeResourceKey) -> Result<Vec<u8>, Failure> {
             for package in &self.0 {
@@ -92,7 +118,11 @@ mod probe {
                     if entry.decompressed_size.max(entry.stored_size) > 32 * 1024 * 1024 {
                         return Err("source resource too large".into());
                     }
-                    return Ok(package.read(entry)?);
+                    let payload = package.read(entry)?;
+                    if self.1 {
+                        println!("SOURCE_INPUT_PROVIDER role=first_hit package={:?} key={key} payload_sha256={:x} bytes={} stable_packages=caller_admitted retail_precedence=unverified", package.path(), Sha256::digest(&payload), payload.len());
+                    }
+                    return Ok(payload);
                 }
             }
             Err(format!("source missing exact model key {key}").into())
@@ -113,7 +143,11 @@ mod probe {
                         return Err("source fragment library too large".into());
                     }
                     println!("SOURCE_3D_FRAGMENT_PACKAGE path={} profile=3", package.path().display());
-                    return Ok(package.read(entry)?);
+                    let payload = package.read(entry)?;
+                    if self.1 {
+                        println!("SOURCE_INPUT_PROVIDER role=selected_pack_fragment package={:?} key={fragment_key} payload_sha256={:x} bytes={} stable_packages=caller_admitted retail_precedence=unverified", package.path(), Sha256::digest(&payload), payload.len());
+                    }
+                    return Ok(payload);
                 }
             }
             Err("selected shader pack package not found".into())
@@ -125,7 +159,7 @@ mod probe {
             }
             Ok(p)
         }
-        fn raster(&self, instance: u64) -> Result<raster::Raster, Failure> {
+        fn raster(&self, instance: u64, pinned_player: bool) -> Result<raster::Raster, Failure> {
             if self
                 .0
                 .iter()
@@ -139,8 +173,13 @@ mod probe {
                 .iter()
                 .any(Option::is_some)
             {
-                return Ok(raster::parse(&self.read(0x2f4e681c, instance)?)?);
+                let raw = self.read(0x2f4e681c, instance)?;
+                if pinned_player && instance == PLAYER_RASTER && format!("{:x}", Sha256::digest(&raw)) != PLAYER_RASTER_SHA {
+                    return Err("controlled player raster payload hash mismatch".into());
+                }
+                return Ok(raster::parse(&raw)?);
             }
+            if pinned_player && instance == PLAYER_RASTER { return Err("controlled player requires the exact standalone raster".into()); }
             let source = self.read(0x2f4e681b, instance)?;
             let rw = spore_core::rw4::parse(&source)?;
             let texture = rw.texture(&source).ok_or("source RW4 has no raster")?;
@@ -454,8 +493,11 @@ mod probe {
         diagnostic_skin_translation: bool,
         coverage: bool,
         second: bool,
+        pinned_player: bool,
+        amd_adapter: bool,
+        trace_inputs: bool,
     ) -> Result<(PreparedSourceRenderer, InspectionContext), Failure> {
-        let sources = Sources::open_install(install)?;
+        let sources = Sources::open_install(install, trace_inputs)?;
         let raw = match model_key {
             Some(key) if key.type_id == 0x00e6bce5 && key.scoped_instance() == instance => {
                 sources.read_key(key)?
@@ -463,6 +505,10 @@ mod probe {
             Some(_) => return Err("source model key requires the exact requested GMDL".into()),
             None => sources.read(0x00e6bce5, instance)?,
         };
+        if pinned_player && (instance != PLAYER_MODEL || model_key.is_none()
+            || format!("{:x}", Sha256::digest(&raw)) != PLAYER_MODEL_SHA) {
+            return Err("controlled player model identity or payload hash mismatch".into());
+        }
         let model = gmdl::parse(&raw)?;
         if coverage && (instance != 0x4061_7100_a1c4_6df2 || model_key.is_none()
             || !creature_camera || diagnostic_skin_translation || model.meshes.len() != 1) {
@@ -652,7 +698,7 @@ mod probe {
         );
         let clip = Mat4::perspective_lh(fov, 1., near, far) * view * model_matrix;
         println!("SOURCE_3D_CONTEXT model={instance:016X} profile=3 builder=generic_static render_type=0 unpack_enabled=true light=40200100FCED73A2 light_frame=identity lighting_world=fresh sh_extra219=source_initial_zero camera={camera_key:016X} editor_setup={setup_key:016X} fit=inspection material_color=white tint=fallback_white retail_fidelity=false sh_band_roundtrip=true");
-        let target = unsafe { OffscreenDevice::new(768, 768)? };
+        let target = unsafe { if amd_adapter { OffscreenDevice::new_with_amd(768, 768, true)? } else { OffscreenDevice::new(768, 768)? } };
         let device = &target.device;
         if coverage {
             let mut caps = D3DCAPS9::default();
@@ -663,6 +709,7 @@ mod probe {
             }
         }
         let mut prepared = Vec::with_capacity(model.meshes.len());
+        let mut consumed_player_raster = false;
         for (i, mesh) in model.meshes.iter().enumerate() {
             let geometry = source_geometry(&model, &raw, mesh,
                 diagnostic_buffers.as_ref().map(|buffers| buffers[i].as_slice()))?;
@@ -696,9 +743,21 @@ mod probe {
                 if binding.sampler > 7 || samplers.contains(&(binding.sampler as u16)) {
                     return Err("unsupported or duplicate source sampler".into());
                 }
-                let raster = sources.raster(binding.raster_instance)?;
+                let raster = sources.raster(binding.raster_instance, pinned_player)?;
+                if pinned_player && binding.sampler == 0 && binding.raster_instance == PLAYER_RASTER {
+                    consumed_player_raster = true;
+                }
                 texture_bytes = texture_bytes.checked_add(raster.data.len()).ok_or("texture budget overflow")?;
                 if second && texture_bytes > 64*1024*1024 { return Err("diagnostic texture budget exceeded".into()); }
+                if trace_inputs {
+                    use std::fmt::Write as _;
+                    println!("SOURCE_INPUT_TEXTURE mesh={i} sampler={} instance={:016X} format={:08X} address={:?} filter={:?} mip_filter={:?} scope=cpu_pre_upload provider=unresolved", binding.sampler, binding.raster_instance, raster.format, binding.address_mode(), binding.min_mag_filter(), binding.mip_filter());
+                    for (level, mip) in raster.mip_levels()?.iter().enumerate() {
+                        let mut hex = String::with_capacity(mip.data.len().checked_mul(2).ok_or("trace texture extent overflow")?);
+                        for byte in mip.data { write!(&mut hex, "{byte:02x}")?; }
+                        println!("SOURCE_INPUT_MIP mesh={i} sampler={} level={level} width={} height={} sha256={:x} data_hex={hex}", binding.sampler, mip.width, mip.height, Sha256::digest(mip.data));
+                    }
+                }
                 let texture = unsafe { target.upload_raster(&raster)? };
                 let address = binding
                     .address_mode()
@@ -730,7 +789,10 @@ mod probe {
             let ps = shader_selection::select(&variant.pixel, &context)?;
             let generated_program;
             let vs_program = match pack.compiled_vertex.lookup(&vs.fragment_ids)? {
-                Some(cached) => cached,
+                Some(cached) => {
+                    if trace_inputs { println!("SOURCE_INPUT_COMPILER stage=vs mode=pack_cached compiler_not_invoked=true"); }
+                    cached
+                },
                 None => {
                     if builder.header.words[4] != 0xfffe0300 {
                         return Err("unestablished source vertex compiler profile".into());
@@ -745,12 +807,15 @@ mod probe {
                     } else {
                         0x12
                     };
-                    let compiled = native_d3dx::Compiler::system()?.compile(
+                    let compiler = native_d3dx::Compiler::system()?;
+                    if trace_inputs { trace_compiler(&compiler, "vs", &image, &source.hlsl)?; }
+                    let compiled = compiler.compile(
                         &source.hlsl,
                         templates.entrypoint()?,
                         "vs_3_0",
                         flags,
                     )?;
+                    drop(compiler);
                     if !compiled.diagnostics.is_empty() {
                         println!("SOURCE_3D_COMPILE_DIAGNOSTICS {:?}", compiled.diagnostics);
                     }
@@ -783,7 +848,10 @@ mod probe {
             #[cfg(not(feature = "native_shader_probe"))]
             let force_pixel_generation = false;
             let ps_program = match cached_pixel {
-                Some(cached) if !force_pixel_generation => cached,
+                Some(cached) if !force_pixel_generation => {
+                    if trace_inputs { println!("SOURCE_INPUT_COMPILER stage=ps mode=pack_cached compiler_not_invoked=true"); }
+                    cached
+                },
                 _ => {
                     if force_pixel_generation {
                         println!("SOURCE_3D_VERIFY_PIXEL_FALLBACK forced=true cached_available={} recipe={:02X?}", cached_pixel.is_some(), ps.fragment_ids);
@@ -796,9 +864,12 @@ mod probe {
                     let library = shader_fragments::parse(&sources.selected_pack_fragments()?)?;
                     let source = shader_pixel_codegen::generate_pixel(&library, &ps.fragment_ids, &templates)?;
                     let flags = if builder.header.words[6] & 2 != 0 { 0x32 } else { 0x12 };
-                    let compiled = native_d3dx::Compiler::system()?.compile(
+                    let compiler = native_d3dx::Compiler::system()?;
+                    if trace_inputs { trace_compiler(&compiler, "ps", &image, &source.hlsl)?; }
+                    let compiled = compiler.compile(
                         &source.hlsl, templates.entrypoint()?, "ps_3_0", flags,
                     )?;
+                    drop(compiler);
                     if !compiled.diagnostics.is_empty() {
                         println!("SOURCE_3D_COMPILE_DIAGNOSTICS stage=ps {:?}", compiled.diagnostics);
                     }
@@ -818,6 +889,11 @@ mod probe {
             let vs_tokens = native_d3d9::tokens(&vs_program.bytecode, 0xfffe0300)?;
             let ps_tokens = native_d3d9::tokens(&ps_program.bytecode, 0xffff0300)?;
             let elements = source_vertex_elements(format, vb.stride)?;
+            if trace_inputs {
+                for (ordinal, element) in elements.iter().enumerate() {
+                    println!("SOURCE_INPUT_DECL mesh={i} ordinal={ordinal} stream={} offset={} type={} method={} usage={} usage_index={}", element.Stream, element.Offset, element.Type, element.Method, element.Usage, element.UsageIndex);
+                }
+            }
             let params = MaterialParams::decode(data.get(&0x210).ok_or("source material params absent")?)?.float4();
             let declaration = unsafe { device.CreateVertexDeclaration(elements.as_ptr())? };
             let vertex_shader = unsafe { device.CreateVertexShader(vs_tokens.as_ptr())? };
@@ -858,6 +934,7 @@ mod probe {
                 return Err("unsupported candidate source bindings or geometry".into());
             }
         }
+        if pinned_player && !consumed_player_raster { return Err("controlled player sampler-zero raster was not consumed".into()); }
         // The target and its resources now share a single thread-affine owner.
         let renderer = PreparedSourceRenderer::new(target, prepared, second);
         Ok((renderer, InspectionContext { model_matrix, clip, forward, sh, fresh_world_sh_extra,
@@ -873,10 +950,20 @@ mod probe {
         diagnostic_skin_translation: bool,
         coverage: Option<&Path>,
         second: Option<&super::SecondFrame<'_>>,
+        ui: Option<&super::UiRequest>,
+        pinned_player: bool,
+        amd_adapter: bool,
+        trace_inputs: bool,
     ) -> Result<(), Failure> {
+        if amd_adapter && !pinned_player { return Err("AMD adapter is restricted to controlled player inspection".into()); }
         if output.exists() {
             return Err("capture output already exists".into());
         }
+        if ui.is_some() && (coverage.is_some() || second.is_some() || creature_camera || diagnostic_skin_translation) {
+            return Err("source UI fixture requires single-frame Cell capture without diagnostics or coverage".into());
+        }
+        // Admit all untrusted fixture and source inputs before opening a scene.
+        let admitted_ui=ui.map(|request| super::native_source_ui_fixture_v1::admit(install,request)).transpose()?;
         if let Some(mask_path) = coverage {
             if mask_path.exists() || mask_path == output { return Err("coverage output must be a distinct new path".into()); }
             for path in [output, mask_path] {
@@ -889,11 +976,12 @@ mod probe {
             if resolved(output)? == resolved(mask_path)? { return Err("coverage and color paths alias".into()); }
         }
         let (renderer, context) = prepare_source_renderer(install, instance, model_key, creature_camera,
-            diagnostic_skin_translation, coverage.is_some(), second.is_some())?;
+            diagnostic_skin_translation, coverage.is_some(), second.is_some(), pinned_player, amd_adapter, trace_inputs)?;
         let InspectionContext { model_matrix, clip, forward, sh, fresh_world_sh_extra,
             camera_distance, lights, view, fov, near, far, eye } = context;
         let device = &renderer.target.device;
         let mut baseline = None;
+        let mut source_nonbackground = None;
         let mut rgba = Vec::new();
         let mut total_triangles = 0;
         for instrumented in if coverage.is_some() { vec![false, true] } else { vec![false] } {
@@ -933,20 +1021,54 @@ mod probe {
             device.BeginScene()?;
         }
         total_triangles = 0;
+        let draw_result: Result<(), Failure> = (|| {
         for (i, mesh) in renderer.prepared.iter().enumerate() {
             let inputs = Inputs {
                 model: model_matrix, clip, direction: forward.extend(0.).to_array(), sh: sh.clone(),
                 fresh_world_sh_extra, camera_distance, params: mesh.params, lights,
             };
+            if trace_inputs {
+                // This records the CPU values about to be passed to D3D, not a
+                // GPU readback or proof of live source-game state. Package
+                // inventory and compiler identity remain outside this trace.
+                println!("SOURCE_INPUT_TRACE scope=cpu_pre_draw stable_packages=caller_admitted textures_and_declaration=cpu_preparation_only compiler_identity=see_stage_records");
+                println!("SOURCE_INPUT_TRACE mesh={i} vertices_sha256={:x} vs_sha256={:x} ps_sha256={:x}", Sha256::digest(&mesh.vertices), Sha256::digest(&mesh.vertex_program.bytecode), Sha256::digest(&mesh.pixel_program.bytecode));
+                let indices = mesh.indices.iter().flat_map(|x| x.to_le_bytes()).collect::<Vec<_>>();
+                println!("SOURCE_INPUT_TRACE mesh={i} indices_le_sha256={:x} vertex_count={} stride={} index_count={}", Sha256::digest(&indices), mesh.vertex_count, mesh.stride, mesh.indices.len());
+                for (stage, program) in [("vs", &mesh.vertex_program), ("ps", &mesh.pixel_program)] {
+                    if program.uniforms.len() != program.uniform_words.len() { return Err("source uniform/register cardinality mismatch".into()); }
+                    for (raw, start) in program.uniforms.iter().zip(&program.uniform_words) {
+                        let descriptor = UniformDescriptor { raw: *raw };
+                        let values = inputs.uniform(descriptor.callback_id(), usize::from(descriptor.register_count()))?;
+                        let bits: Vec<[u32; 4]> = values.iter().map(|v| v.map(f32::to_bits)).collect();
+                        println!("SOURCE_INPUT_TRACE mesh={i} stage={stage} callback={:04X} start={start} bits={bits:08X?}", descriptor.callback_id());
+                    }
+                }
+            }
             let count = unsafe { draw_prepared_source(device, mesh, &inputs)? };
             total_triangles += count;
             println!("SOURCE_3D_DRAW mesh={i} vertices={} triangles={count} vs={:02X?} ps={:02X?} untouched_vertex_bytes={}",
                 mesh.vertex_count, mesh.vertex_recipe, mesh.pixel_recipe, !diagnostic_skin_translation);
         }
-        unsafe {
-            device.EndScene()?;
-        }
+        Ok(())
+        })();
+        let end_result=unsafe { device.EndScene() };
+        // Always end the scene, but never read or publish a partial frame.
+        draw_result?;
+        end_result?;
         rgba = unsafe { renderer.target.read_rgba()? };
+        if let Some(ui)=&admitted_ui {
+            let source_pixels=rgba.chunks_exact(4).filter(|p|*p != [0x18,0x20,0x2e,0xff]).count();
+            if source_pixels<1000 { return Err(format!("source 3D draw produced only {source_pixels} non-background pixels before UI").into()); }
+            source_nonbackground=Some(source_pixels);
+            println!("SOURCE_3D_PRE_UI non_background_pixels={source_pixels} independent_of_ui=true");
+            unsafe { device.BeginScene()?; }
+            let ui_result=unsafe { super::native_source_ui_renderer_v1::draw(device,&ui.vertex,&ui.pixel,&ui.rgba,512,512,768,768,ui.clip,ui.half_pixel,&ui.rectangles) };
+            let ui_end=unsafe { device.EndScene() };
+            ui_result?;
+            ui_end?;
+            rgba = unsafe { renderer.target.read_rgba()? };
+        }
         if coverage.is_some() {
             if instrumented {
                 if baseline.as_ref() != Some(&rgba) { return Err("stencil instrumentation changed source color".into()); }
@@ -960,10 +1082,11 @@ mod probe {
             println!("SOURCE_3D_COVERAGE pixels={count} color_equal=true synthetic_fixture_basis=true runtime_retail_unverified=true");
             Some(mask)
         } else { None };
-        let changed = rgba
+        let frame_changed = rgba
             .chunks_exact(4)
             .filter(|p| *p != [0x18, 0x20, 0x2e, 0xff])
             .count();
+        let changed = source_nonbackground.unwrap_or(frame_changed);
         if changed < 1000 {
             return Err(
                 format!("source draw produced only {changed} non-background pixels").into(),
@@ -1049,7 +1172,7 @@ mod probe {
             std::io::Write::write_all(&mut file, &bytes)
                 .map_err(|error| format!("{prior}first color saved to {}; first mask may be partial at {}: {error}", output.display(), mask_path.display()))?;
         }
-        println!("SOURCE_3D_RESULT triangles={total_triangles} non_background_pixels={changed} output={output:?} presented=false");
+        println!("SOURCE_3D_RESULT triangles={total_triangles} non_background_pixels={changed} final_frame_non_background_pixels={frame_changed} output={output:?} presented=false");
         Ok(())
     }
 }
@@ -1059,7 +1182,7 @@ pub fn capture(
     output: &std::path::Path,
     instance: u64,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    probe::render(install, output, instance, None, false, false, None, None)
+    probe::render(install, output, instance, None, false, false, None, None, None, false, false, false)
 }
 #[cfg(windows)]
 pub fn capture_key(
@@ -1067,8 +1190,9 @@ pub fn capture_key(
     output: &std::path::Path,
     model: dbpf::native_index::NativeResourceKey,
     diagnostic_skin_translation: bool,
+    ui: Option<&UiRequest>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    probe::render(install, output, model.scoped_instance(), Some(model), false, diagnostic_skin_translation, None, None)
+    probe::render(install, output, model.scoped_instance(), Some(model), false, diagnostic_skin_translation, None, None, ui, false, false, false)
 }
 
 #[cfg(windows)]
@@ -1086,7 +1210,19 @@ pub fn capture_creature_key(
     coverage: Option<&std::path::Path>,
     second: Option<&SecondFrame<'_>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    probe::render(install, output, model.scoped_instance(), Some(model), true, false, coverage, second)
+    probe::render(install, output, model.scoped_instance(), Some(model), true, false, coverage, second, None, false, false, false)
+}
+/// Controlled E219E5D3 inspection; the consumed model and sampler-zero
+/// raster are hash-checked in memory. Other renderer inputs are not pinned.
+#[cfg(windows)]
+pub(crate) fn capture_controlled_player(
+    install: &std::path::Path,
+    output: &std::path::Path,
+    amd_adapter: bool,
+    trace_inputs: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let model = dbpf::native_index::NativeResourceKey::from_scoped_instance(0x00e6bce5, 0x4061_7100_e219_e5d3);
+    probe::render(install, output, model.scoped_instance(), Some(model), true, false, None, None, None, true, amd_adapter, trace_inputs)
 }
 #[cfg(not(windows))]
 pub fn capture(

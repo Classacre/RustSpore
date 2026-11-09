@@ -1,17 +1,18 @@
 //! GPU validation without creating or controlling a desktop window.
 use bevy::{
     app::ScheduleRunnerPlugin,
-    camera::RenderTarget,
+    camera::{RenderTarget, visibility::RenderLayers},
     prelude::*,
     render::{
         extract_resource::{ExtractResource, ExtractResourcePlugin},
         render_asset::RenderAssets,
-        render_resource::{CachedPipelineState, PipelineCache, TextureFormat, TextureUsages},
+        render_resource::{AsBindGroup, CachedPipelineState, PipelineCache, TextureFormat, TextureUsages},
         texture::GpuImage,
         view::screenshot::Screenshot,
         Render, RenderApp, RenderSystems,
     },
-    shader::PipelineCacheError,
+    shader::{PipelineCacheError, ShaderRef},
+    sprite_render::{AlphaMode2d, Material2d, Material2dPlugin},
     window::ExitCondition,
     winit::WinitPlugin,
 };
@@ -27,6 +28,15 @@ use std::{
 struct Size(u32, u32);
 #[derive(Resource)]
 pub(crate) struct OffscreenTarget(pub Handle<Image>);
+#[derive(Resource)] struct CompositeEnabled;
+#[derive(Resource)] struct IntermediateTarget(Handle<Image>);
+const FINAL_SHADER: Handle<Shader> = bevy::asset::uuid_handle!("7c7933ae-6818-477c-b7b2-3cb7536dfe92");
+#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
+struct FinalMaterial { #[texture(0)] texture: Handle<Image> }
+impl Material2d for FinalMaterial {
+    fn fragment_shader() -> ShaderRef { FINAL_SHADER.into() }
+    fn alpha_mode(&self) -> AlphaMode2d { AlphaMode2d::Opaque }
+}
 
 /// Render-world feedback, rather than elapsed time, controls capture readiness.
 /// Source previews can require particular images to have reached the GPU.
@@ -95,17 +105,33 @@ pub(crate) fn configure(app: &mut App, width: u32, height: u32) {
     app.sub_app_mut(RenderApp)
         .add_systems(Render, report_readiness.in_set(RenderSystems::Cleanup));
 }
+/// Explicit diagnostic route: the entire scene is blended into unorm, then
+/// converted once to sRGB. This is not enabled for other offscreen users.
+pub(crate) fn configure_unorm_composite(app: &mut App, width: u32, height: u32) {
+    configure(app, width, height);
+    bevy::asset::load_internal_asset!(app, FINAL_SHADER, "cell_effect_final_composite.wgsl", Shader::from_wgsl);
+    app.insert_resource(CompositeEnabled).add_plugins(Material2dPlugin::<FinalMaterial>::default())
+        .add_systems(PostStartup, setup_composite.after(route_cameras));
+}
 fn create_target(
     mut commands: Commands,
     size: Res<Size>,
     mut images: ResMut<Assets<Image>>,
     mut readiness: ResMut<OffscreenReadiness>,
+    composite: Option<Res<CompositeEnabled>>,
 ) {
     let mut image = Image::new_target_texture(size.0, size.1, TextureFormat::Rgba8UnormSrgb, None);
     image.texture_descriptor.usage |= TextureUsages::COPY_SRC;
     let target = images.add(image);
     readiness.require_image(&target);
     commands.insert_resource(OffscreenTarget(target));
+    if composite.is_some() {
+        let mut image = Image::new_target_texture(size.0, size.1, TextureFormat::Rgba8Unorm, None);
+        image.texture_descriptor.usage |= TextureUsages::COPY_SRC;
+        let handle = images.add(image);
+        readiness.require_image(&handle);
+        commands.insert_resource(IntermediateTarget(handle));
+    }
 }
 
 fn report_readiness(
@@ -180,6 +206,7 @@ fn route_cameras(
     mut commands: Commands,
     target: Res<OffscreenTarget>,
     cameras: Query<(Entity, &Camera)>,
+    intermediate: Option<Res<IntermediateTarget>>,
 ) {
     let default_camera = cameras
         .iter()
@@ -188,9 +215,14 @@ fn route_cameras(
     for (entity, _) in &cameras {
         commands
             .entity(entity)
-            .insert(RenderTarget::Image(target.0.clone().into()));
+            .insert(RenderTarget::Image(intermediate.as_ref().map_or_else(||target.0.clone(),|v|v.0.clone()).into()));
     }
     if let Some(entity) = default_camera {
         commands.entity(entity).insert(IsDefaultUiCamera);
     }
+}
+
+fn setup_composite(mut commands: Commands, size: Res<Size>, target: Res<OffscreenTarget>, intermediate: Res<IntermediateTarget>, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<FinalMaterial>>) {
+    commands.spawn((Mesh2d(meshes.add(Rectangle::new(size.0 as f32,size.1 as f32))), MeshMaterial2d(materials.add(FinalMaterial{texture:intermediate.0.clone()})), RenderLayers::layer(31)));
+    commands.spawn((Camera2d,Camera{order:2,..default()},RenderTarget::Image(target.0.clone().into()),RenderLayers::layer(31),Msaa::Off));
 }

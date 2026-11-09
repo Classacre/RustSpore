@@ -1,0 +1,4 @@
+//! Conditional matched gradients; caller explicitly admits the hardware x87 sqrt spill.
+use std::{env,fs,io::{self,Write}};use spore_core::{creature_skin_normal_v1::{normalize,SqrtSpill},native_sse::Policy,native_x87::{Context,Extended,Precision,Rounding}};
+struct Math(Context);impl SqrtSpill for Math{fn sqrt_spill(&mut self,x:f32)->Option<f32>{self.0.store_f32(self.0.sqrt(Extended::from_f32(x).ok()?).ok()?).ok()}}
+fn main(){let a:Vec<_>=env::args().collect();assert_eq!(a.len(),2);let b=fs::read(&a[1]).unwrap();assert_eq!(b.len(),528);let mut out=Vec::new();let mut math=Math(Context{precision:Precision::Bits53,rounding:Rounding::NearestEven});for p in b.chunks_exact(12){let f=|i|f32::from_bits(u32::from_le_bytes(p[i..i+4].try_into().unwrap()));let v=normalize([f(0),f(4),f(8)],Policy::Mxcsr1f80,&mut math).unwrap();for x in v{out.extend(x.to_bits().to_le_bytes());}}io::stdout().write_all(&out).unwrap();}

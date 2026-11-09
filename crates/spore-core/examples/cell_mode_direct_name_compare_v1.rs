@@ -1,0 +1,3 @@
+use spore_core::cell_mode_direct_name_v1::direct_name;
+fn w(b:&[u8],i:usize)->u32{u32::from_le_bytes(b[i..i+4].try_into().unwrap())}
+fn main(){let b=std::fs::read(std::env::args().nth(1).expect("native stdout")).unwrap();assert_eq!(b.len(),120);let cases=[(0x1654c06,0x1654c00),(0x1654c06,0x1654c01),(0x1654c06,0x1654c02),(0x1654c06,0x1654c04),(0x1654c06,0x1654c05),(0x1654c00,0x1654c08)];for (i,(old,new)) in cases.into_iter().enumerate(){let name=direct_name(old,new,true).unwrap();assert_eq!([1,name.source_literal(),0x12345678],[w(&b,i*20),w(&b,i*20+4),w(&b,i*20+8)]);let fp=w(&b,i*20+12);assert_eq!(fp&0xffff,0x27f);assert_eq!((fp>>16)&0x3840,0);assert_eq!(w(&b,i*20+16)&!0x3f,0x1f80);}println!("matched six retained direct-name rows; service call pending");}

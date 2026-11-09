@@ -1,0 +1,4 @@
+//! Compare bounded timing prefix to six retained source-instruction rows.
+use spore_core::cell_record_timing_prefix_v1::step;
+fn w(b:&[u8],o:usize)->u32{u32::from_le_bytes(b[o..o+4].try_into().unwrap())}
+fn main(){let path=std::env::args().nth(1).expect("native stdout");let b=std::fs::read(path).unwrap();assert_eq!(b.len(),192);let old=[0x3f800000,0x3e800000,0];let delta=[0x3e800000,0x3f000000,0];for i in 0..6{let x=step(old[i%3],delta[i%3],u8::from(i>=3),0x1f80,true).unwrap();let got=[x.remaining_before_helper,1,x.pending_event_path as u32,x.pending_other_path as u32];let want:Vec<_>=(0..4).map(|j|w(&b,i*32+j*4)).collect();assert_eq!(got.as_slice(),want,"case {i}");let fp=w(&b,i*32+16);assert_eq!(fp&0xffff,0x27f);assert_eq!((fp>>16)&0x3840,0);assert_eq!(w(&b,i*32+20)&!0x3f,0x1f80);}println!("matched 6 retained timing-prefix cases; helper and scheduler unobserved");}

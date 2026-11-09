@@ -1,0 +1,27 @@
+# Installed `_CIasin` and Cell target-angle boundary
+
+This is static inspection of the original installed PE and local CRT candidates. It extends [the Cell target helper trace](cell-input-target-angle-helper-static-v1.md) and complements the separate [`_CIacos` analysis](crt-ciacos-native.md). It does not establish which DLL or FP dispatch path a running game used. No original DLL or game code was executed.
+
+## Source identity and call
+
+The base `SporeApp.exe` SHA-256 is `17cf32b3e3adbcc7ed9c4e593c83b5d3deb3c675059b7ad9cbfd19192df5f87a`. Its calls at `E5AFFA` and `E5B041` go through thunk `11E06AC`, which jumps through IAT slot `013CC484`; the PE import names that slot `MSVCR90.dll!_CIasin`. The caller loads the relevant A.x or B.x binary32 word into x87 ST0 and commits each result to binary32 after the call. A and B are the current state and normalized candidate respectively at the inspected caller. The arbitrary current-state input is not proven to be in `[-1,1]`.
+
+The two available local files `D:/Games/SPORE Collection/SporeBin/msvcr90.dll` and `D:/Games/SPORE Collection/SporebinEP1/msvcr90.dll` are byte-identical x86 PE32 DLLs, 655,872 bytes, file/product version `9.00.21022.8`, SHA-256 `ed0170d3de86da33e02bfa1605eec8ff6010583481b1c530843867c1939d2185`. Preferred image base is `78520000`; addresses below are preferred VAs and require relocation for an actual module instance. Export `_CIasin` is ordinal 74, RVA `0007A830` / preferred VA `7859A830`; it is a code export, not a forwarder. The nearby ordinary `asin` export is ordinal 1211, RVA `0007A7F0`. Local availability and matching names do not prove Windows selected either file at runtime; activation context, loader resolution, lifetime and possible redirection remain unobserved.
+
+## Conditional dispatch
+
+At `7859A830..7859A86B`, `_CIasin` takes its SSE2 route only if global `785BD7B0` is nonzero, `(MXCSR & 1F80h) == 1F80h`, and `(x87_CW & 007Fh) == 007Fh`. These checks concern exception masks; they do not select a particular rounding mode, x87 precision, FTZ or DAZ. Otherwise control goes to the legacy x87 route. The related `_CIacos` note traces the common enable global's startup detector and possible setter; it does not prove this call's runtime global or FP controls.
+
+The SSE2 wrapper `785A3F10..785A3F27` pops ST0 into a binary64 temporary, loads it into XMM0 and calls `785A3F2E`. The Cell caller's binary32 load is exactly representable at this binary64 input commit, subject to the valid masked environment. The downstream kernel uses scalar/packed SSE2 double operations, including `SQRTSD`, arithmetic and indexed reads from DLL constants/tables including bases `78536FE0` and `785360E0`. Multiple inspected return blocks load binary64 results into x87 ST0. The complete branch set, table ranges, rounding and exceptional paths have **not** been audited here; these observations do not establish a full finite-domain implementation or permission to substitute another library's `asin`.
+
+On the legacy route, `7859A86B..7859A876` snapshots ST0 to binary64 without popping it for classification and enters `7859A888`. For admitted finite binary32 input strictly inside `(-1,1)`, `7859A8A3..7859A8AF` performs x87 `1+x`, `1-x`, multiplication, `FSQRT`, then `FPATAN` with the original x as the other operand. This describes the observed stack operation order, not an assertion that ordinary host `asin` or a differently rounded mathematical formula is bit-identical. At exact endpoints a separate branch loads an extended constant and conditionally changes its sign; domain/nonfinite paths are separate. The core and return paths also depend on saved control word, status and global `785BC614`; those policies must be traced and admitted before treating a reconstruction as generally equivalent.
+
+## Feasible next boundary
+
+A bounded 32-bit reference is technically plausible: supply explicitly selected finite binary32 ST0 input to the named DLL export under a pinned DLL identity and controlled x87/MXCSR and dispatch state, capture ST0 result and status, and verify stack/ABI obligations. Loading the DLL executes its initialization and resolves dependencies, so a host needs an independently reviewed loader, search-path and initializer boundary before any such run. Alternatively a no-DLL host could copy only independently reviewed original instruction spans and required read-only tables under ignored `target`, with all branches, absolute references and input guards audited; this is considerably more work for the SSE2 kernel. No proprietary implementation or coefficient bytes need be committed.
+
+A clean Rust/hardware model is also possible for a **separately admitted** legacy finite branch after verifying its CW adjustment, x87 stack and return-policy details; it would not cover the SSE2 route or native exception handling. The current evidence is insufficient to choose the retail dispatch path, claim original output fidelity, or complete the angle helper.
+
+## Reproduction
+
+Hash both local DLLs and inspect their PE export tables and image base with `pefile`; inspect the game import table and decode `E5AFF6..E5B046` and `11E06AC..11E06B2`. Decode the named DLL ranges in x86-32 mode from preferred VA minus `78520000`; inspect `785A3F10..785A3FC9`, `7859A830..7859A917`, `785A3DF8..785A3E43`, and the two table references as leads, not a complete bounded code/data audit. The executable and DLL files were read statically; no Cargo, GUI or native execution was used.

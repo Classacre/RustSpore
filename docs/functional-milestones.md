@@ -37,13 +37,13 @@ executable analysis, offline comparisons and automated application captures.
 | D3 | A real skinned model animates on the RTX GPU; bind pose matches source geometry, two times produce different finite poses, switching/restarting clips works | Source sample rendering and CPU agreement pass; actual playback-system control tests pass |
 | D4 | Creature channel-to-rig mapping and deformation; full assembled creatures move with their own texture and stable attachments | Full 11,041 GMDL tails agree; all 704 linked creations pass original-program RTX static captures; ordering/palettes, 8,624 root-policy cases, 4,095 source contexts and optional construction agree; finalizer fields match4,590 native/Python/Rust cases and all 4,095 fresh-source contexts; ordinary root constructor matches 15,113 supplied-state cases; root coordinate/accumulation matches 22,212 source-paired cases and zero-child staging/final commit matches 66,636 cases plus 576 owned boundary contexts; bounds and non-root selection match161,284 queries over 1,322 actual bodies/all 1,644 retained source instances, including Z policies; full ungrouped constructor matches 1,085 prepared cases/27,142 records; bounded node initialization matches 1,322 bodies/46,256 nodes including 23,981 with children; one mode-2 child branch matches 64 synthetic-state cases over source body geometry; actual actor association and live nonzero-child poses remain open |
 | D5 | Terrain/blockdata semantics, collision geometry and placement validated against source data | Source blockdata reader uses dimensions, three-byte samples and ordered interpolation; Rust/Python agree on 296,176 samples and 8,446 finite queries across 3,098 selected records, with one audio-package index excluded. Original runtime parity, caller meaning, collision and terrain remain open |
-| D6 | Usable audio, event routing, UI schemas, text/locales, materials and remaining required resource types | Typed SPUI framing passes 748/748; image/layout/original UI programs pass bounded checks; all 4,497 locale tables agree on 419,485 entries; 51,680 unscaled glyph packets and 37,691 simple phantom/scaling sets agree across five faces; selector1 passes 379,589 records; font0 square-15 hint/raster passes 385 nonempty simple glyphs with 1,540 retained native observations, and the separate empty-program caller matches all four remaining simple glyphs and 16 retained observations; 183 composite glyphs and six empty glyphs retain exclusions; actual font/cache lifetime, full screens/events, audio and runtime locales remain open |
-| G1 | Cell gameplay: controls, feeding/diet, swimming, growth, predators/combat, death/restart, editor integration and evolution into Creature | Original-program draws pass 28 primary models; bounded actor, geometry and broadphase models pass controlled comparisons; an explicit source capability join matches separate retained references. Runtime selection, live events, camera, animation, effects and gameplay fidelity remain open |
-| G2 | Creature gameplay: locomotion and animation, food/combat, social behaviours, nests/species, progression and transition to Tribe | Original simulation and GPU frontend pass initial checks; source animation/editor/transition and fidelity gates open |
-| G3 | Tribe gameplay: group selection/orders, food/resources, tools/buildings, social/combat interactions, opposing tribes and progression | 23 core and 5 frontend checks pass, including a complete original diplomacy route; GPU/runtime and fidelity gates open |
+| D6 | Usable audio, event routing, UI schemas, text/locales, materials and remaining required resource types | Typed SPUI framing passes 748/748; image/layout/original UI programs pass bounded checks; all 4,497 locale tables agree on 419,485 entries; 51,680 unscaled glyph packets and 37,691 simple phantom/scaling sets agree across five faces; selector1 passes 379,589 records; font0 square-15 hint/raster passes 385 nonempty simple glyphs with 1,540 retained native observations, and the separate empty-program caller matches all four remaining simple glyphs and 16 retained observations; 183 composite glyphs and six empty glyphs retain exclusions; source XAS1 RAM and PCM16BE export matches vgmstream on 2,122 selected Audio2 resources; actual font/cache lifetime, full screens/events, audio routing, streamed and other codecs, and runtime locales remain open |
+| G1 | Cell gameplay: controls, feeding/diet, swimming, growth, predators/combat, death/restart, editor integration and evolution into Creature | Original-program draws pass 28 primary models; bounded actor, geometry and broadphase models pass controlled comparisons; supplied-tree picking matches 1,452 and tree construction/update matches 1,944, and one filter matches 54,000 synthetic original-instruction cases with controlled provider stubs; an explicit source capability join matches separate retained references. One controlled startup candidate resolves to a hash-checked model and raster and renders offscreen. Bounded key-state and legacy-angle components match fixed original-instruction cases under explicit admissions. A single explicit source UI segment composites over a separate original-program Cell capture under controlled assumptions. Runtime selection, live events, camera, animation, effects and gameplay fidelity remain open |
+| G2 | Creature gameplay: locomotion and animation, food/combat, social behaviours, nests/species, progression and transition to Tribe | The experimental simulation and GPU frontend pass initial checks; selected source art and a controlled source UI frame render separately, while the surrounding scene remains a prototype. Source animation, original environment/UI, editor, transition and fidelity gates remain open |
+| G3 | Tribe gameplay: group selection/orders, food/resources, tools/buildings, social/combat interactions, opposing tribes and progression | The experimental simulation passes 23 core and 5 frontend checks, including its prototype diplomacy route; GPU/runtime and source-fidelity gates remain open |
 | G4 | Civilization gameplay: cities, vehicles, economy, military/religious/economic interactions, AI opposition and Space transition | Open |
 | G5 | Space gameplay: galaxy/system/planet generation and travel, missions, trade, colonies, terraforming and persistent simulation | Open |
-| E1 | Cell/creature editors: parts, valid attachment/transforms, palette/paint, undo/redo and persistent authored creations that work in gameplay | Original creation graph/transaction/save tests pass; UI and gameplay integration in progress; source catalog open |
+| E1 | Cell/creature editors: parts, valid attachment/transforms, palette/paint, undo/redo and persistent authored creations that work in gameplay | Prototype creation graph/transaction/save tests pass. A source CreatureData editing session lists source parts and preserves unrelated bytes during transform edits, undo/redo and exclusive saving; an untextured source-part preview reflects a tested translation edit. Bounded generated skin-record and row-edge slices have controlled native comparisons, and a hash-checked source-row inspection composes candidate edges and membership under explicit mutation/preparation admissions. Runtime identity, palette mapping, baked-model regeneration, the source editor UI, source catalog and gameplay integration remain open |
 | E2 | Building/vehicle/adventure editing and saved-content integration, with the subset defined by the source install documented | Original graph formats implemented; user interface and gameplay/source integration open |
 | X1 | New-game and cross-stage progression, versioned save/load, settings, input remapping, sound/UI and robust failure handling | Open; per-stage save foundations begin with G1 |
 | X2 | End-to-end campaign and editor acceptance, performance/memory/GPU profiling, no proprietary redistribution, release packaging | Open |
@@ -62,6 +62,32 @@ camera, material and interface acceptance gates. Authored animation sampling pol
 also must not be described as recovered proprietary interpolation without evidence.
 
 ## Evidence log
+
+- 2026-11-09 continued: a controlled Cell idle binding for the explicitly
+  selected startup creature now matches the original builder, including its
+  special root records; live animation selection and pose remain open. A
+  Tribe selector/append path and a Civilization vehicle selector each match
+  original code for bounded supplied-state cases. A Space category graph was
+  inspected from an explicit installed package, and its accessor/loop matched
+  original code with synthetic descriptors. These are source-data and bounded
+  behavior advances; none closes a gameplay milestone. See the continuation
+  checkpoint and linked research notes for admissions and retained failures.
+
+- 2026-11-09 continuation: corrected DXT5 four-color decoding in Rust and both
+  Python checkers. Post-correction installed-package RGBA digests agree for
+  2,954 standalone rasters and 8,915 RW4 textures under stable-read admissions;
+  an independent RTX D3D9 sample check covers the correction. The experimental
+  Cell frontend has opt-in source-fragment and synthetic-palette previews, with
+  hidden RTX capture checks and explicitly unverified live state. Controlled
+  Cell original-instruction comparisons now cover fresh sorting/pair generation,
+  old/fresh merging, pending updates and removal under bounded synthetic inputs.
+  A conditional creature surface has matched partial positions, normals, indices,
+  influence queries, row-derived initial records and bounded smoothing at the
+  original caller's factor; UVs, final skin binding, real actor identity and the
+  remaining finalization are open. The latest full
+  workspace suite recorded in the continuation checkpoint passed 1,957 test
+  executions, with 52 ignored. None of these checks closes a gameplay or editor
+  milestone. See [the continuation checkpoint](continuation-2026-11-08.md).
 
 - 2026-10-27 resume: original scalar contributions match52,911 native/Rust cases,
   including44,127 source rows/2,086 components; ordinary root construction matches

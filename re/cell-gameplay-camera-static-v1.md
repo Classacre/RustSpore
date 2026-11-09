@@ -6,6 +6,20 @@ Retained Ghidra dossier `target/rea/20261028-source-runtime-v6/20-analyze_functi
 
 At `E54890..E54981`, a global state pointer at `016B4BEC` supplies three floats +48/+4C/+50, and a second vector adds +6C/+70/+74 plus a scalar times the global vector at 015A8C40..48. These vectors and a global vector at 015A8C34 are passed to `10436F0`, whose arithmetic begins by subtracting the vectors, normalizing and computing cross-product terms. The resulting 16-word matrix is passed to `7C45E0` on `016B5298`. Calls to `7C4CD0`, `7C4540`, and `7C4560` configure the same object's perspective-like and scalar state; exact final projection values and runtime conditions are not established here. `7C45E0` begins by copying all 16 input words into the camera-like object and then derives additional fields. `7C4CD0` uses tangent and stored viewport ratio to update fields of the object at +170. These are static operations, not a recovered main-camera frame.
 
+The specific call sequence passes the binary32 literal 50.0 to `7C4CD0`,
+1.0 to `7C4540`, and 2000.0 to `7C4560`. The latter two setters store their
+arguments at the auxiliary object's context +70 and +74 and call `7C42E0`;
+`7C4CD0` combines its input with global constants and the existing +5C/+60
+ratio to update +5C..+68. The initialized PE words at `015A8C34..3C` are
+`(0,1,0)`, and at `015A8C40..48` are `(0,0,1)`. They are mutable image
+locations: their initialized bytes do not prove the values at a particular
+call. The actor-related base vector, scalar obtained through `E82160`, live
+target ratio and update ordering also remain unknown. Bound source bytes and
+constants are in `target/source-cell/cell-auxiliary-view-source-audit-20261108-v1.json`,
+SHA-256 `70a533be6d785a4c980166b1c7e28145414a76e75f50f91ec277aedb7fa8db18`.
+These inputs describe a conditional auxiliary view, not a selected primary
+gameplay camera or a captured frame.
+
 Retained dossier 36 (`E54150`) initializes state +48/+4C/+50, +54/+58/+5C, and +60/+64/+68 from the same three globals, and initializes +6C/+70/+74 from (0,0,20). Dossier 250 (`E7D8B0`) conditionally writes the first word of its actor argument into state +E0 and copies current +48/+4C/+50 into both +54/+58/+5C and +60/+64/+68. Dossier 121 (`E79750`) also writes an actor-related word to +E0 and passes state +48 to `E5E960`. These facts establish conditional linkage between actor-related state and this camera-related state; they do not prove which actor is active, that +E0 is dereferenced as a position, a per-frame update cadence, or exact world-to-view mapping.
 
 Stage setup calls the singleton returned by `67D830` through virtual offsets +50 and +58 (`E5DA9C` onward). Its concrete implementation, live camera resource key and class, actual main-camera attachment, and source of the per-frame anchor remain unresolved. They must be traced before treating the auxiliary matrix as the main scene view or reconstructing shader uniforms. The fitted editor thumbnail camera is a separate path.

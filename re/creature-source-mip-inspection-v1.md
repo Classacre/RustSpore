@@ -1,0 +1,5 @@
+# Creature-stage source inspection mip handoff
+
+The explicit Creature source-art inspection now loads the selected standalone RASTER's declared, validated mip chain through the existing asset decoder. It verifies the base mip equals the already selected texture and uploads RGBA levels in declared order to the Bevy image; the source sampler's mip setting controls the LOD clamp. RW4 remains base-only when mip filtering is disabled, and enabled RW4 mip filtering fails closed. This mirrors the earlier Cell inspection boundary described in `cell-creature-mip-inspection-v1.md`.
+
+The opt-in installed-data test selected `40616200A1C46DF2` using the existing inspection package ordering, decoded ten levels from 512x512 to 1x1 and checked the base pixels; retained output is `target/creature-stage-mips-installed-v1.log`. Package selection and decoded source data are controlled inspection inputs; this test does not authenticate the retail winner or prove graphics-device sampling. The stage still uses PBR, static pose, an inferred basis and prototype behavior. No GUI, GPU capture, native animation or Creature gameplay fidelity is claimed.

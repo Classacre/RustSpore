@@ -1,0 +1,5 @@
+//! Conditional supplied UV/position buffers; output is not a final tangent.
+use spore_core::{creature_skin_uv_tangent_prefix_v1::project,native_sse::Policy};
+use std::{env,fs,io::{self,Write}};
+fn words(v:&[u8])->Vec<u32>{v.chunks_exact(4).map(|x|u32::from_le_bytes(x.try_into().unwrap())).collect()}
+fn main(){let a:Vec<_>=env::args().collect();assert_eq!(a.len(),6);let u=fs::read(&a[1]).unwrap();let c=fs::read(&a[2]).unwrap();let i=fs::read(&a[3]).unwrap();let p=fs::read(&a[4]).unwrap();let pi=fs::read(&a[5]).unwrap();assert_eq!((u.len(),c.len(),i.len(),p.len(),pi.len()),(85*8,252*4,85*4,44*12,252*4));let uw=words(&u);let uv:Vec<_>=uw.chunks_exact(2).map(|x|[x[0],x[1]]).collect();let corners=words(&c);let indices=words(&i);let pw=words(&p);let pos:Vec<_>=pw.chunks_exact(3).map(|x|[x[0],x[1],x[2]]).collect();let posi=words(&pi);let mut out=Vec::new();for v in indices{for w in project(&uv,&corners,&pos,&posi,v as usize,Policy::Mxcsr1f80).unwrap(){out.extend(w.to_le_bytes());}}io::stdout().write_all(&out).unwrap();}

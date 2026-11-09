@@ -1,0 +1,4 @@
+//! Compare the bounded cache-hit callback projection to retained source rows.
+use spore_core::cell_provider_cache_hit_v1::{project,Action};
+fn w(b:&[u8],o:usize)->u32{u32::from_le_bytes(b[o..o+4].try_into().unwrap())}
+fn main(){let p=std::env::args().nth(1).expect("native stdout");let b=std::fs::read(p).unwrap();assert_eq!(b.len(),64);for i in 0..4{let post=if i&1==0{1}else{2};let cw=if i&2==0{0x27f}else{0x37f};let x=project(1,Some(post),cw,0x1f80,true).unwrap();let row=&b[i*16..(i+1)*16];assert_eq!(w(row,0),x.post_callback_slot.unwrap());assert_eq!(w(row,4),1);assert_eq!(x.actions,[Action::Store(1),Action::Callback(1)]);let fp=w(row,8);assert_eq!(fp&0xffff,cw as u32);assert_eq!((fp>>16)&0x3840,0);assert_eq!(w(row,12)&!0x3f,0x1f80);}println!("matched 4 retained cache-hit rows; callback scripted");}

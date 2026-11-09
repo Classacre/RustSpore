@@ -1,0 +1,96 @@
+//! Explicit-resolution, source-atlas, single-Window software diagnostic.
+//! Not a retail capture, GPU-equivalence test, package choice, or complete HUD.
+//! Usage: cell_ui_one_image_software_v1 <layout.package> <atlas.package> <width> <height> <new.png-under-target>
+//! Assumes successful initial root resize/attachment, identity local and parent
+//! matrices, zero private flags, no later mutation/effects, viewport [0,0,W,H],
+//! white tint, and a transparent destination. Fractional bilinear filtering is
+//! a software approximation; GPU subpixel/quantization and alpha output differ.
+use dbpf::native_index::{NativePackageIndex, NativeResourceKey};
+use spore_core::{spui::{self, SpuiElement, SpuiValue}, spui_layout::{ImageRegion, ImageSizing, SimpleLayout, simple_window_layout}};
+use std::{collections::HashMap, error::Error, io::BufWriter, path::Path};
+const LAYOUT: NativeResourceKey = NativeResourceKey { instance_id: 0x26b0_68d2, type_id: 0x250f_e9a2, group_id: 0x4046_4200 };
+const ATLAS: NativeResourceKey = NativeResourceKey { instance_id: 0xb8b5_0133, type_id: 0x2f7d_0004, group_id: 0x31a4_4893 };
+fn resource(p: &NativePackageIndex, key: NativeResourceKey) -> Result<Vec<u8>, Box<dyn Error>> {
+    let e=p.index().find_unique(key)?.ok_or("missing explicit resource")?; Ok(p.read(e)?)
+}
+fn prop(e: &SpuiElement, id: u32) -> Result<u32, Box<dyn Error>> {
+    e.property(id).and_then(|p| p.u32_value()).ok_or_else(|| format!("missing u32 {id:08X}").into())
+}
+fn refs(e: &SpuiElement, id: u32) -> Result<Vec<u16>, Box<dyn Error>> {
+    let p=e.property(id).ok_or("missing ref property")?;
+    if p.type_code != 19 { return Err("bad ref type".into()); }
+    let b=p.scalar_bytes().ok_or("non-scalar refs")?;
+    if b.len()!=usize::from(p.count)*2 { return Err("bad ref count".into()); }
+    Ok(b.chunks_exact(2).map(|x| u16::from_le_bytes([x[0],x[1]])).collect())
+}
+fn main() -> Result<(), Box<dyn Error>> {
+    let a:Vec<_>=std::env::args_os().skip(1).collect();
+    if a.len()!=5 { return Err("usage: cell_ui_one_image_software_v1 <layout.package> <atlas.package> <width> <height> <new.png-under-target>".into()); }
+    let out=Path::new(&a[4]);
+    let parent=out.parent().ok_or("output needs parent")?.canonicalize()?;
+    let target=Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").join("target").canonicalize()?;
+    if !parent.starts_with(target) || out.file_name().is_none() { return Err("output must be under target".into()); }
+    let w:u32=a[2].to_str().ok_or("bad width")?.parse()?;
+    let h:u32=a[3].to_str().ok_or("bad height")?.parse()?;
+    if !(1..=4096).contains(&w) || !(1..=4096).contains(&h) { return Err("width/height must be 1..4096".into()); }
+    let lp=NativePackageIndex::open(Path::new(&a[0]))?;
+    let ap=NativePackageIndex::open(Path::new(&a[1]))?;
+    let file=spui::parse(&resource(&lp,LAYOUT)?)?;
+    let body=spui::parse_elements(&file)?;
+    let o:HashMap<_,_>=body.elements.iter().map(|e|(e.index,e)).collect();
+    let get=|i:u16| o.get(&i).copied().ok_or("missing expected object");
+    let (root,win,proc,draw,img)=(get(492)?,get(456)?,get(455)?,get(454)?,get(453)?);
+    if !root.root || root.proxy_id!=0x4ec1_b8d8 || win.proxy_id!=0x4ec1_b8d8 || draw.proxy_id!=0xcf3c_4eae
+       || prop(root,0xeec1_b001)?!=u32::MAX || prop(root,0xeec1_b000)?!=3 || prop(win,0xeec1_b000)?!=3
+       || !refs(root,0xeec1_b00b)?.contains(&456) || refs(win,0xeec1_b00c)? != [455]
+       || refs(win,0xeec1_b007)? != [454] || refs(draw,0x4f3c_4a26)? != [453]
+       || prop(draw,0x4f3c_4a2a)?!=0 { return Err("unsupported source graph/state".into()); }
+    if root.property(0xeec1_b00c).is_some() { return Err("unsupported root procedures".into()); }
+    let initial=root.property(0xeec1_b005).and_then(|p|p.rectangle()).ok_or("missing root rectangle")?;
+    let authored=win.property(0xeec1_b005).and_then(|p|p.rectangle()).ok_or("missing Window rectangle")?;
+    let layout=SimpleLayout::from_element(proc)?;
+    if layout.flags!=6 { return Err("unsupported layout flags".into()); }
+    let sizing=ImageSizing::from_element(draw)?;
+    if sizing.flags!=0 || sizing.scale!=1. { return Err("unsupported sizing".into()); }
+    let effect=draw.property(0x039a_69e6).ok_or("missing drawable effect")?;
+    let values=match &effect.value { SpuiValue::Structures{type_id,values} if *type_id==0x7a && values.len()==1 => &values[0], _=>return Err("unsupported effect structure".into()) };
+    for id in 4..=7 {
+        let p=values.iter().find(|p|p.id==id).ok_or("missing effect field")?;
+        if p.type_code!=11 || p.count!=1 || p.scalar_bytes()!=Some(&[0,0,0,0][..]) { return Err("nonzero effect geometry".into()); }
+    }
+    let region=ImageRegion::from_element(img)?;
+    let resources:Vec<_>=file.image_resources.iter().chain(&file.atlas_resources).collect();
+    let key=resources.get(usize::from(region.resource_reference)).ok_or("bad atlas reference")?;
+    if key.instance!=ATLAS.instance_id || key.type_id!=ATLAS.type_id || key.group!=ATLAS.group_id || region.flags.0!=0 { return Err("unsupported atlas or flags".into()); }
+    let atlas=image::load_from_memory_with_format(&resource(&ap,ATLAS)?,image::ImageFormat::Png)?.to_rgba8();
+    if atlas.dimensions()!=(512,512) { return Err("unexpected atlas size".into()); }
+    // 811090: root resize (+68) then move (+64), preserving rounding.
+    let root_area=[0.,0.,((initial[0]+w as f32)-initial[0]).floor(),((initial[1]+h as f32)-initial[1]).floor()];
+    let rect=simple_window_layout(root_area,authored,&[layout])?;
+    let width=rect[2]-rect[0];let height=rect[3]-rect[1];
+    if width<=0. || height<=0. || rect.iter().any(|x| !x.is_finite()) { return Err("unsupported local rectangle".into()); }
+    let uv=region.map_uv([0.,0.,1.,1.])?;
+    let mut output=image::RgbaImage::new(w,h);
+    // Diagnostic sampled straight RGBA. This deliberately does not assert
+    // inherited D3D alpha-target, sRGB, half-pixel, or retail blend state.
+    for y in 0..h { for x in 0..w {
+        let px=x as f32+0.5;let py=y as f32+0.5;
+        if px<rect[0] || px>=rect[2] || py<rect[1] || py>=rect[3] { continue; }
+        let u=uv[0]+((px-rect[0])/width)*(uv[2]-uv[0]);
+        let v=uv[1]+((py-rect[1])/height)*(uv[3]-uv[1]);
+        let fx=(u*512.-0.5).clamp(0.,511.);let fy=(v*512.-0.5).clamp(0.,511.);
+        let x0=fx.floor() as u32;let y0=fy.floor() as u32;let x1=(x0+1).min(511);let y1=(y0+1).min(511);
+        let dx=fx-x0 as f32;let dy=fy-y0 as f32;
+        let mut rgba=[0u8;4];
+        for c in 0..4 {
+            let top=atlas.get_pixel(x0,y0)[c] as f32*(1.-dx)+atlas.get_pixel(x1,y0)[c] as f32*dx;
+            let bottom=atlas.get_pixel(x0,y1)[c] as f32*(1.-dx)+atlas.get_pixel(x1,y1)[c] as f32*dx;
+            rgba[c]=(top*(1.-dy)+bottom*dy).round().clamp(0.,255.) as u8;
+        }
+        output.put_pixel(x,y,image::Rgba(rgba));
+    }}
+    let f=std::fs::File::create_new(out)?;
+    output.write_to(&mut BufWriter::new(f),image::ImageFormat::Png)?;
+    println!("Source candidate {} atlas {}; resolution {}x{}; local rect {:?}; software-filtered RGBA diagnostic only",lp.path().display(),ap.path().display(),w,h,rect);
+    Ok(())
+}

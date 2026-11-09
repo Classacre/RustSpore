@@ -396,6 +396,19 @@ impl SourceCellLibrary {
         self.load_definition(self.definition(id)?)
     }
 
+    /// Re-read the selected atlas in the same inspection order and validate its
+    /// base level against the already loaded asset. Installed files must remain stable.
+    pub fn skin_mips(&self, asset: &SourceCellAsset) -> Result<crate::assets::TextureMipChain, String> {
+        let (identity, bytes) = self.read(RASTER, asset.skin_source.key.scoped_instance())?;
+        if identity != asset.skin_source { return Err("Cell skin resource identity changed".into()); }
+        let chain = crate::assets::decode_standalone_raster_mips(&bytes)?;
+        let first = chain.levels.first().ok_or("Cell skin mip chain is empty")?;
+        if first.width != asset.skin.width || first.height != asset.skin.height || first.rgba != asset.skin.rgba {
+            return Err("Cell skin base mip differs from loaded texture".into());
+        }
+        Ok(chain)
+    }
+
     fn thumbnail_camera(&self) -> Result<SourceOrbitCamera, String> {
         let (_, bytes) = self.read(PROP, CELL_EDITOR_SETUP)?;
         let setup = exact_camera_prop(&bytes)?;
@@ -602,9 +615,15 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
             asset.definition.cell.key, asset.definition.structure.key, asset.definition.creation_instance,
             asset.model.key, asset.skin_source.key, asset.pending_structure_entries.len(), options.diagnostic_skin_translation);
         #[cfg(all(windows, feature = "native_renderer"))]
-        return crate::native_cell_renderer::capture_key(&options.install, path,
-            asset.model.key, options.diagnostic_skin_translation)
-            .map_err(|e| e.to_string());
+        {
+            let ui=options.ui.as_ref().map(|u| crate::native_cell_renderer::UiRequest {
+                layout:u.layout.clone(), atlas:u.atlas.clone(), fixture:u.fixture.clone(),
+                clip:if u.clip=="shader" { spore_core::spui_draw::UiClipPath::Shader } else { spore_core::spui_draw::UiClipPath::Scissor },
+                half_pixel:u.half_pixel,
+            });
+            return crate::native_cell_renderer::capture_key(&options.install, path,
+                asset.model.key, options.diagnostic_skin_translation, ui.as_ref()).map_err(|e| e.to_string());
+        }
         #[cfg(not(all(windows, feature = "native_renderer")))]
         return Err("Original shader capture requires Windows native rendering. Use --pbr-inspection for the separate diagnostic view.".to_string());
     }
@@ -648,15 +667,19 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct PreviewOptions { install: PathBuf, cell: u32, shot: Option<PathBuf>, audit: bool, pbr_inspection: bool, diagnostic_skin_translation: bool }
+struct PreviewOptions { install: PathBuf, cell: u32, shot: Option<PathBuf>, audit: bool, pbr_inspection: bool, diagnostic_skin_translation: bool, ui: Option<UiOptions> }
+
+#[derive(Debug, PartialEq, Eq)]
+struct UiOptions { layout: PathBuf, atlas: PathBuf, fixture: PathBuf, clip: String, half_pixel: bool }
 
 impl PreviewOptions {
     fn parse(args: &[String]) -> Result<Self, String> {
         let mut result = Self {
             install: std::env::var_os("RUSTSPORE_INSTALL").map(PathBuf::from)
                 .unwrap_or_else(|| PathBuf::from("D:/Games/SPORE Collection")),
-            cell: JAWHEAD, shot: None, audit: false, pbr_inspection: false, diagnostic_skin_translation: false,
+            cell: JAWHEAD, shot: None, audit: false, pbr_inspection: false, diagnostic_skin_translation: false, ui: None,
         };
+        let (mut ui_layout,mut ui_atlas,mut ui_fixture,mut ui_clip,mut ui_half)=(None,None,None,None,None);
         let mut index = 0;
         while index < args.len() {
             let value = |index: usize| args.get(index + 1)
@@ -673,8 +696,22 @@ impl PreviewOptions {
                 "--audit" => { result.audit = true; index += 1; }
                 "--pbr-inspection" => { result.pbr_inspection = true; index += 1; }
                 "--diagnostic-skin-translation" => { result.diagnostic_skin_translation = true; index += 1; }
+                "--source-ui-layout" | "--source-ui-atlas" | "--source-ui-fixture" | "--source-ui-clip" | "--source-ui-half-pixel" => {
+                    let target=match args[index].as_str() {
+                        "--source-ui-layout"=>&mut ui_layout, "--source-ui-atlas"=>&mut ui_atlas,
+                        "--source-ui-fixture"=>&mut ui_fixture, "--source-ui-clip"=>&mut ui_clip, _=>&mut ui_half,
+                    };
+                    if target.replace(value(index)?.to_owned()).is_some() { return Err("duplicate source UI option".to_string()); }
+                    index+=2;
+                }
                 other => return Err(format!("unknown source Cell option {other:?}; use --install <dir> --cell <hex> --shot <new.png> or --audit")),
             }
+        }
+        if ui_layout.is_some() || ui_atlas.is_some() || ui_fixture.is_some() || ui_clip.is_some() || ui_half.is_some() {
+            let (Some(layout),Some(atlas),Some(fixture),Some(clip),Some(half))=(ui_layout,ui_atlas,ui_fixture,ui_clip,ui_half) else { return Err("all five source UI options are required".to_string()); };
+            if !matches!(clip.as_str(),"shader"|"scissor") || !matches!(half.as_str(),"0"|"1") { return Err("source UI requires clip shader|scissor and half-pixel 0|1".to_string()); }
+            if result.audit || result.pbr_inspection || result.diagnostic_skin_translation || result.shot.is_none() { return Err("source UI requires single-frame original source Cell capture without audit, PBR or diagnostics".to_string()); }
+            result.ui=Some(UiOptions { layout:layout.into(),atlas:atlas.into(),fixture:fixture.into(),clip,half_pixel:half=="1" });
         }
         if !result.audit && result.shot.is_none() { return Err("source Cell preview requires --shot <new.png> or --audit".to_string()); }
         if result.diagnostic_skin_translation && (result.cell != JAWHEAD || result.shot.is_none() || result.audit || result.pbr_inspection) {
@@ -939,6 +976,11 @@ mod tests {
         assert!(PreviewOptions::parse(&args(&["--diagnostic-skin-translation", "--audit"])).is_err());
         assert!(PreviewOptions::parse(&args(&["--diagnostic-skin-translation", "--pbr-inspection", "--shot", "target/diagnostic.png"])).is_err());
         assert!(PreviewOptions::parse(&args(&["--diagnostic-skin-translation", "--cell", "1", "--shot", "target/diagnostic.png"])).is_err());
+        assert!(PreviewOptions::parse(&args(&["--shot", "target/a.png", "--source-ui-layout", "a"])).is_err());
+        let ui_args=["--shot","target/a.png","--source-ui-layout","a","--source-ui-atlas","b","--source-ui-fixture","c","--source-ui-clip","shader","--source-ui-half-pixel","1"];
+        assert!(PreviewOptions::parse(&args(&ui_args)).unwrap().ui.is_some());
+        let mut bad=ui_args.to_vec(); bad.push("--pbr-inspection");
+        assert!(PreviewOptions::parse(&args(&bad)).is_err());
         assert!(PreviewOptions::parse(&args(&["--audit"])).unwrap().audit);
     }
 
@@ -1071,6 +1113,30 @@ mod tests {
         assert_eq!(record.raw, raw);
         println!("CELL_DEFINITION_INSPECTION package={:?} key={} bytes={} structure_id={:08X}",
                  identity.package, identity.key, record.raw.len(), record.structure_id);
+    }
+
+    /// The inspection path must accept the complete declared atlas of every
+    /// installed baked Cell whose existing sampler policy is supported.
+    #[test]
+    #[ignore = "requires the local SPORE installation; run with --ignored --nocapture"]
+    fn installed_supported_cell_atlases_have_matching_mip_chains() {
+        let install = std::env::var_os("RUSTSPORE_INSTALL")
+            .map(PathBuf::from).unwrap_or_else(|| PathBuf::from("D:/Games/SPORE Collection"));
+        let source = SourceCellLibrary::open_install(&install).unwrap();
+        let mut loaded = 0usize;
+        let mut supported = 0usize;
+        for id in source.cell_ids() {
+            if let Ok(asset) = source.load(id) {
+                loaded += 1;
+                if source_skin_sampler(&asset).is_ok() {
+                    let chain = source.skin_mips(&asset).unwrap_or_else(|e| panic!("Cell {id:08X}: {e}"));
+                    assert!(!chain.levels.is_empty());
+                    supported += 1;
+                }
+            }
+        }
+        assert!(supported > 0, "no supported installed Cell atlas was tested");
+        println!("CELL_INSPECTION_MIP_CORPUS loaded={loaded} sampler_supported={supported}");
     }
 
     /// Explicit opt-in corpus test reads the user's install and no bundled art.

@@ -1,0 +1,4 @@
+//! Conditional supplied UV/corner buffers, no tangent or live identity claim.
+use spore_core::{creature_skin_uv_determinant_v1::project,native_sse::Policy};
+use std::{env,fs,io::{self,Write}};
+fn main(){let a:Vec<_>=env::args().collect();assert_eq!(a.len(),4);let u=fs::read(&a[1]).unwrap();let c=fs::read(&a[2]).unwrap();let i=fs::read(&a[3]).unwrap();assert_eq!((u.len(),c.len(),i.len()),(94*8,261*4,88*4));let uvs:Vec<[u32;2]>=u.chunks_exact(8).map(|x|[u32::from_le_bytes(x[..4].try_into().unwrap()),u32::from_le_bytes(x[4..].try_into().unwrap())]).collect();let corners:Vec<u32>=c.chunks_exact(4).map(|x|u32::from_le_bytes(x.try_into().unwrap())).collect();let mut out=Vec::new();for v in i.chunks_exact(4){let corner=u32::from_le_bytes(v.try_into().unwrap()) as usize;let q=project(&uvs,&corners,corner,Policy::Mxcsr1f80).unwrap();out.extend(q.determinant.to_le_bytes());out.extend((q.fallback as u32).to_le_bytes());}io::stdout().write_all(&out).unwrap();}

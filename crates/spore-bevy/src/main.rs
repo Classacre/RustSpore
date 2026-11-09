@@ -19,10 +19,18 @@ use spore_core::GameStage;
 mod animation_viewer;
 mod assets;
 mod cell_game;
+mod cell_source_sweep_fixture_v1;
+mod cell_source_player_v1;
+mod cell_source_player_visual_v1;
+mod cell_source_part_provider_v1;
+mod cell_source_capability_v1;
 #[allow(dead_code)]
 mod cell_start_reference_fixup_v1;
 mod civilization_game;
 mod creature_game;
+mod creature_synthetic_0473_preview;
+mod creature_synthetic_0473_directions;
+mod creature_synthetic_0473_halfturn;
 mod editor;
 mod launcher;
 #[cfg(all(windows, feature = "native_renderer"))]
@@ -30,6 +38,7 @@ mod native_cell_renderer;
 mod offscreen;
 mod source_cell;
 mod source_creature;
+mod source_creature_edit;
 mod tribe_game;
 mod viewer;
 
@@ -88,7 +97,7 @@ fn main() {
         && matches!(
             args.first().map(String::as_str),
             Some(
-                "--menu" | "--cell" | "--creature-game" | "--tribe" | "--civilization" | "--editor"
+                "--menu" | "--cell" | "--creature-game" | "--tribe" | "--civilization" | "--editor" | "--assembly-preview" | "--synthetic-0473-preview" | "--synthetic-0473-directions" | "--synthetic-0473-halfturn" | "--source-creature-edit" | "--source-creature-edit-package"
             )
         )
     {
@@ -109,6 +118,60 @@ fn main() {
             cli_value(launcher::run(&args[1..]));
             return;
         }
+        Some("--synthetic-0473-halfturn") => {
+            if args.len() != 4 || args[2] != "--shot" { eprintln!("usage: rustspore --experimental --synthetic-0473-halfturn <pinned inspection JSON> --shot <new target PNG>"); std::process::exit(2); }
+            cli_value(creature_synthetic_0473_halfturn::run(std::path::Path::new(&args[1]), std::path::Path::new(&args[3])));
+            return;
+        }
+        Some("--synthetic-0473-directions") => {
+            if args.len() != 4 || args[2] != "--shot" { eprintln!("usage: rustspore --experimental --synthetic-0473-directions <pinned inspection JSON> --shot <new target PNG>"); std::process::exit(2); }
+            cli_value(creature_synthetic_0473_directions::run(std::path::Path::new(&args[1]), std::path::Path::new(&args[3])));
+            return;
+        }
+        Some("--synthetic-0473-preview") => {
+            if args.len() != 4 || args[2] != "--shot" {
+                eprintln!("usage: rustspore --experimental --synthetic-0473-preview <pinned inspection JSON> --shot <new target PNG>");
+                std::process::exit(2);
+            }
+            cli_value(creature_synthetic_0473_preview::run(std::path::Path::new(&args[1]), std::path::Path::new(&args[3])));
+            return;
+        }
+        Some("--assembly-preview") => {
+            if args.len() != 6 || args[4] != "--shot" {
+                eprintln!("usage: rustspore --experimental --assembly-preview <package> <edited.creaturedata> <sha256> --shot <new target PNG>");
+                std::process::exit(2);
+            }
+            cli_value(viewer::run_edited_assembly(&args[1], std::path::Path::new(&args[2]), &args[3], args[5].clone().into()));
+            return;
+        }
+        Some("--source-creature-edit") => {
+            cli_value(source_creature_edit::run(&args[1..]));
+            return;
+        }
+        Some("--source-creature-edit-package") => {
+            cli_value(source_creature_edit::run_package(&args[1..]));
+            return;
+        }
+        Some("--source-player") => {
+            cli_value(cell_source_player_v1::run(&args[1..]));
+            return;
+        }
+        Some("--source-player-visual") => {
+            cli_value(cell_source_player_visual_v1::run(&args[1..]));
+            return;
+        }
+        Some("--source-installed-frame-fixture") => {
+            cli_value(cell_source_sweep_fixture_v1::run_installed_frame(&args[1..]));
+            return;
+        }
+        Some("--source-frame-fixture") => {
+            cli_value(cell_source_sweep_fixture_v1::run_frame(&args[1..]));
+            return;
+        }
+        Some("--source-sweep-fixture") => {
+            cli_value(cell_source_sweep_fixture_v1::run(&args[1..]));
+            return;
+        }
         Some("--source-cell") => {
             if let Err(err) = source_cell::run(&args[1..]) {
                 eprintln!("source Cell: {err}");
@@ -124,9 +187,34 @@ fn main() {
             return;
         }
         Some("--help") | Some("-h") => {
+            println!("Experimental source-byte editing: --experimental --source-creature-edit <source.creaturedata> <sha256> <new target output.creaturedata> (command-line transform edits, undo/redo; not a playable creation)");
+            println!("Experimental package source-byte editing: --experimental --source-creature-edit-package <package> <16-hex scope+instance> <payload-sha256> <new target output.creaturedata>");
+            println!("Synthetic 0473 half-turn: --experimental --synthetic-0473-halfturn <pinned JSON> --shot <new target PNG>; synthetic matrices, no live pose or material");
+            println!("Synthetic 0473 directions: --experimental --synthetic-0473-directions <pinned JSON> --shot <new target PNG>; synthetic matrices, no live pose or material");
+            println!("Synthetic 0473 position-only wireframe: --experimental --synthetic-0473-preview <pinned JSON> --shot <new target PNG>; synthetic matrices, no live pose");
+            println!("Experimental source-part assembly inspection: --experimental --assembly-preview <package> <edited.creaturedata> <sha256> --shot <new target PNG> (untextured, offscreen; not a playable creation)");
+            println!("Experimental Cell synthetic palette: --experimental --cell --offscreen --shot <new PNG> --source-cell-install <dir> --source-cell-id FD24574B --source-kind0-fragment-preview --source-kind0-synthetic-palette. Controlled synthetic translations; no live pose or retail-state claim.");
+            println!("Opt-in controlled source UI fixture (not a retail HUD): --source-cell --shot <new PNG> --source-ui-layout <package> --source-ui-atlas <package> --source-ui-fixture <JSON> --source-ui-clip <shader|scissor> --source-ui-half-pixel <0|1>");
+            println!("Experimental Cell offscreen source UI segment: --experimental --cell --offscreen --shot <new PNG> --source-ui-install <dir> --source-ui-layout <package> --source-ui-atlas <package> --source-ui-fixture <JSON> --source-ui-clip <shader|scissor> --source-ui-half-pixel <0|1>. Controlled fixture; Bevy rendering, not native UI execution.");
+            println!("Experimental Cell five-segment source UI: --experimental --cell --offscreen --shot <new PNG> --source-ui-five-layout <package> --source-ui-five-atlas <package> --source-ui-five-span <f32hex,f32hex> --source-ui-five-origin <f32hex,f32hex> --source-ui-five-state <8hex> --source-ui-five-mask <2hex> --admit-five-ui-stable-packages-one-dispatch-no-other-mutation. Controlled placement and state; Bevy shader.");
+            println!("Experimental Cell source rival roster: --source-cell-install <dir> --source-cell-id <hex> --source-rival-cell-roster <8hex[,8hex...]> (1–8 distinct IDs). Controlled prototype actor ID modulo roster; source meshes and own atlases, static PBR inspection, native spawning unverified. Mutually exclusive with --source-rival-cell-id.");
+            println!("Controlled source plane overlay: --experimental --cell --offscreen --shot <new PNG> --source-effect-plane-install <dir> --source-effect-plane-rect <center-x,center-y,width,height f32 hex> --admit-effect-plane-stable-packages. Explicit world-space placement and Bevy reverse-Z shader preview; runtime effect selection and camera unverified.");
+            println!("Controlled translucent source model 154: --experimental --cell --offscreen --shot <new PNG> --source-effect-154-install <dir> --source-effect-154-rect <center-x,center-y,width,height f32 hex> --admit-effect-154-stable-packages [--source-effect-154-no-effect]. Whole scene uses a unorm intermediate and final sRGB conversion; placement, profile and runtime selection are controlled assumptions.");
+            println!("Optional static cursor on that fixture: --source-ui-five-cursor <progress-f32hex,target-pixel-anchor-y-f32hex>. Explicit progress, projected geometry and visibility; source image and authored child rectangle, no native animation or live state.");
             println!("Saved creature artwork with original programs: --source-creature [--install <SPORE dir>] --creature <hex> --shot <new PNG> [--coverage <new PNG> for 40616200A1C46DF2]");
+            println!("Opt-in prototype player source art: --experimental --cell --seed 1 --source-startup-install <SPORE dir> --admit-startup-stable-packages; controlled startup candidate, prototype gameplay and unverified runtime identity");
+            println!("Optional startup-only normal approximation: --startup-source-normals; source-formula CPU approximation, not shader or lighting parity");
+            println!("Optional startup-only sampler experiment: --startup-unorm-texture; changes texture interpretation, not source shader or lighting parity");
+            println!("Optional startup material inspection: --startup-material-preview requires --offscreen and admitted startup art; synthetic basis and lighting, not retail rendering");
+            println!("Optional captured-input shading: add --startup-traced-material to the startup material inspection; frozen inspection lighting and Bevy camera, not live game rendering");
+            println!("Optional enlarged static inspection: add --startup-inspection-camera to captured-input shading; frozen editor-style camera over prototype gameplay");
+            println!("Controlled source-player startup inspection: --source-player --install <SPORE dir> --seed <nonzero decimal> [--progress <0..1000>]; stops at unresolved actor/provider binding");
+            println!("Controlled source-player visual inspection: --source-player-visual --install <SPORE dir> --seed <nonzero decimal> [--progress <0..1000>] [--adapter rtx|amd] --shot <new target PNG>; restricted candidate, no gameplay or animation");
+            println!("Synthetic source actor/sweep update fixture: --source-sweep-fixture [--install <SPORE dir> --cell <hex>] (no retail gameplay claim)");
+            println!("Synthetic one-frame source registry diagnostic: --source-frame-fixture (no retail gameplay claim)");
+            println!("Controlled installed one-frame diagnostic: --source-installed-frame-fixture --install <dir> --seed <nonzero> --progress <0..1000> (--tag <u32> --bounds <min-x> <min-y> <max-x> <max-y> | --source-registration --admit-registration-stability) [--peer <px> <py> <pz> <cx> <cy> <cz> <scalar> <tag> <min-x> <min-y> <max-x> <max-y>] [--multiframe-update --admit-actor-manager-stability] [--selector-route-words <player248> <playerFC> <peer248> <peerFC> --admit-selector-actor-lifetime-and-word-stability] [--feature-classes <player-csv|-> <peer-csv|-> --admit-feature-cache-stability] --admit-stable-files");
             println!("Source Cell artwork with original programs: --source-cell [--install <SPORE dir>] [--cell <hex>] --shot <new PNG>\nInspection PBR comparison: add --pbr-inspection\nJawhead synthetic position-only diagnostic: add --diagnostic-skin-translation (normals/tangents unchanged; not original animation playback)\nCorpus check: --source-cell [--install <SPORE dir>] --audit");
-            println!("RustSpore source-data tools\n  --animate <package> <RW4 hex> [--pose bind|seconds] [--shot <new PNG>]\n  --viewer <package>\n  --report <package>\n  --verify <package>\nEngineering prototypes (prototype rules and default procedural art; each requires --experimental)\n  --experimental --menu [--shot <new PNG>]\n  --experimental --cell [--seed <n>] [--diet herbivore|carnivore|omnivore] [--creation <file.rsc>] [--source-cell-install <dir> --source-cell-id <hex> | --source-creature-install <dir> --source-creature-instance <16-hex>] [--offscreen --shot <new PNG>]\n  --experimental --creature-game [--seed <n>] [--creation <file.rsc>] [--source-creature-install <dir> --source-creature-id <hex>]\n  --experimental --tribe [--seed <n>]\n  --experimental --civilization [--seed <n>] [--role military|religious|economic] [--demo <seconds>] [--shot <new PNG>]\n  --experimental --editor cell|creature|building|vehicle|adventure [--load <file.rsc>] [--export <new file.rsc>]\nSee README.md for source-data tools, controls and current milestone limits.");
+            println!("RustSpore source-data tools\n  --animate <package> <RW4 hex> [--pose bind|seconds] [--shot <new PNG>]\n  --viewer <package>\n  --report <package>\n  --verify <package>\nEngineering prototypes (prototype rules and default procedural art; each requires --experimental)\n  --experimental --menu [--shot <new PNG>]\n  --experimental --cell [--seed <n>] [--diet herbivore|carnivore|omnivore] [--creation <file.rsc>] [--source-cell-install <dir> --source-cell-id <hex> [--source-rival-cell-id <hex>] | --source-creature-install <dir> --source-creature-instance <16-hex>] [--offscreen --shot <new PNG>]\n  --experimental --creature-game [--seed <n>] [--creation <file.rsc>] [--source-creature-install <dir> --source-creature-id <hex>] [--offscreen --shot <new PNG>] [--source-ui-layout <package> --source-ui-atlas <package> --source-ui-fixture <JSON>]\n    Source UI frame requires --offscreen and all three source-ui options; placement and state are controlled.\n  --experimental --tribe [--seed <n>]\n  --experimental --civilization [--seed <n>] [--role military|religious|economic] [--demo <seconds>] [--shot <new PNG>]\n  --experimental --editor cell|creature|building|vehicle|adventure [--load <file.rsc>] [--export <new file.rsc>]\nSee README.md for source-data tools, controls and current milestone limits.");
             return;
         }
         Some("--tribe") => {

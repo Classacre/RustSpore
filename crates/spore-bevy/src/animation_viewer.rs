@@ -34,6 +34,7 @@ struct Model {
     clip: usize,
     time: f32,
     paused: bool,
+    looping: bool,
     bind: bool,
     normalization: Mat4,
     shot: Option<PathBuf>,
@@ -97,7 +98,7 @@ fn local_pose(model: &Model) -> Result<Vec<Mat4>, String> {
     let mut local = model.bind_local.clone();
     if !model.bind {
         for sample in model.clips[model.clip]
-            .sample(model.time, !model.paused)
+            .sample(model.time, model.looping)
             .map_err(|e| e.to_string())?
         {
             if let SampleValue::Transform(value) = sample.value {
@@ -259,6 +260,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         clip: 0,
         time: 0.,
         paused: false,
+        looping: true,
         bind: false,
         normalization,
         shot: None,
@@ -295,6 +297,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             "--pose" if value == "bind" => {
                 model.bind = true;
                 model.paused = true;
+                model.looping = false;
             }
             "--pose" => {
                 model.time = value.parse::<f32>().map_err(|_| "invalid pose time")?;
@@ -302,6 +305,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
                     return Err("pose time must be finite and nonnegative".into());
                 }
                 model.paused = true;
+                model.looping = false;
             }
             "--shot" => {
                 let path = PathBuf::from(value);
@@ -529,6 +533,9 @@ fn animate(
     }
     if keys.just_pressed(KeyCode::Space) {
         model.paused = !model.paused;
+        if !model.paused {
+            model.looping = true;
+        }
     }
     if keys.just_pressed(KeyCode::KeyB) {
         model.bind = !model.bind;
@@ -683,6 +690,7 @@ mod tests {
                 clip: 0,
                 time: 0.,
                 paused: false,
+                looping: true,
                 bind: false,
                 normalization: Mat4::IDENTITY,
                 shot: None,
@@ -733,6 +741,21 @@ mod tests {
             app.world().get::<Transform>(joint).unwrap().translation.x,
             2.
         );
+        // Pause after a full loop: the pose must remain at the wrapped time.
+        step(&mut app, 1.25, None);
+        assert!((app.world().get::<Transform>(joint).unwrap().translation.x - 2.25).abs() < 1e-6);
+        step(&mut app, 0., Some(KeyCode::Space));
+        assert!((app.world().get::<Transform>(joint).unwrap().translation.x - 2.25).abs() < 1e-6);
+        // An explicit static pose keeps the documented non-looping behavior.
+        {
+            let mut model = app.world_mut().resource_mut::<Model>();
+            model.time = 1.25;
+            model.looping = false;
+        }
+        step(&mut app, 0., None);
+        assert_eq!(app.world().get::<Transform>(joint).unwrap().translation.x, 3.);
+        step(&mut app, 0., Some(KeyCode::Space));
+        assert!((app.world().get::<Transform>(joint).unwrap().translation.x - 2.25).abs() < 1e-6);
     }
     #[test]
     fn hierarchy_composes_child_and_rejects_cycles() {

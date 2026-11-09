@@ -1,0 +1,4 @@
+//! Compare the scripted stream initializer with eight retained native rows.
+use spore_core::cell_stream_init_forward_v1::project;
+fn w(b:&[u8],o:usize)->u32{u32::from_le_bytes(b[o..o+4].try_into().unwrap())}
+fn main(){let mut a=std::env::args().skip(1);let b=std::fs::read(a.next().expect("native rows")).unwrap();let stream=u32::from_str_radix(&a.next().expect("synthetic stream"),16).unwrap();let table=u32::from_str_radix(&a.next().expect("synthetic table"),16).unwrap();assert_eq!(b.len(),224);for i in 0..8{let x=project([0,1,2,255][i%4],true).unwrap();let r=&b[i*28..(i+1)*28];assert_eq!((w(r,0),w(r,4),w(r,8),w(r,12)),(u32::from(x.returned),u32::from(x.stream_byte_0c),stream,table));let fp=w(r,16);assert_eq!(fp&0xffff,if i>=4{0x37f}else{0x27f});assert_eq!((fp>>16)&0x3840,0);assert_eq!(w(r,20)&!0x3f,0x1f80);assert_eq!(w(r,24),0xa5a5a5a5);}println!("matched eight scripted source stream-initializer rows; no live owner");}

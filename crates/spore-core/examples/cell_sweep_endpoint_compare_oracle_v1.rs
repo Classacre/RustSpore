@@ -1,0 +1,2 @@
+use std::io::{Read,Write};use spore_core::cell_sweep_endpoint_compare_v1::compare;
+fn main()->Result<(),Box<dyn std::error::Error>>{let mut input=Vec::new();std::io::stdin().read_to_end(&mut input)?;if input.len()!=64{return Err("expected eight endpoint pairs".into())}let mut out=Vec::new();for row in input.chunks_exact(8){let a=u32::from_le_bytes(row[..4].try_into()?);let b=u32::from_le_bytes(row[4..].try_into()?);out.extend(compare(a,b).map_err(|e|format!("{e:?}"))?.to_le_bytes())}std::io::stdout().write_all(&out)?;Ok(())}

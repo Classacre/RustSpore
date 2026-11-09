@@ -1,7 +1,7 @@
 //! Parser for the SPORE RASTER texture format (type `0x2F4E681C`).
 //!
-//! Status: 100% decoded and validated. DXT1, DXT5, and raw RGBA sub-formats
-//! extracted to PNG with zero errors.
+//! Supports DXT1, DXT3, DXT5, BGRA, and L8 pixel decoding. Container and
+//! rendering behavior beyond the tested source resources may still differ.
 //!
 //! Layout (28-byte header, little-endian):
 //! ```text
@@ -180,11 +180,12 @@ impl Raster {
 
     /// Decode the first mip level to RGBA8, row-major, top-left origin.
     ///
-    /// This mirrors `tools/raster_extract.py` operation for operation, including
-    /// its integer division, so the two can be compared byte for byte. The
-    /// comparison is the test that matters; see `tools/raster_compare.py`.
+    /// The supported Python extractor uses the same integer interpolation for
+    /// DXT1 and DXT5; GPU filtering and interpolation may round differently.
     pub fn decode_rgba(&self) -> Result<Vec<u8>, RasterError> {
-        decode_pixels(self.format, self.width, self.height, &self.data)
+        let base = self.data.get(..self.data_size as usize)
+            .ok_or(RasterError::DataOverrun)?;
+        decode_pixels(self.format, self.width, self.height, base)
     }
 }
 
@@ -205,10 +206,8 @@ pub fn decode_pixels(
     if w == 0 || h == 0 {
         return Ok(Vec::new());
     }
-    let needed = w * h * 4;
-    if needed / 4 != w * h {
-        return Err(RasterError::DataOverrun);
-    }
+    let pixels = w.checked_mul(h).ok_or(RasterError::DataOverrun)?;
+    let needed = pixels.checked_mul(4).ok_or(RasterError::DataOverrun)?;
 
     match format {
         FORMAT_DXT1 => decode_dxt(data, w, h, BlockKind::Dxt1),
@@ -226,11 +225,11 @@ pub fn decode_pixels(
             Ok(out)
         }
         FORMAT_L8 => {
-            if data.len() < w * h {
+            if data.len() < pixels {
                 return Err(RasterError::DataOverrun);
             }
             let mut out = Vec::with_capacity(needed);
-            for &l in &data[..w * h] {
+            for &l in &data[..pixels] {
                 out.extend_from_slice(&[l, l, l, 255]);
             }
             Ok(out)
@@ -346,7 +345,7 @@ fn dxt5_block(block: &[u8]) -> [[u8; 4]; 16] {
         ]
     };
 
-    let colour = dxt1_block(&block[8..16]);
+    let colour = dxt1_block_mode(&block[8..16], true);
     let mut out = [[0u8; 4]; 16];
     for (i, px) in out.iter_mut().enumerate() {
         let idx = ((bits >> (3 * i)) & 0x7) as usize;
@@ -404,7 +403,9 @@ fn decode_dxt(
     let block_size = kind.size();
     let blocks_w = w.div_ceil(4);
     let blocks_h = h.div_ceil(4);
-    let need = blocks_w * blocks_h * block_size;
+    let need = blocks_w.checked_mul(blocks_h)
+        .and_then(|count| count.checked_mul(block_size))
+        .ok_or(RasterError::DataOverrun)?;
     if data.len() < need {
         return Err(RasterError::DataOverrun);
     }
@@ -441,6 +442,33 @@ fn decode_dxt(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn oversized_dimensions_reject_without_overflow_or_allocation() {
+        for format in [FORMAT_DXT1, FORMAT_DXT3, FORMAT_DXT5, FORMAT_RAW_RGBA, FORMAT_L8] {
+            assert_eq!(
+                decode_pixels(format, u32::MAX, u32::MAX, &[]),
+                Err(RasterError::DataOverrun),
+            );
+            assert_eq!(
+                decode_pixels(format, u32::MAX, 1, &[]),
+                Err(RasterError::DataOverrun),
+            );
+        }
+    }
+
+    #[test]
+    fn base_decode_does_not_read_following_mip_bytes() {
+        let mut bytes = build_test_raster(4, 4, FORMAT_DXT1, 2);
+        bytes[24..28].copy_from_slice(&4u32.to_le_bytes());
+        // Four base bytes plus a later level's length and payload are present.
+        // The later bytes must not complete the truncated base block.
+        bytes.truncate(32);
+        bytes.extend_from_slice(&8u32.to_le_bytes());
+        bytes.extend_from_slice(&[0; 8]);
+        let raster = parse(&bytes).unwrap();
+        assert_eq!(raster.decode_rgba(), Err(RasterError::DataOverrun));
+    }
 
     fn build_test_raster(width: u32, height: u32, format: u32, mip_count: u32) -> Vec<u8> {
         let mut data = Vec::new();
@@ -547,6 +575,18 @@ mod tests {
         block.extend_from_slice(&0xFFFFFFFFu32.to_le_bytes()); // all index 3
         let px = dxt1_block(&block);
         assert!(px.iter().all(|p| *p == [0, 0, 0, 0]));
+    }
+
+    #[test]
+    fn dxt5_four_colour_with_ordered_or_equal_endpoints() {
+        for (c0, c1, expected) in [(0x0000u16, 0xffffu16, 170u8), (0xffff, 0xffff, 255)] {
+            let mut block = vec![42u8, 0, 0, 0, 0, 0, 0, 0];
+            block.extend_from_slice(&c0.to_le_bytes());
+            block.extend_from_slice(&c1.to_le_bytes());
+            block.extend_from_slice(&0xffffffffu32.to_le_bytes());
+            assert!(dxt5_block(&block).iter().all(|p| *p == [expected, expected, expected, 42]));
+            assert!(dxt1_block(&block[8..]).iter().all(|p| *p == [0, 0, 0, 0]));
+        }
     }
 
     /// DXT5 with a0 = 255 and a1 = 0 uses the eight-entry interpolating table.

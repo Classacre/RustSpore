@@ -1,0 +1,4 @@
+use std::io::{Read,Write};use spore_core::cell_sweep_pair_filter_v1::{eligible,RankedSlot};
+fn main()->Result<(),Box<dyn std::error::Error>>{let mut input=Vec::new();std::io::stdin().read_to_end(&mut input)?;if input.len()!=352{return Err("expected eight 44-byte cases".into())}
+ let mut out=Vec::new();for row in input.chunks_exact(44){let w:Vec<u32>=row.chunks_exact(4).map(|b|u32::from_le_bytes(b.try_into().unwrap())).collect();if w[2..10].iter().any(|&x|x>0xffff){return Err("link exceeds u16".into())}
+ let a=RankedSlot{tag:w[0],links:[w[2] as u16,w[3] as u16,w[4] as u16,w[5] as u16]};let b=RankedSlot{tag:w[1],links:[w[6] as u16,w[7] as u16,w[8] as u16,w[9] as u16]};let value=eligible(a,b,w[10] as usize).map_err(|e|format!("{e:?}"))? as u32;out.extend(value.to_le_bytes())}std::io::stdout().write_all(&out)?;Ok(())}

@@ -1,0 +1,4 @@
+//! Compare synthetic food-field roundtrip against eight retained source rows.
+use spore_core::cell_food_field_roundtrip_v1::project;
+fn w(b:&[u8],o:usize)->u32{u32::from_le_bytes(b[o..o+4].try_into().unwrap())}
+fn main(){let b=std::fs::read(std::env::args().nth(1).expect("native rows")).unwrap();assert_eq!(b.len(),320);let values=[0,1,1000,u32::MAX];for i in 0..8{let x=project(values[i%4],true).unwrap();let r=&b[i*40..(i+1)*40];assert_eq!((w(r,0),w(r,4),w(r,8),w(r,12),w(r,16),w(r,20)),(x.source,x.destination,u32::from_le_bytes(x.encoded),x.write_calls,x.read_calls,4));let fp=w(r,24);assert_eq!(fp&0xffff,if i>=4{0x37f}else{0x27f});assert_eq!((fp>>16)&0x3840,0);assert_eq!(w(r,28)&!0x3f,0x1f80);assert_eq!((w(r,32),w(r,36)),(2,2));}println!("matched eight food-field callback/helper rows; synthetic stream");}

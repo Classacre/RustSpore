@@ -1,0 +1,2 @@
+use spore_core::creature_skin_edge_lookup_v1::{edge_hash,lookup};use spore_core::creature_skin_corner_lookup_v1::SLOT_COUNT;use std::io::Write;
+fn main(){let mut out=Vec::new();let(a,b)=(0x123456,0x765432);for case in 0..5 {let mut t=vec![[u32::MAX;2];SLOT_COUNT];let first=(edge_hash(a,b)&0x7fff) as usize;match case{1=>t[first]=[a,b],2|3=>{t[first]=[a,b^1];if case==3{let second=lookup(&t,a,b).unwrap() as usize;t[second]=[a,b]}},4=>t.fill([0,0]),_=>{}}out.extend_from_slice(&lookup(&t,a,b).unwrap().to_le_bytes());}std::io::stdout().write_all(&out).unwrap();}

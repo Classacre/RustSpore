@@ -1,0 +1,4 @@
+//! Compare bounded capability gate to twelve retained original rows.
+use spore_core::cell_stream_capability_gate_v1::{project,Branch};
+fn w(b:&[u8],o:usize)->u32{u32::from_le_bytes(b[o..o+4].try_into().unwrap())}
+fn main(){let b=std::fs::read(std::env::args().nth(1).expect("native rows")).unwrap();assert_eq!(b.len(),384);for i in 0..12{let (first,caps)=match i%6{0=>(1,Some(1)),1=>(1,Some(0)),2=>(2,Some(1)),3=>(2,Some(3)),4=>(0,Some(1)),_=>(1,None)};let x=project(first,caps,true).unwrap();let trap=match x.branch{Branch::BackingMissing=>1,Branch::CapabilityMatched=>2,Branch::CapabilityRejected=>0};let r=&b[i*32..(i+1)*32];assert_eq!((w(r,0),w(r,4),w(r,8),w(r,12)),(0,trap,x.field_14,x.capability_calls));let fp=w(r,16);assert_eq!(fp&0xffff,if i>=6{0x37f}else{0x27f});assert_eq!((fp>>16)&0x3840,0);assert_eq!(w(r,20)&!0x3f,0x1f80);assert_eq!((w(r,24),w(r,28)),(0xc0dec0de,0xa5a5a5a5));}println!("matched twelve source capability-gate rows; continuations trapped");}

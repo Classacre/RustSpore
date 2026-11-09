@@ -1,0 +1,21 @@
+# Conditional locale provider and comparison arguments
+
+This extends [the indexed-input locale trace](cell-indexed-input-locale-static-v1.md). The installed `SporeApp.exe` SHA-256 is `17cf32b3e3adbcc7ed9c4e593c83b5d3deb3c675059b7ad9cbfd19192df5f87a`. The following is a static construction/call path, not an observed provider, initialized locale, key event or player update. Valid allocations, non-null pointers, normal returns, unmodified tables, object lifetimes and stable state are admissions.
+
+## A concrete provider construction path
+
+At `7E653A..7E6564`, code requests `70h` bytes via `F472B0` and, on successful allocation, calls constructor `695EB0`, keeping its returned object in EDI. The caller installs it in its own `+24` field at `7E6566..7E658F` with conditional virtual reference-management calls, calls `695F50` with that field as receiver, then passes that field to `67DB80` at `7E65B5..7E65B9`. `67DB80..67DB89` stores its argument into global `015FE8F8` and uses plain `RET`; its caller cleans the stack later. This path does not establish success or an unchanged object for a particular runtime session. The allocation-failure/null path and indirect callbacks cannot be treated as a valid provider.
+
+Constructor `695EB0` writes vtable pointer `01403D14` at object `+0` and constructs a string-like object at `+18` via `695D30`, with image UTF-16 literal `01403D00` = `**-**`. The constructor's initial value is not proof of the later value: `695F50` invokes virtual `+10` and `+18` paths conditionally, and the candidate `+10` implementation `6971A0` calls helpers involving object `+18` (including `695DB0` on one branch). Their arguments, success and all later mutation are runtime inputs; the final source locale is not established here.
+
+## Slot and stack boundary
+
+In the PE image, table `01403D14` has word `6956F0` at offset `+14`. `6956F0..6956F3` is exactly `LEA EAX,[ECX+18h]; RET`: it returns a pointer to the object's `+18` member and does **not** pop any argument bytes. The member initialized by `695D30` has its beginning and ending pointers at member `+0/+4`; comparison helper `930BA0` reads exactly those fields. Constructor `695D30` initializes both to its inline `+14` area before passing the terminated input range to `68C830`; actual completed content and storage require the successful constructor/helper path.
+
+For `E844A0`, under the explicit condition that `[015FE8F8]` is this same live object and its vtable still selects `6956F0`, the pushed pointer `01403C78` remains on the stack after the virtual call. The subsequent `push eax; call 930BA0` therefore passes first the member pointer and second the literal `fr-fr`; the later `add esp,8` balances both words. `930BA0` compares the member's two-pointer UTF-16 span to the terminated literal, returning one only for equal length and equal bytes. This closes the comparator argument and source-span join for the named candidate implementation, **not** for arbitrary substitute providers or indirect table mutations. The separate controlled input model may admit a supplied span and the source callback's low-byte result; that is not an observation of the active locale.
+
+`7E94DF..7E9504` contains a conditional cleanup route that, when its owning `+24` field is nonzero, passes zero to `67DB80` before releasing the field. Direct scanning of executable bytes for the global's address found a read at `67D960` and a store in `67DB80`, and an `E8 rel32` scan found direct calls at `7E65B9` and `7E94E5`. These bounded encoding scans do not prove a complete writer or caller census: indirect calls, alternate stores and lifecycle paths remain possible.
+
+## Reproduction
+
+Independently hash the PE, decode `E844A0..E844BD`, `67D960..67D966`, `67DB80..67DB8A`, `7E653A..7E65BE`, `7E94DF..7E9506`, `695EB0..695F47`, `695D30..695DA0`, `6956F0..6956F4`, `6971A0..697242`, and `930BA0..930C19` with `pefile` and x86-32 Capstone. Read the vtable's six words at `01403D14`, the UTF-16 literals at `01403D00` and `01403C78`, and inspect the import/reference context separately. Fresh read-only Ghidra pseudocode for `695F50`, `695EB0` and `6956F0` is retained at `target/ghidra-creature-entry-v1/locale-provider-ghidra-v1.log`; decompilation is not original source. No original code, Cargo, GUI or game process was run.

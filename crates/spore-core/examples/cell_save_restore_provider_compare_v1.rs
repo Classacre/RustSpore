@@ -1,0 +1,4 @@
+//! Compare E61350 scripted provider handoff against retained native rows.
+use spore_core::cell_save_restore_provider_v1::{project,Action};
+fn w(b:&[u8],o:usize)->u32{u32::from_le_bytes(b[o..o+4].try_into().unwrap())}
+fn main(){let p=std::env::args().nth(1).expect("native stdout");let b=std::fs::read(p).unwrap();assert_eq!(b.len(),192);for i in 0..8{let old=if i&1==0{None}else{Some(1)};let post=if i&2==0{None}else{Some(2)};let cw=if i&4==0{0x27f}else{0x37f};let x=project(old,post,cw,0x1f80,true).unwrap();let row=&b[i*24..(i+1)*24];assert_eq!(w(row,0),u32::from(post.is_some()));assert_eq!(w(row,4),u32::from(x.global_flag));assert_eq!(w(row,8),2|u32::from(x.actions.contains(&Action::Release(1))));let fp=w(row,12);assert_eq!(fp&0xffff,cw as u32);assert_eq!((fp>>16)&0x3840,0);assert_eq!(w(row,16)&!0x3f,0x1f80);assert_eq!(w(row,20),i as u32);}println!("matched 8 E61350 retained rows; provider and release are scripted");}

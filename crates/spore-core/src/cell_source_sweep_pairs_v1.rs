@@ -77,13 +77,19 @@ pub fn rebuild(slots: &[SweepSlot], pair_capacity: usize) -> Result<SweepPairs, 
         }
     }
     for array in &mut endpoints {
-        // BBA700 sorts finite unequal endpoint values ascending. The native
-        // comparator has no equality result; reject ties before interpreting it.
-        array.sort_unstable_by(|a, b| a.value.total_cmp(&b.value));
-        if array.windows(2).any(|pair| pair[0].value == pair[1].value) {
-            return Err(SweepError::EndpointTie);
-        }
+        // Source comparator never returns equality. Reject ties (including
+        // signed zero) before passing it to Rust's strict sorting contract.
+        let mut seen=std::collections::HashSet::with_capacity(array.len());
+        for point in array.iter(){let bits=if point.value==0.0{0}else{point.value.to_bits()};if !seen.insert(bits){return Err(SweepError::EndpointTie)}}
+        array.sort_unstable_by(|a,b|{
+            let result=crate::cell_sweep_endpoint_compare_v1::compare(a.value.to_bits(),b.value.to_bits()).expect("finite normal-or-zero endpoints admitted");
+            if result<0{std::cmp::Ordering::Less}else{std::cmp::Ordering::Greater}
+        });
     }
+    // BBA7C0 writes sorted endpoint positions into per-slot link words. This
+    // fresh finite/unique rank reconstruction remains an admitted sort model.
+    let mut ranks=vec![[0u16;4];slots.len()];
+    for (axis,points) in endpoints.iter().enumerate(){for (position,point) in points.iter().enumerate(){ranks[point.slot][axis+if point.opening{0}else{2}]=position as u16;}}
     let mut active = Vec::<usize>::new();
     let mut stored = Vec::new();
     let mut suppressed = 0usize;
@@ -92,10 +98,10 @@ pub fn rebuild(slots: &[SweepSlot], pair_capacity: usize) -> Result<SweepPairs, 
             let current = &slots[point.slot];
             for &other_index in &active {
                 let other = &slots[other_index];
-                if current.tag != 0 && current.tag == other.tag { continue; }
-                // With unique finite endpoints, rank overlap on axis 1 equals
-                // strict interval overlap. Equality is excluded at admission.
-                if current.max[1] < other.min[1] || other.max[1] < current.min[1] { continue; }
+                let a=crate::cell_sweep_pair_filter_v1::RankedSlot{tag:current.tag,links:ranks[point.slot]};
+                let b=crate::cell_sweep_pair_filter_v1::RankedSlot{tag:other.tag,links:ranks[other_index]};
+                // Axis 0 is the current sweep; checked construction fixes it.
+                if !crate::cell_sweep_pair_filter_v1::eligible(a,b,0).expect("axis zero is valid"){continue}
                 if stored.len() == pair_capacity {
                     suppressed += 1;
                 } else {

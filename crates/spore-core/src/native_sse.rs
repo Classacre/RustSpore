@@ -50,7 +50,7 @@ impl Drop for MxcsrGuard {
 
 /// Run under an explicit policy and restore the full incoming MXCSR, including
 /// sticky flags, on success, checked error or unwinding.
-pub(crate) fn scoped<T, E: From<SseError>>(
+pub fn scoped<T, E: From<SseError>>(
     policy: Policy,
     operation: impl FnOnce() -> Result<T, E>,
 ) -> Result<T, E> {

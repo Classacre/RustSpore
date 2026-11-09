@@ -1,0 +1,4 @@
+//! Compare scripted fresh constructor projection with retained native object bytes.
+use spore_core::cell_fresh_save_constructor_v1::construct;
+fn w(b:&[u8],o:usize)->u32{u32::from_le_bytes(b[o..o+4].try_into().unwrap())}
+fn main(){let path=std::env::args().nth(1).expect("native stdout");let b=std::fs::read(path).unwrap();assert_eq!(b.len(),528);for i in 0..2{let cw=if i==0{0x27f}else{0x37f};let x=construct([0xa5;0xec],0x55667788,0x11223344,cw,0x1f80,true).unwrap();let row=&b[i*264..(i+1)*264];assert_eq!(&x.object[..],&row[..0xec],"object {i}");assert_eq!(x.root_51da as u32,w(row,236));assert_eq!((w(row,240),w(row,244),w(row,248),w(row,252)),(1,1,1,1));let fp=w(row,256);assert_eq!(fp&0xffff,cw as u32);assert_eq!((fp>>16)&0x3840,0);assert_eq!(w(row,260)&!0x3f,0x1f80);}println!("matched 2 retained fresh-constructor objects; allocator and helpers scripted");}

@@ -1,0 +1,4 @@
+//! Compare controlled source effect transforms to retained native rows.
+use spore_core::{cell_effect_transform_v1::project,native_sse::Policy};
+fn w(b:&[u8],o:usize)->u32{u32::from_le_bytes(b[o..o+4].try_into().unwrap())}
+fn main(){let b=std::fs::read(std::env::args().nth(1).expect("native rows")).unwrap();assert_eq!(b.len(),256);let c=[[0,0,0,4f32.to_bits(),6f32.to_bits(),0],[(-4f32).to_bits(),2f32.to_bits(),0,2f32.to_bits(),6f32.to_bits(),0]];let one=1f32.to_bits();let basis=[one,0,0,0,one,0,0,0,one];for i in 0..4{let x=project(c[i%2],basis,Policy::Mxcsr1f80,true).unwrap();let o=i*64;for (j,value) in x.into_iter().enumerate(){assert_eq!(w(&b,o+j*4),value)}let fp=w(&b,o+56);assert_eq!(fp&0xffff,if i<2{0x27f}else{0x37f});assert_eq!((fp>>16)&0x3840,0);assert_eq!(w(&b,o+60)&!0x3f,0x1f80);}println!("matched four original source transform rows; supplied corners and basis");}

@@ -19,6 +19,10 @@ required-features = ["native_shader_probe"]
 name = "source_cell_shader_probe"
 required-features = ["native_shader_probe"]
 
+[[example]]
+name = "cell_ui_progress_source_shader_v1"
+required-features = ["native_shader_probe"]
+
 [features]
 default = ["native_renderer"]
 native_renderer = ["dep:windows"]
@@ -28,13 +32,13 @@ native_shader_probe = ["native_renderer"]
 bevy.workspace = true
 dbpf.workspace = true
 spore-core.workspace = true
+sha2 = "0.10"
+serde_json = "1"
 
 # PNG resources are standard PNG files, so decoding them is not format work. The
 # crate is already in the tree through Bevy; this only names it directly.
 image = { version = "0.25", default-features = false, features = ["png"] }
 
 [target.'cfg(windows)'.dependencies]
+libloading = "0.8"
 windows = { version = "0.61.3", optional = true, features = ["Win32_Foundation", "Win32_Graphics_Direct3D9", "Win32_System_LibraryLoader", "Win32_UI_WindowsAndMessaging"] }
-
-[dev-dependencies]
-sha2 = "0.10"

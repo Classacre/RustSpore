@@ -1,0 +1,3 @@
+use std::io::{Read,Write};use spore_core::cell_selector_route_v1::{route,ActorWords,Route};
+fn code(r:Route)->u32{match r{Route::BothFeatures=>1,Route::SecondFeatures=>2,Route::FirstFeatures=>3,Route::NeitherFeatures=>4}}
+fn main()->Result<(),Box<dyn std::error::Error>>{let mut data=Vec::new();std::io::stdin().read_to_end(&mut data)?;if data.len()!=272{return Err("expected 17 cases".into())}let mut out=Vec::new();for row in data.chunks_exact(16){let w=|i:usize|u32::from_le_bytes(row[i*4..i*4+4].try_into().unwrap());let a=ActorWords{word_248:w(0),word_fc:w(1)};let b=ActorWords{word_248:w(2),word_fc:w(3)};for x in [code(route(a,b)),1,1,1,1,code(route(b,a)),1,1,1,1,w(0),w(1),w(2),w(3)]{out.extend(x.to_le_bytes())}}std::io::stdout().write_all(&out)?;Ok(())}

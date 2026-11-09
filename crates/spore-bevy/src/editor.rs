@@ -207,6 +207,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         );
         return Ok(());
     }
+    let selected = root_id(document.creation());
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
@@ -223,7 +224,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         })
         .insert_resource(Editor {
             document,
-            selected: 1,
+            selected,
             axis: 0,
             mirror: true,
             yaw: 0.6,
@@ -408,8 +409,14 @@ fn setup(
         });
     commands.spawn((Node{position_type:PositionType::Absolute,left:px(22),right:px(22),bottom:px(16),padding:UiRect::all(px(14)),flex_direction:FlexDirection::Column,row_gap:px(8),border_radius:BorderRadius::all(px(10)),..default()},BackgroundColor(Color::srgba(0.025,0.065,0.08,0.96)))).with_children(|p|{
         p.spawn((Text::new(""),TextFont{font_size:14.,..default()},TextColor(Color::srgb(0.96,0.85,0.57)),Notice));
-        p.spawn((Text::new("Tab select   X/Y/Z axis   +/- move   Shift +/- rotate   Ctrl +/- scale   Delete remove\nArrows orbit   Ctrl Z/Y undo/redo   F2 rename part   Ctrl F2 name creation   F5/F9 save/load\nOriginal part catalog. Authored creations use the RustSpore .rsc format."),TextFont{font_size:12.,..default()},TextColor(Color::srgb(0.57,0.74,0.75))));
+        p.spawn((Text::new("Tab select   X/Y/Z axis   +/- move   Shift +/- rotate   Ctrl +/- scale   Delete remove\nArrows orbit   Ctrl Z/Y undo/redo   F2 rename part   Ctrl F2 name creation   F5/F9 save/load\nPrototype part catalog. Authored creations use the RustSpore .rsc format."),TextFont{font_size:12.,..default()},TextColor(Color::srgb(0.57,0.74,0.75))));
     });
+}
+
+fn root_id(creation: &Creation) -> u32 {
+    creation.parts.iter().find(|part| part.parent.is_none())
+        .expect("validated creation has a root")
+        .id
 }
 
 fn apply(editor: &mut Editor, command: EditorCommand) {
@@ -504,7 +511,7 @@ fn action(editor: &mut Editor, action: Action) {
                 Err(e) => editor.notice = e.to_string(),
             };
             if editor.document.creation().part(editor.selected).is_none() {
-                editor.selected = 1;
+                editor.selected = root_id(editor.document.creation());
             }
         }
         Action::SelectNext => {
@@ -549,7 +556,7 @@ fn action(editor: &mut Editor, action: Action) {
             match result {
                 Ok(document) if document.creation().kind == editor.document.creation().kind => {
                     editor.document = document;
-                    editor.selected = 1;
+                    editor.selected = root_id(editor.document.creation());
                     editor.dirty = true;
                     editor.notice = "Creation loaded".into();
                 }
@@ -709,7 +716,7 @@ fn controls(
         let id = editor.selected;
         apply(&mut editor, EditorCommand::RemoveSubtree(id));
         if editor.document.creation().part(id).is_none() {
-            editor.selected = 1;
+            editor.selected = root_id(editor.document.creation());
         }
     }
     let direction = (keys.just_pressed(KeyCode::Equal) || keys.just_pressed(KeyCode::NumpadAdd))
@@ -1052,6 +1059,39 @@ fn launch_game(mut editor: ResMut<Editor>, mut exit: MessageWriter<AppExit>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn loaded_nondefault_root_remains_selected_after_history_changes() {
+        let mut creation = initial_document(CreationKind::Creature)
+            .unwrap().creation().clone();
+        creation.parts[0].id = 42;
+        for part in &mut creation.parts {
+            if part.parent == Some(1) {
+                part.parent = Some(42);
+            }
+        }
+        creation.validate().unwrap();
+        let document = EditorDocument::from_snapshot(EditorSnapshot {
+            creation,
+            ..initial_document(CreationKind::Creature).unwrap().snapshot()
+        }).unwrap();
+        let path = std::env::temp_dir().join(format!("rustspore-editor-root-{}-{}.rsc", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        std::fs::write(&path, document.snapshot().to_bytes().unwrap()).unwrap();
+        let mut editor = Editor {
+            document: initial_document(CreationKind::Creature).unwrap(), selected: 1,
+            axis: 0, mirror: false, yaw: 0., notice: String::new(), save: path.clone(),
+            shot: None, elapsed: 0., frames: 0, captured: None, demo: None,
+            demo_step: 0, rename: None, dirty: true, pending_game: None,
+        };
+        action(&mut editor, Action::Load);
+        assert_eq!(editor.selected, 42);
+        action(&mut editor, Action::Add(P::Armor));
+        assert_ne!(editor.selected, 42);
+        action(&mut editor, Action::Undo);
+        assert_eq!(editor.selected, 42);
+        action(&mut editor, Action::Redo);
+        assert!(editor.document.creation().part(editor.selected).is_some());
+        std::fs::remove_file(path).unwrap();
+    }
     #[test]
     fn real_button_system_edits_undoes_saves_loads_and_prepares_playable_creation() {
         let nonce = std::time::SystemTime::now()

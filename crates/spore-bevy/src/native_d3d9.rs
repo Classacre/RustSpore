@@ -72,6 +72,11 @@ impl OffscreenDevice {
         Ok(rgba)
     }
     pub unsafe fn new(width: u32, height: u32) -> Result<Self, Failure> {
+        Self::new_with_amd(width, height, false)
+    }
+    /// AMD is opt-in for the controlled player inspection only. No software
+    /// or alternate-adapter fallback is attempted.
+    pub unsafe fn new_with_amd(width: u32, height: u32, amd: bool) -> Result<Self, Failure> {
         if width == 0 || height == 0 || width > 4096 || height > 4096 {
             return Err("unsupported offscreen target extent".into());
         }
@@ -91,6 +96,7 @@ impl OffscreenDevice {
         )?);
         let d3d = Direct3DCreate9(D3D_SDK_VERSION).ok_or("Direct3DCreate9 unavailable")?;
         let mut chosen = None;
+        let mut matches = 0u32;
         for adapter in 0..d3d.GetAdapterCount() {
             let mut id = D3DADAPTER_IDENTIFIER9::default();
             d3d.GetAdapterIdentifier(adapter, 0, &mut id)?;
@@ -99,11 +105,20 @@ impl OffscreenDevice {
                 "SOURCE_3D_ADAPTER index={adapter} vendor={:04X} description={description:?}",
                 id.VendorId
             );
-            if id.VendorId == 0x10de && description.contains("RTX 3060") {
-                chosen = Some(adapter);
+            let is_match = if amd {
+                id.VendorId == 0x1002 && description.to_ascii_lowercase().contains("radeon")
+            } else {
+                id.VendorId == 0x10de && description.contains("RTX 3060")
+            };
+            if is_match {
+                matches += 1;
+                chosen = Some((adapter, id.VendorId, description.into_owned()));
             }
         }
-        let adapter = chosen.ok_or("RTX 3060 unavailable to D3D9; hardware check cannot run")?;
+        if amd && matches > 1 { return Err("multiple AMD Radeon D3D9 adapters; selection is ambiguous".into()); }
+        let (adapter, vendor, description) = chosen.ok_or(if amd {
+            "AMD Radeon unavailable to D3D9; controlled inspection cannot run"
+        } else { "RTX 3060 unavailable to D3D9; hardware check cannot run" })?;
         let mut present = D3DPRESENT_PARAMETERS {
             BackBufferWidth: 1,
             BackBufferHeight: 1,
@@ -127,6 +142,7 @@ impl OffscreenDevice {
             &mut device,
         )?;
         let device = device.ok_or("D3D9 did not return a device")?;
+        println!("SOURCE_3D_SELECTED_ADAPTER index={adapter} vendor={vendor:04X} description={description:?} device=HAL vertex_processing=hardware rtx_validation_transferred=false");
         let mut color = None;
         device.CreateRenderTarget(
             width,

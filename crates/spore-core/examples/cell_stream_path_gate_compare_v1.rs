@@ -1,0 +1,4 @@
+//! Compare the bounded path gate with eight retained original rows.
+use spore_core::cell_stream_path_gate_v1::project;
+fn w(b:&[u8],o:usize)->u32{u32::from_le_bytes(b[o..o+4].try_into().unwrap())}
+fn main(){let b=std::fs::read(std::env::args().nth(1).expect("native stdout")).unwrap();assert_eq!(b.len(),288);for i in 0..8{let k=i%4;let path:&[u16]=match k{0=>&[0],1=>&[0x41,0x3a9,0],2=>&[0x58,0,0x59,0],_=>&[]};let x=project(if k==3{7}else{0},0x11111111,0x22222222,path,true).unwrap();let r=&b[i*36..(i+1)*36];assert_eq!((w(r,0),w(r,4),w(r,8),w(r,12),w(r,16)),(u32::from(x.returned),u32::from(x.assign_units.is_some()),x.assign_units.map_or(u32::MAX,|n|n as u32),x.field_264,x.field_268));let fp=w(r,20);assert_eq!(fp&0xffff,if i>=4{0x37f}else{0x27f});assert_eq!((fp>>16)&0x3840,0);assert_eq!(w(r,24)&!0x3f,0x1f80);assert_eq!((w(r,28),w(r,32)),(0xc0dec0de,0xa5a5a5a5));}println!("matched eight scripted original path-setter rows; no file access or live owner");}

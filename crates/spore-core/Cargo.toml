@@ -8,3 +8,6 @@ repository.workspace = true
 description = "Engine-agnostic core types for RustSpore. No Bevy dependency."
 
 [dependencies]
+
+[dev-dependencies]
+sha2 = "0.10"

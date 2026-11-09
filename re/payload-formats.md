@@ -19,17 +19,17 @@ mostly still open. It is deliberately blunt about that.
 | `0xEE17C6AD` | anim | **Typed key parsing: 5,022 of 5,022 resources across 82 packages.** 48,700 channels and 878,791 rows independently digest-checked; generic safe sampling implemented, native rig binding/curves open. See below. |
 | `0x5CAA5E28` | blockdata | **Partial source layout recovered.** 36-byte header, dimensions and three-byte samples; 296,176 samples across 3,098 selected records agree with an independent decoder. Interpolation, caller semantics and terrain role remain open. See `re/blockdata-native-sample-static-v1.md`. |
 | `0xDFAD9F51` | Cell definition | **partially interpreted.** Fixed 796 bytes; structure reference and developer label identified. Earlier string-table/null-padding identification was incorrect. |
-| `0x02B9F662` | audio event | **decoded. 100% (16,841 of 16,841 across `PatchData` and `Spore_Audio2`).** Variable-length entries, prop-style array markers, length-prefixed string arrays, FNV-1 hashed keys. See below. |
+| `0x02B9F662` | audio event | **Framing walk reaches the end of 16,841 of 16,841** across `PatchData` and `Spore_Audio2`. Variable-length entries, prop-style array markers, length-prefixed string arrays and FNV-1 hashed keys are described below; exact consumption does not prove all value semantics. |
 | `0x00E6BCE5` | gmdl model | **Typed geometry/tails independently checked on 11,041/11,041 across 82 indexes.** Versions 8/9; material payloads, part palettes and 46,576 external bone records preserved. Body hierarchy and ambiguous influence mappings remain open. See `re/gmdl-skin.md`. |
-| `0x03F51892` | audio event (variant) | **decoded. 100% (90 of 90).** Same FNV-1 hash scheme and entry rules as 0x02B9F662; covered by the same parser. |
-| `0x02D5C9AF` | hash-pair table | **decoded. 100% (1,631 of 1,631).** version 4, then two `(count, count×12-byte records)` sections. See below. |
+| `0x03F51892` | audio event (variant) | **Framing walk reaches the end of 90 of 90.** Same FNV-1 hash scheme and entry rules as 0x02B9F662; covered by the same parser, without full semantic validation. |
+| `0x02D5C9AF` | hash-pair table | **decoded. 100% (1,631 of 1,631).** version 4, then two `(count, countÃ—12-byte records)` sections. See below. |
 | `0x030BDEE3` | content manifest | **decoded. 100% (1,641 of 1,641).** version 10, ASCII tag, UTF-16 string list, hash lists. See below. |
 | `0x0F43029A` | creaturedata | **decoded. 100% (1,022 of 1,022).** magic `0xABB455B7`, version 9/10, RLE chunk buffer, capability/morph tables. See below. |
 | `0x250FE9A2` | spui | **typed framing exact on 748/748 across 82 indexes.** 93,726 elements, 1,183,787 recursive properties; independent Python/Rust digest agreement. Native runtime semantics remain open. See `re/spui-layout.md`. |
 | `0x0469A3F7` | shader/material libraries | **Typed framing independently checked on all 12 header-1 fragment libraries and all 12 header-7 shader packs.** Header-0 material links also account for all companion RW4 states. Native material selection, fragment predicates and shader execution remain open. See `re/shader-resources.md`. |
 | `0x4B9EF6DC` | Cell structure | **Measured fixed header and 40-byte entries.** Baked-creation references resolve original Cell meshes/skins; effect/simple-model kinds retain raw words. See `re/cell-source-assets.md`. |
 | `0x1A99B06B` | bem | **decoded. 100% (1,733 of 1,733).** magic `0x48657ED3`, version 5, two `0xFE` RLE chunk buffers (128 and `unk1*472` bytes). See below. |
-| `0x01A527DB` | snr (audio) | **container 100% (2,898 of 2,898).** 4-byte tag (version, flags, BE u16 rate), BE byte rate, BE declared length, then a non-self-delimiting codec payload. Codec decode out of scope. See below. |
+| `0x01A527DB` | snr (audio) | EA AudioCore bitfields; bounded XAS1 RAM decoding. The earlier 2,898-resource framing interpretation was incorrect. See correction below. |
 
 ## prop, type 0x00B1B104
 
@@ -83,7 +83,7 @@ element **stride in bytes**. Reading the second as the count is wrong. Advancing
 
 `[MEASURED]` Count, identifier, type, specifier, array header and string lengths are
 big-endian. UTF-16 string **characters are little-endian**. `00 00 00 07` followed by
-`44 00 65 00 74 00 ...` is `"Details"`. Reading characters as big-endian yields `一愀洀攀`
+`44 00 65 00 74 00 ...` is `"Details"`. Reading characters as big-endian yields `ä¸€æ„€æ´€æ”€`
 for `"Name"`, which is how this was caught.
 
 `[CORRECTION]` INT32 (`0x0009`), UINT32 (`0x000A`), and FLOAT (`0x000D`) use
@@ -456,11 +456,17 @@ produce correct colours.
 resources extracted from `Spore_Content.package` with zero errors; output PNGs are valid
 512x512 RGBA images.
 
-`[VALIDATED]` The Rust decoder in `crates/spore-core/src/raster.rs` matches the Python one
-byte for byte on all 2,954 RASTER resources in `Spore_Content`, and on all 8,915 textures
-embedded in RW4 containers in `Spore_Graphics` (`--raster-digest` and `--rw4-textures`
-against `tools/raster_digest.py` and `tools/rw4_texture_digest.py`). It covers five
-sub-formats: DXT1, DXT3, DXT5, `A8R8G8B8` and `L8`.
+`[MEASURED]` After the DXT5 four-color correction, the Rust decoder and Python
+references produced matching per-resource FNV-1a RGBA digests on all 2,954 RASTER
+resources in `Spore_Content` and 8,915 RW4 textures in `Spore_Graphics`
+(`--raster-digest` and `--rw4-textures` against `tools/raster_digest.py` and
+`tools/rw4_texture_digest.py`). Receipt
+`target/texture-digest-comparison-20261109-v1.json`, SHA-256
+`99ac98cf0168e7aee3602be1f142bd05f6fc9367fcfaf7b42662423a222a9c6b`.
+The comparison admits unchanged package reads; it is digest agreement, not a
+byte-stream or live-runtime proof. Focused regressions and an independent D3D9
+sampling comparison are in `cell-skybox-converter-raster-boundary-v1.md`. These
+decoders cover DXT1, DXT3, DXT5, `A8R8G8B8` and `L8`.
 
 `[MEASURED]` DXT3 appears only inside RW4 containers (5 resources), never as a RASTER
 resource. It carries 4-bit explicit alpha and a colour block that is **always** decoded in
@@ -762,18 +768,30 @@ Remaining behaviour fields are `[UNKNOWN]` pending independent/native validation
 ## audio event, type `0x02B9F662`
 
 `[MEASURED]` 16,841 resources across `PatchData.package` and `Spore_Audio2.package`.
-No magic string. The format uses **FNV-1 32-bit hashes** as string keys and is now
-**decoded to 100%**: every one of the 16,841 resources parses to exactly the last
-byte, with zero overruns. The Python reference validator is `tools/audio_event_v4.py`;
+No magic string. The format uses **FNV-1 32-bit hashes** as string keys. The
+framing walk reaches exactly the last byte of all 16,841 resources, with zero
+overruns; that does not validate every field's meaning or runtime behavior. The Python reference validator is `tools/audio_event_v4.py`;
 the Rust port is `crates/spore-core/src/audio_event.rs`.
 
 ### Layout
 
-`[MEASURED]` All multi-byte fields are big-endian (header, hash, type, flags, array
-count/stride, and string lengths). String *characters* are little-endian (UTF-16LE
-for type `0x13`), matching the prop convention. Value bytes (int/float) are decoded
-little-endian, matching prop; this is `[INFERRED]` pending a dedicated measurement
-of a known scalar value.
+`[MEASURED]` The inspection walk reads framing fields as big-endian (header,
+hash, type, flags, array count/stride, and string lengths); its UTF-16 character
+inspection uses little-endian units. Static analysis of the **dedicated** audio
+reader establishes that types `0009`, `000A` and `000D`, on scalar and typed-array
+paths, dispatch through `571DD0` to mode-zero `93A3F0`, which requires a complete
+four-byte stream read before `BSWAP`. The Rust inspection parser therefore decodes
+those scalar words and arrays with stride exactly four as big-endian. This is
+conditional on the selected factory/reader/provider and complete stream behavior;
+no runtime event or playback is established. See [the loader trace](cell-audio-event-loader-interface-static-v1.md).
+
+For numeric typed arrays with another stride, the Rust walker retains the entire
+framed payload as raw bytes. Boolean arrays with stride other than one are also
+retained raw, including a zero-stride array. The walk still uses checked
+`count * stride` to locate the next entry; that is an inspection-framing rule,
+not a claim that a native typed stream consumes that many bytes for an unusual
+stride. Type `0020` sample records use a distinct raw-element path and are not
+converted to numeric words by this change. Exact framing is not semantic validation.
 
 ```
 offset  0: BE u32 entry_count  (ADVISORY; the walk proceeds to the buffer end)
@@ -832,7 +850,7 @@ is exactly `01 00 00 00`. They are skipped as 4-byte no-ops during the walk.
 | `0x5F6317D5` | `parent` | Parent reference (appears in most entries) |
 | `0x25DF0108` | `gain` | Audio gain/volume |
 | `0x12D2A4D4` | `is3d` | 3D positional audio flag |
-| `0x701ED91E` | `samples` | Audio sample references |
+| `0x701ED91E` | `samples` | Sample entries; native in-memory consumer identified conditionally below |
 | `0xBA03D0CD` | `codec` | Audio codec identifier |
 
 ### Validation
@@ -842,13 +860,27 @@ is exactly `01 00 00 00`. They are skipped as 4-byte no-ops during the walk.
 `Spore_Audio2.package`. The walk is deterministic (no backtracking, no
 named/anonymous ambiguity), so the authoritative signal is simply "did the scan
 reach the buffer end". The Rust port `crates/spore-core/src/audio_event.rs` mirrors
-the same rules and passes 9 unit tests covering bool, int, string, fixed-stride
-array, length-prefixed string array, separator, and the second array marker
-`0x001C`.
+the framing rules. Focused Rust tests cover bools, big-endian numeric scalars
+and arrays, signed zero, unsupported strides, checked extent arithmetic,
+strings, separators, and both array markers; these tests do not validate runtime
+provider selection.
+
+A later source-numeric comparison independently walked all 16,841 selected
+events with Python and the canonical Rust index/parser. The two implementations
+agree on the exact framing and numeric bit stream: 15,854 scalar fields and
+9,306 elements in 1,544 stride-four arrays; no unsupported numeric strides were
+observed in these packages. The receipt is
+`target/audio-numeric-compare-20261105-v1.json`. The dedicated native reader
+supports big-endian decoding conditionally, but matching inspection results do
+not establish live loader/provider selection or complete source stream reads.
+Endpoint hashes are not continuous file stability or full build provenance.
 
 `[MEASURED]` This is an audio event/sound configuration table. The property names
-(parent, gain, is3d, samples, codec) are all audio-related, defining sound events
-with their properties and sample references. Type `0x03F51892` is a related variant
+(parent, gain, is3d, samples, codec) are all audio-related. A generic native path
+constructs SNR keys from the first word of in-memory sample entries, but the
+connection from raw package values through loading and event selection remains open;
+see [the bounded consumer trace](cell-audio-samples-consumer-static-v1.md).
+Type `0x03F51892` is a related variant
 using the same FNV-1 hash scheme and the same entry rules; it was validated
 separately by `tools/audio_event_variant.py` and reaches **100% (90 of 90)** under
 the identical exact-consumption walk. The Rust `audio_event::parse` is type-agnostic
@@ -1183,6 +1215,307 @@ is a constant record-type marker.
   exactly, and every sample has exactly **2 sections**.
 - `[INFERRED]` Reference/dependency table linking resource hashes.
 
+**Correction, 2026-11-04:** The SNR interpretation below is historical and its
+header and codec claims are superseded. The first two big-endian words are EA
+AudioCore bitfields, not a version/flags tag followed by a byte rate. In
+[vgmstream r2168's EA AudioCore parser](https://github.com/vgmstream/vgmstream/blob/r2168/src/meta/ea_eaac.c),
+word one encodes version, codec, channel configuration and sample rate; word two
+encodes stream type, looping and sample count. The word at +8 can be a block
+header, so the earlier decoded-PCM length interpretation is also incorrect.
+
+For one installed `Spore_Audio2.package` record, scoped instance
+`0x021407EEB000B7DE` (native group `0x021407EE`, instance `0xB000B7DE`), type `0x01A527DB`, the decompressed 8,376-byte payload
+SHA-256 is `7c976ebafbaf87da51e058d31173cfbfd9052f0c008aeaf62726f23523130830`.
+Its first 16 bytes are `0400ac44000036db000020b0000036db`; vgmstream r2168
+identifies a non-looping RAM EA-XAS1 stream, mono 44,100 Hz, 14,043 samples,
+with a single 8,368-byte SNS block. The sample was decoded by that tool to PCM.
+This single-resource observation does not establish codec or framing support
+across the corpus, nor game event routing or native-game audio parity.
+
+The bounded Rust `snr_xas::decode` accepts version 0, codec 4, mono or
+stereo RAM resources with supported predictors and consistent sample and
+frame extents; supported loop framing is described below. It rejects unsupported
+variants. On the selected resource, its 14,043 PCM16 samples matched vgmstream
+r2168's WAV data byte for byte (SHA-256
+`650ee6371dc3630ac7fc81404ef481203ea70cdba6fa727df7045d212cd9a879`).
+The Rust implementation derives its algorithm from vgmstream and is therefore
+not an independent algorithm validation. Three focused tests cover a silent
+partial frame, rejection, and stereo predictor/clipping. The extracted sample,
+PCM and WAV were kept locally under ignored scratch locations, not redistributed.
+The `snr_xas_verify` example accepts an extracted SNR and writes new raw
+little-endian PCM; it does not select sounds for gameplay or play audio.
+
+A prior non-looping baseline survey of all 2,873 SNR entries in `Spore_Audio2.package`,
+using the legacy 28-byte index and RefPack readers, classified 2,067 as
+admissible under the then-non-looping rules, 53 codec-4 entries as streamed or looping,
+and 753 as other codecs (467 codec 1, 269 codec 5, 10 codec 2, 7 codec 0).
+There were no extraction failures in that package; other packages and override
+resolution were not included. Package bytes were not hash-checked before and
+after the scan. This is a framing survey, not a playback survey of all entries.
+
+The shortest and longest admitted record for each observed channel/rate pair
+(1 channel/44,100 Hz, 2/22,050 and 2/44,100) were compared against vgmstream
+r2168 using `-i`: all six produced byte-identical PCM, from 1,379 to 3,197,250
+samples per channel. The chosen cases collectively exercised predictors 0-3.
+Source record instances were `021407EEC14587AE`, `021407EEE5F297EB`,
+`021407EE38E7838D`, `021407EE2B17BAD4`, `021407EE2D1C0ACE`, and
+`021407EECD207A21`; these are scope/instance pairs. The retained local script and
+outputs are under ignored `target/snr-xas-survey-v1*`. This comparison checks
+the port against its algorithm source; it does not establish independent codec
+or game-runtime fidelity.
+
+A subsequent complete differential run decoded all 2,067 admitted records
+against vgmstream r2168 (`-i`) with identical PCM bytes for all 1,254,303,562
+interleaved samples. The ignored per-record evidence is
+`target/snr-xas-corpus-v1/results.jsonl` (SHA-256
+`45176ce4f9012a2925ec40f91ade2031b458bb25f98aa9c0036a6f893f4e194c`).
+The actual run used retained `target/snr-xas-corpus-v1.py` (SHA-256
+`8b3efd5a63f26bcd0161e37b7395e24e2c9296ee9947e52b159f4e411f3661df`),
+vgmstream r2168 Windows CLI (SHA-256
+`10fb0691538d3133f0115a071f89775fc99f32210b7e5991cfc3c2869247e4b2`),
+and Rust verifier (SHA-256
+`77ff191cea28e2708f369d0f0ae07a20b89111e60bc6c217ae5a094145eda456`).
+The package SHA-256 `bc17f2f6c18ad4277bb9c605a8359c9be14300abf3e626077bb21ec6b5c13dfb`
+matched during and after the run, but was not captured before it; stable-file
+admission remains unproven. Temporary decoded files were removed each iteration.
+
+For a fresh run, the separately parameterized
+`tools/snr_xas_corpus_compare_v1.py` covers the non-looping baseline and accepts
+an explicit package, external
+vgmstream CLI, built Rust verifier, and a new output directory inside `target`.
+It records pre/post package hashes, executable hashes and per-record results.
+A separate three-record smoke run passed with matching pre/post package hashes;
+its evidence is `target/snr-xas-harness-smoke-v1/`. This harness did not run
+the full recorded comparison above. An optional final integer limits admitted
+records for a smoke run; omit it for the complete survey.
+Build the verifier with `tools\build.bat build -p spore-core --example snr_xas_verify`;
+then invoke `python tools/snr_xas_corpus_compare_v1.py <package> <vgmstream-cli>
+<target/debug/examples/snr_xas_verify.exe> <new-target-directory>`. The external
+CLI must be obtained separately. This is a differential check of a derived port,
+not original-game execution or an independent codec implementation.
+
+A later bounded extension accepts looped RAM XAS1 when a positive loop start is
+strictly before the end and exactly two complete blocks contain the samples
+before and after that point. It reports the loop start; WAV export writes one
+pass without WAV loop metadata. For the installed scoped key
+`021407EECCC630EE`, payload SHA-256
+`75edf612acbf0a190b8f8c22eee4dbbf55aa38a801f62d1cdb1e5b72d4765873`,
+vgmstream r2168 reports stereo 44,100 Hz, loop start 258,300 and total 610,872
+samples per channel. Rust output matches vgmstream `-i` PCM byte-for-byte
+(2,443,488 bytes, SHA-256
+`a8fcfa52bfaf87a61dd901b3a77257b6e281a65dcb2ae58058d915804fac60b8`).
+Four focused tests pass, including a synthetic two-block loop and framing
+rejection. This is one looped source record, not a loop corpus or runtime check.
+The earlier 2,067-record comparison remains the non-looping subset only.
+
+A zero-start loop uses one block and is represented as `Some(0)`. The source
+scoped key `021407EE76A004A5` has 967,121 stereo samples and loop start 0;
+its source SHA-256 is
+`0e9f6de983d9e518821cdba42cb901fc58bb020876acaa1741b6aad673402a37`.
+A second read-only pass examined the 53 records excluded as looped/streamed
+in the non-looping baseline. All 45 looped RAM records (40 zero-start,
+5 positive-start) matched vgmstream r2168 PCM and reported identical loop
+starts; 8 gigasample/streamed records remained rejected. That comparison
+covered 96,665,532 interleaved samples, separately from the earlier 2,067
+non-looping records. The per-record log is
+`target/snr-loop-survey-v2/results.jsonl`, SHA-256
+`88c576a98994db577610a6ea153570a8232c6ef0202907dbed7a5599616386d2`.
+The package SHA-256 before and after this pass was
+`bc17f2f6c18ad4277bb9c605a8359c9be14300abf3e626077bb21ec6b5c13dfb`;
+there were no recorded extraction errors. Five focused decoder tests passed.
+The two surveys do not resolve package overrides, and comparison to the derived
+algorithm's source does not establish original-game runtime fidelity.
+
+The explicit source exporter also accepts the bounded codec-2 PCM16BE RAM
+form: version 0, mono or stereo, no loop, one complete SNS data block and exact
+sample extent. In the same `Spore_Audio2.package` survey, all ten codec-2
+records were non-looping stereo at 44,100 Hz; all ten Rust outputs matched
+vgmstream r2168 and a separate direct big-endian to little-endian conversion,
+for 1,158,648 interleaved PCM samples. The per-record evidence is
+`target/snr-pcm16-survey-v1/results.json`, SHA-256
+`811ae63488e2e1744c979e3ad0defb0325ded9dc1e01edb74152e2584532ba76`.
+The scan did not hash the package before and after extraction. A focused
+synthetic test checks signed stereo samples and malformed extent rejection;
+source export and a prior XAS1 dispatch were also checked. Looping PCM,
+streamed forms and game event routing remain unsupported.
+
+Codec 5 was identified by vgmstream as EALayer3 v1; its implementation uses
+custom MPEG framing and discard handling. The Rust exporter does not yet decode
+that codec. Codec 1 remains unidentified by this investigation.
+
+An experimental EAL31b parser/reconstructor now accepts only version-0,
+non-looping single-block RAM SNRs with paired MPEG1 granules and matching
+channel/rate/mode headers; it caps reconstructed output at 32 MiB, rejects an
+initial PCM insertion and returns later insertion offsets and sizes. It does not
+apply those insertions or decoder delay and does not produce completed audio.
+It derives framing and reconstruction from the ISC-licensed vgmstream r2168
+`mpeg_custom_utils_ealayer3.c` and related EAAC/SNS parser code; see
+`re/vgmstream-license.txt`.
+
+For scoped source key `021407EECD3FD77F` in `Spore_Audio2.package`, payload
+SHA-256 `afa6f9bc2f27691d0bb70fc46e6aa17ac623af33ec9b43651dcc9d86e79cc59b`,
+the Rust reader reconstructs 922 granules, with one 47-sample/channel PCM
+insertion at granule 1. Its MPEG-only output is retained at
+`target/eal31b-reconstructed-v1.mp3`, SHA-256
+`5765d7b2a4659127e0bf335d5c95c9f930b2301b24ad158c39bea3832ffdab61`.
+An independently written Python framing walk (using the same vgmstream-derived
+rules) also reaches the resource end with 922 granules. The Rust reconstruction
+is not independently validated byte-for-byte against vgmstream.
+
+Local FFmpeg rejected these free-bitrate MPEG frames (header missing), so it did
+not establish an independent MPEG decode. The 47-frame planar PCM insertion,
+converted directly from the source bytes, matched all 94 PCM16 values at the
+start of the vgmstream source WAV exactly. The mpg123 DLL bundled with vgmstream
+r2168 decoded them to 531,072 stereo frames at 44,100 Hz. Comparing this raw
+PCM to vgmstream r2168's `-i` source WAV after excluding its first 47 inserted
+frames and aligning raw audio by 1,105 frames produced 528,683 comparable
+frames: maximum PCM16 absolute difference 2, mean 0.619664, and 99.854450%
+within 1. Source WAV PCM SHA-256 is
+`bfdeef921d7ad993a6b0b5cf860aa81a386f3b81ca1706efd69d5e84408b53c9`;
+raw reconstructed MPEG PCM SHA-256 is
+`1249a7ac4a98ebb275042d0f68885175adb1ae397470792b52cbf98c35da5fb6`.
+Both paths use mpg123, and the offset is an observed comparison alignment;
+this is waveform evidence, not independent codec or game-runtime validation.
+Retained ignored inputs, outputs and the temporary mpg123 probe are under
+`target/eal31b-*`; the probe SHA-256 is
+`3989903fda557de055640d573481ac04534baa9387d887ad85a45f51e4ff453f`.
+The comparison can be repeated with
+`python tools/eal31b_pcm_compare_v1.py target/eal31b-vgm-source-v1.wav
+ target/eal31b-mpg123-raw-v1.pcm 2 47 1105`.
+
+The bounded `eal31b::reconstruct_with_insertions` now additionally converts
+the literal planar big-endian insertion samples to interleaved signed PCM16,
+using the same immutable input as reconstruction. It does not place those
+samples in decoded MPEG audio or establish decoder delay. For the explicitly
+selected SNR above, `eal31b_insertion_verify_v1` compared all 94 literal
+samples against the first 47 stereo frames of the retained vgmstream WAV and
+matched exactly. The extracted SNR under ignored `target/` hashes to the source
+payload SHA-256 above; the retained WAV file SHA-256 is
+`0b105c680ef2a30bf5252ce513b7ff48e9e24482c6d3b882e0cf447d1c187a73`.
+This is a single source-data sample check against a retained output, not an
+independent MPEG decoder, authenticated live playback, or a general proof of
+insertion placement. Package index and payload reads assume the file stays
+stable; hashes do not exclude transient replacement.
+The verifier now rejects empty comparisons and validates the RIFF extent,
+chunk/padding bounds, duplicate format/data chunks, PCM16 byte rate, block
+alignment and complete frames. A synthetic malformed-framing test passed; the
+selected-source comparison was repeated after these checks. The retained final
+log `target/eal31b-insertion-verify-v3.log` hashes to
+`3bf46dc549bf523368a3698e35cf025b666530655f2b43c62641bdf474504fbf`.
+
+`eal31b::assemble_first_insertion` now offers a **controlled** one-pass assembly
+for exactly one nonempty insertion at granule 1, offset zero and unknown word
+zero. It accepts already-decoded interleaved PCM and an explicit raw frame
+offset; it does not load a decoder, establish that PCM belongs to the SNR,
+derive alignment, support later/multiple insertions or model looping. The
+caller admits those facts. [vgmstream r2168's implementation](https://github.com/vgmstream/vgmstream/blob/r2168/src/coding/mpeg_custom_utils_ealayer3.c)
+accounts for an initial 529+576 decoded-frame delay and an additional discard
+for inserted samples, while also marking general insertion offset placement as
+unfinished. For the two explicit local fixtures, the tested raw start was
+`1105+47=1152`, not 1105. This is a bounded comparison, not proof of a general
+decoder or runtime fidelity.
+
+The first source produced 528,730 stereo frames; with explicit comparison
+thresholds of maximum absolute difference 2 and at most 5,000 samples outside
+one unit, its 1,057,460 samples had max difference 2 and 1,055,921 within one.
+A second source key `021407EEEA970A74`, payload SHA-256
+`b2c3f7b66c1e6ad88b70600ee057cb097059bd96708bf4adf383f50039468287`,
+produced 884,858 stereo frames; 1,766,064 of 1,769,716 samples were within one,
+with max difference 2. The limits were chosen after earlier exploratory output,
+not preregistered. Both references and raw PCM use mpg123, so these are not
+independent decoder comparisons. The example requires callers to provide both
+thresholds and returns failure when exceeded; an exact-zero threshold was
+checked to fail. The final logs are `target/eal31b-assembly-verify-first-v2.log`
+SHA-256 `6065c9bdd880cf0ddd13e11fef6067b95be034df9fdfd52ee684eac57b74c47f`
+and `target/eal31b-assembly-verify-second-v2.log` SHA-256
+`939ad80d7a6641ae7cf1a746bdb1f3dbebc2b3cfec7fa0b0ea95c32fd05b8935`.
+Source/decoder/WAV binding and stable files are caller admissions; post-run
+hashes alone do not establish them. No decoded proprietary audio is committed.
+
+The Windows-only `source_eal31b_mpg123_wav` example can now make a controlled
+preview from an explicitly selected package/key and expected source-payload
+SHA-256, caller-supplied absolute trusted `libmpg123` DLL and expected DLL
+SHA-256, and caller-supplied raw frame alignment. It accepts only the narrow
+single granule-1 insertion layout above, constrains the decoder to the expected
+rate, channels and signed PCM16, caps decoded output, and writes a new WAV under
+`target/` without overwriting an existing file. It is an opt-in example, not an
+automatic Cell sound or source-event mapping. The DLL is executable code: the
+caller must trust it and its dependencies. Hashes before/after cannot prevent
+transient replacement; package index/payload file stability remains an
+admission. The example does not validate actual game selection, playback device
+behavior or general EALayer3 placement.
+
+The local test used the x86-64 DLL from the existing vgmstream r2168 directory,
+SHA-256 `018e6833088b3fc7d9a97c3f45abb5f9f947f7c46de4f17fddf423f430fa70fa`.
+This DLL is not included in the repository. The [mpg123 project](https://www.mpg123.org/)
+identifies its library as LGPL 2.1; any future distribution requires separate
+license and dependency review. The adjacent vgmstream ISC notice does not
+establish the license of that separate library. The Windows dependency loader
+is restricted to the chosen DLL directory and system directory, but dependent
+DLL identities are not pinned.
+
+Two previews under ignored `target/` reproduced the 528,730 and 884,858 stereo
+frame comparisons above, using explicit raw start 1152 and matching the same
+max-difference 2 / at-most-5,000-over-one thresholds. Preview WAV SHA-256s are
+`3506f8cf3d0295a43f6a5fd38bc11cc529e933d4bfcbef3ccb85bca7cdd45bad`
+and `c14f9399de3bc426e9ee5e63b519093a76d7d8f05cb72f93d03ee5c4f16b84a7`.
+An existing output path and a deliberately incorrect DLL hash both returned
+errors. These are two controlled local tests using the same mpg123 backend as
+the retained vgmstream references, not independent MPEG decoder validation.
+The final example opens a new output with an exclusive Windows handle and
+requests delete-on-close through that same handle if writing or syncing fails;
+if the cleanup request fails, it reports that a partial file may remain. A
+focused injected-write-failure test passed, including preservation of an
+existing file. Successful output is synced, hashed, re-read and checked, and
+the SHA-256 is printed. The final two preview outputs matched the hashes above.
+The decoder initialization and teardown are admitted as single-process use;
+this example is not a shared concurrent mpg123 runtime. An output-file hash
+still cannot rule out replacement after the check.
+
+Symphonia 0.6.1 is a potential pure-Rust MPEG backend (MPL-2.0, Rust 1.85),
+but its [header parser](https://github.com/pdeljanov/Symphonia/blob/v0.6.1/symphonia-bundle-mp3/src/header.rs)
+explicitly rejects free-bitrate MPEG. Using it would require further adaptation
+and license review; no backend dependency has been added.
+
+Repacking this example into ordinary 320-kbit/s MPEG1 frames is not a
+straightforward fixed-size substitution. The 461 reconstructed stereo frames
+need 36-1,098 bytes each including MPEG header, side information and main data;
+11 exceed even the 1,045-byte padded 320-kbit/s frame budget at 44,100 Hz.
+`python tools/eal31b_mpeg_budget_v1.py target/eal31b-reconstructed-v1.mp3`
+reproduces the measurement. A possible next step is a bounded bit-reservoir
+packer with correct `main_data_begin`, validated across insertion/discard and
+end boundaries using an independent MPEG decoder. Its feasibility is unproven;
+no dependency or such repacker has been added.
+
+The bounded XAS1 gigasample extension takes an explicitly supplied SNR and SNS
+pair and supports no loop or a zero-start loop, an exact prefetch block and
+bounded SNS block sequence. The terminal block may contain exactly 40 zero
+padding bytes, as observed in these two records. Each resource is limited to
+32 MiB, output PCM to 128 MiB, and block count to 100,000. The exporter accepts
+an optional explicit SNS package and looks up the same scoped key; it does not
+resolve override order or prove that the user-supplied pair belongs together.
+WAV output contains one pass and no loop metadata.
+
+Two explicit `Spore_Audio2.package` pairs were compared with vgmstream r2168
+`-i`: `021407EE4244D484` (mono, 10,499,327 frames, no loop) and
+`021407EEB98A80EC` (stereo, 5,474,888 frames, loop start 0) both matched PCM
+byte-for-byte. Their PCM SHA-256 values are respectively
+`ad868361ab0fbcf250d5b373b29bd722f4aaa56ca1d6bbc48d7d98eaf3de43cf` and
+`8cfe8d44486b28224ae6b5b7d5e863c9dba9072f74a4ef08d52ec32370b573ef`.
+The first SNR and SNS hashes are
+`72ba389da30b35dd3c6ded5b000560f3f59f70fb8d1be97a4e794677d33145a3` and
+`318283357e780367f7d8b26402b650a58b1b46f68fe56073f8c4aed4ad06de25`;
+the second are
+`7b09aeb99cf3b0408bf8ac81299cb379c7f39fbfb20f9e0f065319e9be536da9` and
+`ba14dacd2eb3dbfe0b6e7ade291c2c83decbcf4c7a35cbdf365a37fd7feda255`.
+Six XAS1 focused tests passed, including joining blocks and terminal padding
+rejection. No stable-file admission or package override resolution was performed
+for these two pairs; other streamed forms remain unsupported. The earlier
+eight-rejected count describes the previous RAM-only decoder baseline.
+
+The old survey below is retained for provenance; its "100%" describes a
+non-validating resource-boundary walk, not confirmed decoding or framing.
+
 **Type `0x01A527DB`** (.snr, audio; 2,898 resources, PatchData/Spore_Audio2):
 **container decoded, codec payload out of scope.**
 
@@ -1216,7 +1549,33 @@ is a constant record-type marker.
 - Lua scripts: type `0x024A0E52` (101), starts with `DeclareState CIS...`
 - PureData patches: type `0x617715D9` (289), starts with `#N canvas`
 - Plain text: types `0x497767B9` (123), `0x03055F61` (50), `0x0248F226` (4)
-- WAV audio: type `0x3F9C28B5` (1), RIFF magic
+- RIFF animated cursor: type `0x3F9C28B5`. The earlier label "WAV audio"
+  was wrong: RIFF alone does not imply WAVE. A 2026-11-04 scan of the seven
+  packages in `D:/Games/SPORE Collection/Data` using `tools/dbpf_extract.py`
+  parsed six and excluded `Spore_Audio1.package` (unsupported index layout).
+  Its one matching record in the six parsed packages is in
+  `Spore_Graphics.package`, compatibility-reader group `0x0001FFFF`, scoped
+  instance `0x02393C0708CA27E5` (native group `0x02393C07`, instance `0x08CA27E5`).
+  The 16,446-byte decompressed payload starts with `RIFF`, then `ACON` at offset
+  8 and `anih` at offset 12; its SHA-256 is
+  `98b70bc35e5976c2e77273cd8079a2762e75952fc76157cb199b625e1d261926`.
+  This is a bounded observation, not a census of the excluded package.
+  To reproduce the selected record without writing extracted assets, run from the
+  repository root (adjust the installation path as needed):
+
+  ```python
+  import hashlib, sys
+  from pathlib import Path
+  sys.path.insert(0, "tools")
+  from dbpf_extract import parse_index, payload
+  package = Path("D:/Games/SPORE Collection/Data/Spore_Graphics.package")
+  records, _ = parse_index(package)
+  record = next(e for e in records if e["type"] == 0x3F9C28B5
+                and e["group"] == 0x1FFFF
+                and e["instance"] == 0x02393C0708CA27E5)
+  data = payload(package, record)
+  print(len(data), data[:16].hex(), hashlib.sha256(data).hexdigest())
+  ```
 - OLE documents: type `0x1F639D98` (2), `D0CF11E0` magic
 - Nested DBPF: type `0x06EFC6AA` (23), `DBPF` magic
 

@@ -45,6 +45,30 @@ impl CellBool {
     }
 }
 
+/// Explicitly admitted `04DC2F94` locale result for the `E620D0` definition
+/// branch. The caller supplies the selected table and its runtime identity;
+/// neither follows from the definition bytes alone.
+pub enum NameLocale<'a> {
+    Unresolved,
+    /// Explicitly admits a null cached table before the source call.
+    NoCachedTable,
+    Selected(&'a crate::locale_table::LocaleTable),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum ConditionalName<'a> {
+    LocaleProviderUnresolved,
+    /// Raw locale units when the explicitly admitted output state returns raw.
+    LocaleRaw(&'a [u16]),
+    /// Nonempty lookup succeeded, but its output processing is not established.
+    LocaleProcessingUnresolved { raw: &'a [u16] },
+    Embedded(Vec<u16>),
+    /// The source reaches `E845D0`; actor triple and provider are not supplied.
+    CreationProviderUnresolved,
+    /// The native terminated copy could read beyond the fixed definition field.
+    EmbeddedTerminatorUnresolved,
+}
+
 /// Exact source field names. Runtime difficulty-to-field selection is separate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CellAiVariant {
@@ -101,6 +125,34 @@ impl<'a> CellDefinition<'a> {
     pub fn label_trailing_word(self) -> u32 {
         word(self.bytes, 0xa4)
     }
+    /// Conditional `E620D0` branch order with an explicitly supplied locale
+    /// table. It does not model locale postprocessing, actor identity, resource
+    /// overlay/cache selection, or the creation-provider fallback. An admitted
+    /// output state must have the cache flag clear as set by `6B4EE0`.
+    pub fn conditional_name<'b>(self, locale: NameLocale<'b>, output_state: Option<crate::content_manifest::LocaleOutputState>) -> ConditionalName<'b> {
+        let table = match locale {
+            NameLocale::Unresolved => return ConditionalName::LocaleProviderUnresolved,
+            NameLocale::NoCachedTable if self.label_trailing_word() == u32::MAX => None,
+            NameLocale::NoCachedTable => return ConditionalName::LocaleProviderUnresolved,
+            NameLocale::Selected(table) => Some(table),
+        };
+        if let Some(text) = table.and_then(|table| table.lookup(self.label_trailing_word())) {
+            if text.first().is_some_and(|unit| *unit != 0) {
+                return match output_state {
+                    Some(state) if !state.cached_flag && crate::content_manifest::locale_output_decision(state)
+                        == crate::content_manifest::LocaleOutputDecision::Raw => ConditionalName::LocaleRaw(text),
+                    _ => ConditionalName::LocaleProcessingUnresolved { raw: text },
+                };
+            }
+        }
+        let units = self.label_units();
+        if units[0] == 0 { return ConditionalName::CreationProviderUnresolved; }
+        let Some(end) = units.iter().position(|unit| *unit == 0) else {
+            return ConditionalName::EmbeddedTerminatorUnresolved;
+        };
+        ConditionalName::Embedded(units[..end].to_vec())
+    }
+
     pub fn hp(self) -> i32 {
         word(self.bytes, 0xa8) as i32
     }
@@ -360,6 +412,28 @@ fn float(bytes: &[u8], at: usize) -> f32 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn conditional_name_preserves_lookup_and_processing_order() {
+        use super::*;
+        use crate::content_manifest::LocaleOutputState;
+        let mut bytes = [0u8; DEFINITION_SIZE];
+        bytes[0xa4..0xa8].copy_from_slice(&1u32.to_le_bytes());
+        bytes[4..6].copy_from_slice(&65u16.to_le_bytes());
+        let table = crate::locale_table::parse(b"0x1 name\n").unwrap();
+        let def = parse(&bytes).unwrap();
+        assert_eq!(def.conditional_name(NameLocale::Unresolved, None), ConditionalName::LocaleProviderUnresolved);
+        assert!(matches!(def.conditional_name(NameLocale::Selected(&table), None), ConditionalName::LocaleProcessingUnresolved { .. }));
+        let state = LocaleOutputState { cached_flag: false, cached_pointer_present: false, classifier_nonzero: false, global_nonzero: false };
+        assert_eq!(def.conditional_name(NameLocale::Selected(&table), Some(state)), ConditionalName::LocaleRaw(&[110,97,109,101]));
+        let missing = crate::locale_table::parse(b"0x2 other\n").unwrap();
+        assert_eq!(def.conditional_name(NameLocale::Selected(&missing), None), ConditionalName::Embedded(vec![65]));
+        bytes[4..6].fill(0);
+        assert_eq!(parse(&bytes).unwrap().conditional_name(NameLocale::Selected(&missing), None), ConditionalName::CreationProviderUnresolved);
+        bytes[0xa4..0xa8].copy_from_slice(&u32::MAX.to_le_bytes());
+        let sentinel = parse(&bytes).unwrap();
+        assert_eq!(sentinel.conditional_name(NameLocale::Unresolved, None), ConditionalName::LocaleProviderUnresolved);
+        assert_eq!(sentinel.conditional_name(NameLocale::NoCachedTable, None), ConditionalName::CreationProviderUnresolved);
+    }
     use super::*;
 
     #[test]

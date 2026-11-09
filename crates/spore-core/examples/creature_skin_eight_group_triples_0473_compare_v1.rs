@@ -1,0 +1,5 @@
+//! Conditional eight-group inputs; copied normal indices are an admission.
+use spore_core::creature_skin_eight_group_triples_v1::{build,CopiedNormalIndices};
+use std::{env,fs,io::{self,Write}};
+fn words(p:&str)->Vec<u32>{let v=fs::read(p).unwrap();assert_eq!(v.len()%4,0);v.chunks_exact(4).map(|x|u32::from_le_bytes(x.try_into().unwrap())).collect()}
+fn main(){let a:Vec<_>=env::args().collect();assert_eq!(a.len(),5);let pos=words(&a[1]);let uv=words(&a[2]);let faces=words(&a[3]);let counts=words(&a[4]);assert_eq!((faces.len(),counts.len()),(84,8));let mut at=0;let mut groups=Vec::new();for &n in &counts{let end=at+n as usize;groups.push(&faces[at..end]);at=end;}assert_eq!(at,84);let groups=build(&pos,&uv,&groups,CopiedNormalIndices).unwrap();let mut out=Vec::new();for (i,g) in groups.iter().enumerate(){let mut row=vec![i as u32+4,counts[i],g.triples.len() as u32];for t in &g.triples{row.extend(*t)}row.resize(3+44*3,u32::MAX);row.extend(&g.corners);row.resize(387,u32::MAX);assert_eq!(row.len(),387);for w in row{out.extend(w.to_le_bytes());}}io::stdout().write_all(&out).unwrap();}

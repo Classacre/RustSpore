@@ -106,13 +106,14 @@ verified against the real game data.
     length is a closed form of the flag context: let `c` be the number of `0x04`
     bytes in bytes 28..36, then `total = 36 + 12 * 4^(c-1)`. All 3,098 samples
     satisfy it exactly. Record semantics (node vs leaf) remain unknown.
-  - **audio event (0x02B9F662): 100% decoded.** Variable-length entries: a bool
+  - **audio event (0x02B9F662): exact framing walk.** Variable-length entries: a bool
     value is 1 byte, the `flags` field carries the same two array markers as prop
     (`0x009C`, `0x001C`), string arrays are length-prefixed per element, and
     property names are FNV-1 32-bit hashes (parent, gain, is3d, samples, codec).
     16,841 of 16,841 resources across `PatchData` and `Spore_Audio2` parse exactly.
     The sibling type **0x03F51892** uses the identical entry rules and also parses
-    at **100% (90 of 90)**; the two share one type-agnostic parser.
+    at **100% (90 of 90)**; the two share one type-agnostic parser. Exact framing
+    does not establish every field's meaning, native provider or playback.
   - **gmdl model (0x00E6BCE5): 100% exact (4,209 of 4,209).** Full structure
     decoded: header (offset 4 is a big-endian `ref_count`, header =
     `64 + ref_count*12`), referenced files, triangle buffers, vertex formats with
@@ -129,9 +130,9 @@ verified against the real game data.
   (1,733). The public SporeModder catalog names them SummaryFile, PollenMetadata,
   creaturedata, spui and bem. SPUI's typed body now decodes on all 748 resources;
   native class defaults and UI procedure semantics remain open. `0x01A527DB` (snr,
-  audio) has its container decoded (2,898 of 2,898)
-  but its codec payload is out of scope.
-  Text formats: XML (9 types), Lua, PureData, WAV, OLE, nested DBPF.
+  audio) has a bounded XAS1 RAM decoder; its earlier container survey was
+  misinterpreted. See `re/payload-formats.md` for its scope and evidence.
+  Text formats: XML (9 types), Lua, PureData, OLE, nested DBPF.
 - **Rust format parsers.** Fourteen formats have Rust implementations in
   `spore-core`: `gmsh`, `anim`, `string_table`, `raster`, `blockdata`, `prop`,
   `rw4` (container plus per-object extents), `audio_event`, `gmdl`,
@@ -142,9 +143,9 @@ verified against the real game data.
 - **The asset pipeline runs end to end.** `rustspore --viewer <package>` renders real
   models with real textures. 6,714 meshes in `Spore_Graphics` (2,422 gmsh plus all 7,402
   RW4 meshes across 4,292 files, blend shapes included) and 4,208 gmdl in `Spore_Content`
-  convert with zero failures: 36.4 million vertices and 27.7 million triangles. The DXT
-  decoder matches the Python reference byte for byte on all 2,954 RASTER resources and on
-  all 8,915 textures embedded in RW4 containers, and the gmsh parser matches on positions,
+  convert with zero failures: 36.4 million vertices and 27.7 million triangles. After the
+  DXT5 correction, per-resource RGBA digests agree for 2,954 RASTER resources and 8,915
+  RW4 textures under stable-package admissions. The gmsh parser matches on positions,
   indices, normals (both encodings) and UVs for all 2,422.
 
 ### Verification and remaining blockers
@@ -231,7 +232,7 @@ Two caveats on that percentage, because a single number hides both:
 
 | Type | Name | Count | Parser covers |
 |---|---|---|---|
-| `0x01A527DB` | snr (audio) | 33,781 | container only; codec not decoded |
+| `0x01A527DB` | snr (audio) | 33,781 | bounded XAS1 RAM decode; other forms open |
 | `0x00B1B104` | prop | 30,889 | every byte, as a generic value tree |
 | `0x02B9F662` | audio event | 19,631 | every byte |
 | `0x2F7D0004` | PNG | 14,694 | decoded to RGBA8 via `image` in `spore-bevy` |
@@ -256,14 +257,14 @@ the difference is where the remaining work is:
 
 | Gap | What it blocks | Size | State |
 |---|---|---|---|
-| **DXT1/DXT5 to RGBA in Rust** | textures cannot reach the GPU | 5,931 RASTER resources | **done**, byte-exact against the Python decoder on 2,954 of 2,954 |
+| **DXT1/DXT5 to RGBA in Rust** | textures cannot reach the GPU | 5,931 RASTER resources | implemented; post-correction RGBA digests agree on 2,954 resources under stable-package admissions |
 | **PNG decoding in Rust** | same, for the other texture type | 14,694 resources | **done**, via the `image` crate in `spore-bevy` only |
 | **Mesh conversion** | geometry cannot reach the GPU | 6,630 gmsh + gmdl | **done**, 6,630 of 6,631 convert (one is a valid empty placeholder) |
 | **RW4 geometry** | models inside RW4 containers | 13,498 resources | **done**, all 7,402 meshes including 1,391 blend shapes |
-| **RW4 textures** | binding the right texture | 8,915 of 9,368 files carry one | **done**, all decode and match the Python reference |
+| **RW4 textures** | binding the right texture | 8,915 of 9,368 files carry one | implemented; post-correction RGBA digests agree on 8,915 textures under stable-package admissions |
 | **RW4 skinning and animation** | deformation and animation playback | 13,498 resources | typed skeleton/bind/weights/clips validated; RTX GPU skinning checked against CPU on a source model; assembled-creature retargeting open |
 | **ANIM keyframe values** | evaluating animation channels | 5,022 resources | typed keys and independent full-corpus digests complete; native interpolation/rig mapping open |
-| **snr codec** | audio playback | 33,781 resources | open; container known, codec not |
+| **snr codecs and routing** | audio playback | 33,781 resources | XAS1 RAM subset decoded; other codecs, streaming and routing open |
 | **blockdata record meaning** | terrain height and placement | 3,260 resources | open; sizes known, node/leaf not |
 | **spui runtime semantics** | the UI | 748 resources | typed elements decoded; class defaults, procedures and rendering open |
 | **prop schema** | reading a game property by name | 30,889 resources | **keys resolved**: 4,403 model and 306 texture references follow to real resources, across packages, including type-0 keys. Ident names are not recoverable, so roles are measured, not named |
@@ -398,7 +399,7 @@ docs/prior-art.md        # what public sources say, and where they conflict
 docs/resource-types.md   # resource type IDs with sources
 
 # Re-run the analysis that produced the format.
-PY=C:/Users/nieuw/.workbuddy-ai/binaries/python/envs/default/Scripts/python.exe
+PY=python
 $PY tools/dbpf_fields.py
 $PY tools/validate_refpack.py "<a real package>" 20
 ```
@@ -411,7 +412,7 @@ Rules that this project has already found it needs:
    claim in `re/binary-analysis.md` section 6.
 2. **Report the denominator.** "800 resources validated" only means something alongside
    "out of 101,312 coded resources across 82 packages".
-3. **A gap is a result.** The undecoded snr codec, the unknown blockdata record semantics
+3. **A gap is a result.** The remaining snr variants, the unknown blockdata record semantics
    and the missing RTTI are recorded as gaps, not omitted.
 4. **Do not assume one global layout.** `Spore_Audio2.package` fits the 28-byte record and
    `Spore_Audio1.package` does not, in the same install.

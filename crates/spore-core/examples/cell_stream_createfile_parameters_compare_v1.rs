@@ -1,0 +1,5 @@
+//! Compare pre-CreateFileW parameter translation to twenty retained rows.
+use spore_core::cell_stream_createfile_parameters_v1::{project,Branch};
+fn w(b:&[u8],o:usize)->u32{u32::from_le_bytes(b[o..o+4].try_into().unwrap())}
+fn main(){let b=std::fs::read(std::env::args().nth(1).expect("native rows")).unwrap();assert_eq!(b.len(),800);let cases=[(0,1,3,1,0),(u32::MAX,0,3,1,0),(u32::MAX,1,6,1,0),(u32::MAX,2,6,2,0),(u32::MAX,3,1,3,1),(u32::MAX,1,2,0,2),(u32::MAX,2,3,2,3),(u32::MAX,3,4,1,0),(u32::MAX,1,5,2,1),(u32::MAX,2,9,3,2)];
+ for i in 0..20{let(h,a,m,s,f)=cases[i%10];let x=project(h,a,m,s,f,true).unwrap();let trap=match x.branch{Branch::AlreadyActive=>1,Branch::NoAccess=>2,Branch::CreatePending=>3};let r=&b[i*40..(i+1)*40];assert_eq!((w(r,0),w(r,4),w(r,8),w(r,12),w(r,16)),(trap,x.access,x.share,x.disposition,x.flags));let fp=w(r,20);assert_eq!(fp&0xffff,if i>=10{0x37f}else{0x27f});assert_eq!((fp>>16)&0x3840,0);assert_eq!(w(r,24)&!0x3f,0x1f80);assert_eq!((w(r,28),w(r,32),w(r,36)),(0xc0dec0de,0xa5a5a5a5,0));}println!("matched twenty source parameter rows; CreateFileW trapped");}

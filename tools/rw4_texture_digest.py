@@ -118,7 +118,7 @@ def decode_dxt(data, w, h, kind):
                 ]
             else:
                 alpha = alpha_dxt5(block)
-                px = colour_block(block[8:16], False)
+                px = colour_block(block[8:16], True)
                 px = [(p[0], p[1], p[2], alpha[i]) for i, p in enumerate(px)]
             for py in range(4):
                 y = by * 4 + py

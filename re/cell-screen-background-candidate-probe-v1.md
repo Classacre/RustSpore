@@ -50,6 +50,35 @@ The v3 log SHA-256 is
 This comparison applies only to these particular probe inputs and outputs;
 it does not establish general shader equivalence or runtime selection.
 
+A separately reviewed profile-2 inspection used PatchData EFFDIR
+`40450201C1195706`, SHA-256
+`683c0e99913d555acb9a3b1b164d763f09fcfce77f8e4062ccfbd21b6e2d5114`,
+and the PatchData profile-2 shader pack SHA-256
+`8228198755fee4793a14598b859067a1463d46c5c42d0cf2fda618fd2f6efa60`.
+It selected `70000091 ScreenEffectsTextureShader`, render type 0, component
+186 mode 5, and the Graphics B-type candidate with SHA-256
+`5705df1ab03e94c58c8a890383026e68c68dfe64ba488d4d767f2706d8ad8aec`.
+The hidden runner exited 0 on the NVIDIA RTX 3060 Laptop GPU, uploaded all
+nine mips, reported `presented=false`, and retained empty stderr. It used the
+same controlled 768×768 viewport, zero offsets, white color, MXCSR `1F80`,
+quad declaration/indices, no culling, no mip filtering, disabled sRGB and
+the same documented candidate render/sampler states as the earlier profile-3
+inspection `screen-background-rtx-20261108-v1`. The two PNG files are
+byte-identical, SHA-256
+`1135f77e830c04d874c9681d46290822d92f6deec96e26697059d8686a1538f5`.
+The profile-3 inspection used the **different** EFFDIR `40450200C1195706`,
+SHA-256 `578cd63c8efc8fe5141d47c0101987d65e2f256e81bb88bc76895c9d303a6036`;
+both explicit directories supplied the same selected component and texture
+ID to these controlled render inputs. This single-input equality does not
+prove general profile equivalence or actual runtime selection, material,
+camera or viewport. The profile-2 receipt
+`target/source-cell/screen-profile2-probe-result-v1/receipt.json` has SHA-256
+`545c68609647d45e8c7f2a9a33244b7a06eb42b03e399e29625b29a182bfc66e`;
+its stdout SHA-256 is
+`021c40cc0f5ed6af841997c1d00564d476f796b815a3105b3c77ddfc8e32092f`.
+Inputs matched their recorded hashes at the run's endpoints under the
+explicit stable-path admission; that does not prove continuous stability.
+
 The package index size and count are preflight bounded, but the subsequent
 reader reopens the file; inputs must remain trusted and stable across that
 TOCTOU window. No actual game execution, active skybox, runtime material

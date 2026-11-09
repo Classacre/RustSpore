@@ -33,6 +33,17 @@ lighting context and original editor thumbnail camera are inspection controls.
 All 704 creations with explicit model links pass hidden RTX captures, including
 expansion assets. Complete animated creatures and retail scenes remain in progress.
 
+The controlled `--source-player-visual --install <SPORE dir> --seed 1 --shot
+target/player.png` inspection joins one staged Cell startup candidate to its
+source model and texture. Add `--adapter amd` for the explicitly supported AMD
+Radeon D3D9 path; the default remains RTX. This is a static inspection, not a
+playable player, original scene or animation. An experimental preview of edited
+source-part assemblies is documented in
+[`docs/experimental-source-part-assembly.md`](docs/experimental-source-part-assembly.md).
+An experimental [source CreatureData editing session](docs/source-creature-edit-session.md)
+supports reversible transform edits and saves a new payload for that inspection.
+It does not regenerate a playable creation.
+
 For the explicitly reviewed source creature `40616200A1C46DF2`, add
 `--coverage target/creature-mask.png` to a `--source-creature --shot` command
 to produce a separate binary stencil mask for the controlled original-program
@@ -43,6 +54,43 @@ in 82 packages. All 704 linked creations also pass strict CPU mesh/material inta
 with their own painted maps, including version9 expansion models.
 `--shot` static-viewer and animation
 captures also run offscreen without creating a desktop window.
+
+A bounded source-audio inspection example exports supported XAS1 and PCM16BE
+RAM resources to a new WAV under `target`. Supply your installed package and
+explicit 16-digit scope/instance key, for example:
+
+```powershell
+tools\build.bat run -p spore-bevy --example source_snr_wav -- "D:\Games\SPORE Collection\Data\Spore_Audio2.package" 021407EEB000B7DE target\source-sound.wav
+```
+
+The output is decoded locally from the installed asset. The decoder accepts
+version 0 XAS1, one or two channels, and predictors 0-3. It supports single-block
+non-looping RAM sounds and bounded one- or two-block looped RAM forms. Looped exports
+contain one pass without WAV loop metadata; the source loop start is printed.
+Non-looping single-block PCM16BE RAM sounds are also supported. For a bounded
+XAS1 gigasample, append an explicit SNS package path to the command; the
+exporter reads the same scoped key from each supplied package. It does not
+resolve package precedence. Other streaming forms, codecs and gameplay event
+routing remain open; see
+[`re/payload-formats.md`](re/payload-formats.md) for the tested scope.
+
+The experimental Cell frontend can queue a single explicitly selected event
+sample at startup. Supply `--source-event-package`, `--source-event-key` (a
+16-digit scope/instance key in scope `021407EE`), `--source-event-sha256`,
+`--source-event-row` (zero-based decimal), `--source-audio-package` and
+`--source-audio-sha256`, plus
+`--admit-event-loader-complete-unchanged-and-stable-packages`. The admission
+asserts stable package paths, complete unchanged loader reads and getter identity.
+The event row supplies the SNR instance; both payloads are hash checked. The
+direct SNR form remains available with `--source-audio-key` instead of the event
+options. These forms cannot be combined or used offscreen. This is a one-shot
+inspection preview, not gameplay event routing or proof of audible output.
+For the installed pair documented in
+[`re/cell-event-snr-explicit-inspection-v1.md`](re/cell-event-snr-explicit-inspection-v1.md),
+the event arguments are `--source-event-key 021407EE34C2FF0B`,
+`--source-event-sha256 359d9b975aca87c70e0d4414199893c9819c8a4b4390dc43ff4666838f0a0c12`,
+`--source-event-row 0`, and
+`--source-audio-sha256 f68c6170fcd374eabbc66d7c9d82e10b421cc052570647478ea4f3cc3670afd4`.
 
 The optional [native shader probe](re/shader-execution.md) executes the original
 SPORE UI bytecode on the RTX GPU. Both original UI programs pass controlled copy
@@ -82,9 +130,12 @@ Verified against the shipped game data:
   `Spore_Graphics` (2,422 gmsh and 4,292 RW4 files carrying all 7,402 of their meshes,
   blend shapes included) and 4,208 gmdl in `Spore_Content`, with zero conversion failures.
   That is 36.4 million vertices and 27.7 million triangles (`rustspore --mesh-selftest`).
-- **The pixel decoder matches the Python reference byte for byte** on all 2,954 RASTER
-  resources in `Spore_Content` and on all 8,915 textures embedded in RW4 containers in
-  `Spore_Graphics`, across DXT1, DXT3, DXT5, `A8R8G8B8` and `L8`.
+- The corrected Rust decoder and Python references produced matching RGBA digests on
+  all 2,954 RASTER resources in `Spore_Content` and 8,915 textures embedded in RW4
+  containers in `Spore_Graphics`. This compares per-resource FNV-1a digests with stable
+  package reads assumed. Focused tests and an independent RTX D3D9 sampling comparison
+  cover the DXT5 correction; see
+  [`re/cell-skybox-converter-raster-boundary-v1.md`](re/cell-skybox-converter-raster-boundary-v1.md).
 - **A model can be resolved from the prop that describes it.** In `Spore_Content`, 1,162
   props name a model through a four-slot LOD chain and all 1,162 resolve to a resource in
   the package; 153 of them also name their own colour maps. `rustspore --prop-models`
@@ -152,6 +203,46 @@ Creature transition and editor integration are still open. `--demo` drives the
 same keyboard input mapping with an automated food-seeking controller, captures
 after the requested duration, and exits. Screenshot outputs must be new paths.
 
+For an explicit source-art inspection of both the player and prototype rivals,
+select two installed Cell definitions:
+
+```powershell
+target\debug\rustspore.exe --experimental --cell --source-cell-install "C:/path/to/SPORE Collection" --source-cell-id 7D00E384 --source-rival-cell-id EFE530A1 --offscreen --demo 1 --shot target/cell-source-rivals.png
+```
+
+The selected rival is assigned to every visible prototype rival; source selection,
+scale and orientation in the original game are unverified. This is a static PBR
+inspection over prototype simulation, with no original animation or retail scene.
+
+Two installed effect-map models can also be inspected in an offscreen Cell
+capture. Each command selects one source model explicitly; the rectangle is
+four comma-separated IEEE-754 binary32 hex words for center X, center Y,
+width, and height. The following supplies `(0, 0, 80, 56)`:
+
+```powershell
+target\debug\rustspore.exe --experimental --cell --offscreen --source-effect-plane-install "C:/path/to/SPORE Collection" --source-effect-plane-rect 00000000,00000000,42A00000,42600000 --admit-effect-plane-stable-packages --shot target/cell-effect-44.png
+target\debug\rustspore.exe --experimental --cell --offscreen --source-effect-154-install "C:/path/to/SPORE Collection" --source-effect-154-rect 00000000,00000000,42A00000,42600000 --admit-effect-154-stable-packages --shot target/cell-effect-154.png
+```
+
+These are controlled inspections, not recovered runtime placement or effect
+selection. The second option uses a whole-scene unorm diagnostic composition,
+which changes the brightness of the prototype scene; neither path establishes
+retail camera, depth, UI, or gameplay behavior. The installed packages must
+remain stable while loading. The two effect options cannot be combined.
+
+For the first plane, `--source-effect-plane-grid` may replace the rectangle.
+It takes `level,progress,grid_x,grid_y,514c_hex`; these are supplied snapshots,
+not live game state. The bounded projection uses an identity basis and the
+source-derived tier, spacing and transform calculations. For example:
+
+```powershell
+target\debug\rustspore.exe --experimental --cell --offscreen --source-effect-plane-install "C:/path/to/SPORE Collection" --source-effect-plane-grid 3,0,0,0,3f0ccccd --admit-effect-plane-stable-packages --shot target/cell-effect-grid.png
+```
+
+The grid and rectangle options are mutually exclusive. The projected placement
+is a diagnostic; the active pool entry, grid, provider and gameplay camera have
+not been established.
+
 For a controlled Cell prototype inspection using an explicitly chosen installed
 Creature, provide the install directory and a 16-digit source instance:
 
@@ -162,6 +253,43 @@ target\debug\rustspore.exe --experimental --cell --source-creature-install "C:/p
 This assigns the chosen source art to the prototype player in a static PBR view.
 The axis mapping is inferred, original animation and runtime selection remain
 unverified, and saving and loading are disabled in this source-Creature mode.
+
+A separate seed-1 startup-data inspection selects the bounded source candidate
+and attaches its static art to the Cell prototype player:
+
+```powershell
+target\debug\rustspore.exe --experimental --cell --seed 1 --source-startup-install "C:/path/to/SPORE Collection" --admit-startup-stable-packages --offscreen --demo 1 --shot target/cell-startup-art.png
+```
+
+This path requires the exact admitted startup triple and four exact resources
+from `Spore_Content.package`; it rejects other art selections and creations.
+Keep the installed files stable while they are read. The scene uses prototype
+movement and collisions, static inspection art, an inferred basis and
+controlled lighting; it does not establish a retail player identity, source
+animation or gameplay. The current wide prototype viewport renders the candidate
+small and dark. Cell prototype save and load controls remain available.
+Add `--startup-source-normals` for the separately admitted, pinned-candidate
+CPU approximation of the captured source normal-unpack formula. It is an
+inspection option; it does not reproduce the source shader or lighting.
+Add `--startup-unorm-texture` for a separate pinned-candidate experiment that
+changes the decoded texture's sampling interpretation to unorm while keeping
+the mip bytes and sampler. It does not reproduce source shader or lighting.
+
+For a larger, separately opted-in editor-style inspection of the same static
+candidate, use a new screenshot path:
+
+```powershell
+target\debug\rustspore.exe --experimental --cell --seed 1 --source-startup-install "C:/path/to/SPORE Collection" --admit-startup-stable-packages --offscreen --demo 1 --shot target/cell-startup-inspection.png --startup-material-preview --startup-traced-material --startup-inspection-camera
+```
+
+This mode uses the candidate's checked source textures and packed basis with
+frozen inspection shading and a captured fitted editor-inspection clip matrix.
+The displayed model does not follow the prototype player's changing transform;
+the surrounding playfield and controls are still prototype behavior. Bevy's
+render target, depth and ordering differ from the source inspection harness.
+Keep package files stable during the admitted reads. This is not a gameplay
+camera, live actor pose, original animation or retail visual parity. See the
+[candidate evidence](re/cell-controlled-player-visual-candidate-v1.md).
 
 ### Creature gameplay foundation
 
@@ -212,6 +340,9 @@ cycles the package's textures, `M` switches between the model's own texture and 
 `R` resets the camera. The heads-up line names the resource key, the
 vertex and triangle counts, whether the normals came from the file, and which texture is
 bound.
+If a model's source texture is unavailable, the viewer shows it untextured and says so;
+`T` or `M` can explicitly select a package texture for mesh and prop inspection.
+The authored-creature view instead uses `M` to toggle its source texture off.
 
 `--shot <package> <out.png> [mesh-index] [checker] [prop-instance]` renders a few frames,
 writes a PNG and exits, which is how the pipeline is checked without a person looking at a

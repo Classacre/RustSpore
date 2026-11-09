@@ -1,0 +1,6 @@
+//! Caller-supplied conditional shelves; no actual atlas or live identity claim.
+use spore_core::{creature_skin_atlas_pair_scale_v1::{pair,Row},native_sse::Policy};
+use std::{env,fs,io::{self,Write}};
+fn main(){let a:Vec<_>=env::args().collect();assert_eq!(a.len(),2);let data=fs::read(&a[1]).unwrap();assert_eq!(data.len(),3*920);let mut out=Vec::new();
+ for row in data.chunks_exact(920){let w:Vec<u32>=row.chunks_exact(4).map(|x|u32::from_le_bytes(x.try_into().unwrap())).collect();let ng=w[0] as usize;let nr=w[1] as usize;assert!((1..=12).contains(&ng)&&(1..=12).contains(&nr));let groups:Vec<[u32;4]>=w[2..2+ng*4].chunks_exact(4).map(|p|[p[0],p[1],p[2],p[3]]).collect();let mut rows=Vec::new();for i in 0..nr{let b=50+i*15;let n=w[b] as usize;assert!((1..=12).contains(&n));rows.push(Row{groups:w[b+3..b+3+n].to_vec(),width:w[b+1],height:w[b+2],shift:0});}let v=pair(&groups,&rows,Policy::Mxcsr1f80).unwrap();let mut words=vec![v.width,v.height,v.scale];for i in 0..12{if let Some(row)=v.rows.get(i){words.extend([row.groups.len() as u32,row.width,row.height,row.shift]);for j in 0..12{words.push(row.groups.get(j).copied().unwrap_or(u32::MAX))}}else{words.extend([u32::MAX;16])}}assert_eq!(words.len(),195);for x in words{out.extend(x.to_le_bytes());}}
+ io::stdout().write_all(&out).unwrap();}

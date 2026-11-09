@@ -1,0 +1,8 @@
+//! Compare original E4EE10 wrapper/setters against five controlled rows.
+use spore_core::cell_camera_factory_v1::{project,Backing};
+fn w(b:&[u8],o:usize)->u32{u32::from_le_bytes(b[o..o+4].try_into().unwrap())}
+fn main(){let mut a=std::env::args().skip(1);let b=std::fs::read(a.next().expect("native stdout")).unwrap();let map=std::fs::read_to_string(a.next().expect("host map")).unwrap();assert_eq!(b.len(),260);let lines:Vec<_>=map.lines().filter(|l|l.split_whitespace().nth(1)==Some("Request")).collect();assert_eq!(lines.len(),1);let request=u32::from_str_radix(lines[0].split_whitespace().nth(2).unwrap(),16).unwrap();
+ let initial=[Backing{field_2d8:0x11111111,field_2dc:0x22222222},Backing{field_2d8:0x33333333,field_2dc:0x44444444}];
+ for i in 0..5{let first=u32::from(i!=0);let typ=if i==1{0x11111111}else{0x3d97a8e4};let factory=if i>=2{Some(if i>=3{request}else{0})}else{None};let x=project([first,typ,0x40616200],0,factory,0x10000,first,0,0xabcdef01,initial,if i>=3{Some(if i==4{1}else{0})}else{None},true).unwrap();let o=i*52;
+  assert_eq!((w(&b,o),w(&b,o+4),w(&b,o+8),w(&b,o+12)),(x.store.provider_return,x.store.component_request,u32::from(x.store.factory_called),first));let fp=w(&b,o+16);assert_eq!(fp&0xffff,0x027f);assert_eq!((fp>>16)&0x3840,0);assert_eq!(w(&b,o+20)&!0x3f,0x1f80);assert_eq!((w(&b,o+24),w(&b,o+28),w(&b,o+32)),(0xc0dec0de,0xa5a5a5a5,0x10000));assert_eq!([w(&b,o+36),w(&b,o+40),w(&b,o+44),w(&b,o+48)],[x.backings[0].field_2d8,x.backings[0].field_2dc,x.backings[1].field_2d8,x.backings[1].field_2dc]);
+ }println!("matched five controlled original factory/store/provider rows; callbacks and ownership supplied");}

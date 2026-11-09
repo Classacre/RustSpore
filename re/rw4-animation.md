@@ -30,11 +30,23 @@ the interpolation used by the original executable.
 covering 5,007,037 decoded vertices in 2,458 resources containing both meshes and
 bindings. Four pairs lack declared joint indices. Those cases return explicit
 errors. All four use a position/UV/normal/tangent vertex declaration in resource
-`4060600001DCAF31` (group `00010000`); their attachment behavior remains unknown.
+instance `01DCAF31`, type `2F4E681B`, scope `40606000`; their attachment behavior
+remains unknown. The older wide-index label `00010000` is the entry metadata word,
+not its canonical scope.
 The `SHORT2` case in `406060009343E658` is supported: all 98 vertices have one
 unit weight and first index values from 0 through 21 in increments of three, with
 a zero second index. These are counts of
 binding/mesh pairs, rather than a claim that every game model has a usable skeleton.
+
+On a subsequent inspection of that one source resource, the decoded RW4 bytes
+had SHA-256 `fba0276959b4dfb5c8754b78b326df7bd8319820afc91059da0192ebef174145`.
+The verifier iterates every mesh for each binding; its four errors correspond to
+mesh sections 27 through 30 using vertex description 26, which contains position,
+UV, normal and tangent but no blend indices. Section 15 instead uses description
+9, which includes blend indices and weights. The four meshes each have a saved
+compiled-state link, but these serialized observations do not establish how the
+original runtime attaches them or whether they move with a rig. The four pairs
+therefore remain explicitly unresolved rather than being assigned a guessed bone.
 
 ## Object layouts
 

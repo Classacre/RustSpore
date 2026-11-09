@@ -1,0 +1,19 @@
+# Cell contact tail E6A2B0: bounded instruction trace
+
+This static trace uses `D:\Games\SPORE Collection\SporeBin\SporeApp.exe`, SHA-256 `17cf32b3e3adbcc7ed9c4e593c83b5d3deb3c675059b7ad9cbfd19192df5f87a`, verified by REA `open_binary`. REA's Ghidra provider was unavailable (`GHIDRA_INSTALL_DIR` unset), so the observations below independently decode PE bytes with local `pefile` and Capstone x86 mode. No game or original instructions were executed. Addresses are image virtual addresses. This is not a verified complete gameplay route.
+
+`E6A450` commonly calls this tail, as described in [the candidate trace](cell-feeding-candidate-producer-v1.md). At entry, the decoded stack slots `+04/+08/+0C/+10/+14/+18/+1C/+20` supply output record, two three-word geometry pointers, float depth, actor A, actor B, relation, and another word respectively. The following statements describe the instructions at `E6A2B0..E6A441`, contingent on valid pointers and a correctly decoded call convention.
+
+* If relation is not 5, the function performs a direct priority-1 write into the shared output. It accepts when signed current selector is less than 1, or equals 1 and `COMISS` reports supplied depth strictly greater than record `+14`. It writes actor IDs at `+00/+04`, both geometry triples at `+18..+2C`, depth at `+14`, `-1` at `+0C/+10`, and selector 1 at `+08`. Otherwise it leaves the record alone. Unordered depth compares take the `JBE` rejection path when selector equals 1.
+* If relation is 5, `E6A250(A)` is called first. If its low return byte is nonzero, or A's first word equals B's `+10C`, execution goes to a direct priority-`0x16` write. The same direct write is reached when A's `+108` equals the value returned by `E4CB40(0x17)` and `E571C0(A)` returns 4. This write has the same layout as above, but compares against selector `0x16` and writes that selector. Existing selector equality requires strictly greater ordered depth; signed selectors larger than `0x16` skip.
+* Otherwise the relation-5 branch invokes `E59B40` with actor IDs, both feature indices `-1`, and selector `0x16` when entry word `+20` is zero, or `0x11` when it is nonzero. The passed depth is loaded with `FLD` and stored with `FSTP` as a binary32 argument. These calls may arbitrate rather than unconditionally write; their effects and float assumptions are governed by the separate `E59B40` model.
+
+`E6A250` returns zero when actor `+FC` is zero. Otherwise it passes actor words `+FC/+100/+104` to `E67A50`, reads the returned object's float `+1270`, and compares it with the executable's zero float at `0x1485E24`. The `UCOMISS` / `LAHF` / `TEST AH,44h` / `JNP` sequence returns zero for ordered equality and one for ordered non-equality **or unordered**. The result requires a valid cache pointer and the active floating-point environment; it is not evidence that the actor has a particular capability.
+
+The unordered outcomes above apply only if the comparison completes without an
+unmasked floating-point exception: `COMISS` signals invalid on quiet or signaling
+NaNs, while `UCOMISS` signals invalid on signaling NaNs. MXCSR DAZ can also
+change whether a subnormal operand compares equal to zero. The trace does not
+establish the live exception masks or DAZ policy.
+
+The direct `0x16` path is consequential: it bypasses `E59B40` and can change the shared selector after an earlier candidate; `E7F170` suppresses dispatch when the final selector is `0x16`. Therefore the earlier `E6A450` submissions cannot be interpreted in isolation. The two reversed actor passes, intervening calls, cache identity and lifetimes, signed selector values, NaNs, source floating-point state, and output aliasing remain relevant. This trace does not establish which branch is reachable or a native feeding event. A port would need independent instruction-level comparison and a defined external-call/mutation protocol before use.

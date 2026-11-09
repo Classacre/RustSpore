@@ -1,0 +1,4 @@
+//! Compare scripted CellSaveGame key callbacks against eight retained rows.
+use spore_core::cell_provider_cellsave_key_v1::project;
+fn w(b:&[u8],o:usize)->u32{u32::from_le_bytes(b[o..o+4].try_into().unwrap())}
+fn main(){let b=std::fs::read(std::env::args().nth(1).expect("native stdout")).unwrap();assert_eq!(b.len(),192);for i in 0..8{let k=i%4;let cw=if i>=4{0x37f}else{0x27f};let buffer=if k&1!=0{Some(0xa5a5a5a5)}else{None};let x=project(buffer,if k&2!=0{1}else{0},cw,0x1f80,true).unwrap();let row=&b[i*24..(i+1)*24];assert_eq!((w(row,0),w(row,4),w(row,8),w(row,12)),(x.count,x.buffer_after.unwrap_or(0xa5a5a5a5),x.class_key,i as u32));let fp=w(row,16);assert_eq!(fp&0xffff,cw as u32);assert_eq!((fp>>16)&0x3840,0);assert_eq!(w(row,20)&!0x3f,0x1f80);}println!("matched eight retained CellSaveGame key callback rows; no live registration claimed");}

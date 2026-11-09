@@ -39,13 +39,13 @@ def decode_rgb565(c: int) -> tuple:
     )
 
 
-def decode_dxt1_block(block: bytes) -> list:
+def decode_dxt1_block(block: bytes, force_four: bool = False) -> list:
     """Decode a single 8-byte DXT1 block to 16 RGBA pixels."""
     c0, c1, indices = struct.unpack_from("<HHI", block, 0)
     rgb0 = decode_rgb565(c0)
     rgb1 = decode_rgb565(c1)
 
-    if c0 > c1:
+    if c0 > c1 or force_four:
         colors = [
             rgb0 + (255,),
             rgb1 + (255,),
@@ -102,7 +102,7 @@ def decode_dxt5_block(block: bytes) -> list:
         alpha_table = [a0, a1, (4 * a0 + a1) // 5, (3 * a0 + 2 * a1) // 5,
                        (2 * a0 + 3 * a1) // 5, (a0 + 4 * a1) // 5, 0, 255]
 
-    color_pixels = decode_dxt1_block(block[8:16])
+    color_pixels = decode_dxt1_block(block[8:16], force_four=True)
     pixels = []
     for i in range(16):
         a_idx = (alpha_bits >> (3 * i)) & 0x7

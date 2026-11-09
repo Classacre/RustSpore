@@ -69,6 +69,57 @@ are `-1`/`1` minus `2 * [16087C0] / height`. Width and height are 16-bit
 fields +0C/+0E of the object reached through `11F0ED0` and +40. Those global
 offset values and their runtime providers have not been resolved here.
 
+The screen-offset initializer is now partially identified. On its successful
+relevant startup path, `6DDA60..6DDAF5` reads global `015FE918`, then its
+pointer +3C and word at +110. If that word is nonzero, it writes the source
+float constants +0.5 and -0.5 respectively to `16087BC` and `16087C0`; if
+zero, it copies words from `1608724` and `1608728` instead. These inputs are
+conditional on object validity and initialization order; the active flag,
+alternate values, viewport dimensions and later writes are not established.
+Bounded instruction and constant evidence is
+`target/source-cell/screen-offset-source-audit-20261108-v1.json`, SHA-256
+`bf7368ab8c7b959aa3ac733ef189a9d146469a76dd742f07683dc8f68d57da92`.
+
+The main screen-effect draw's camera-like receiver is constructed locally on
+the observed initialization path, not simply the Cell world manager's +30
+camera value. At `776E74..776EB5` it allocates `174h` bytes, calls `7C3910`,
+stores the result at effect object +13C, and calls `7C4770(0)`. `7C3910`
+initializes receiver +170 to null; successful `7C4770` calls `761140` and
+stores that returned render-context pointer at +170. It copies global
+`015D1838` into context +40, and initializes context +80/+84 from the 16-bit
+words at that pointed object's +0C/+0E. Its zero argument takes the branch
+that computes context +5C/+60 from source constants, another global and those
+dimensions. This is initialization evidence only: the global pointer and
+its dimensions are mutable and actual target identity is unobserved.
+
+At `776CA9..776CB6`, the main draw calls `7C4950` on this +13C receiver; on
+the path where its context +40 is non-null and `11F3CD0` succeeds, the latter
+stores the context pointer in global `016FB5B8` at `11F3F9F`. `11F0ED0`
+returns that global, which `761D60` uses to find +40 and the +0C/+0E words
+for the screen quad. This joins the conditional draw's quad dimensions to the
+locally constructed context's current target, without identifying it with the
+main or auxiliary gameplay camera. Reassignment, lifetime, current dimensions,
+device state and branch success remain admissions. Bounded source bytes are in
+`target/source-cell/screen-draw-camera-audit-20261108-v1.json`, SHA-256
+`b6b2be8115d9bcc7c1caf54964e68d3e4cbf9cb42befb844dd804ffe8e44aefe`.
+
+Further bounded tracing identifies the target-storage origin and two later
+dimension writes. At `11F843E..11F8454` the device-creation routine aligns
+static addresses and writes `01713480` and `017134A0` into globals `015D1838`
+and `015D183C`, then passes its supplied setup block to `11F7AB0`. On a
+conditional setup-change path, `11F7DA9..11F7E04` copies the 15-word input
+block to `01713444` and writes the low 16 bits of its words +8/+0C into +0C/
++0E of both target records. On the separate path `11F7E20..11F7EB2`, subject
+to its mode and handle gates, the explicit 16-bit width/height arguments are
+also written into both records. The words `0171344C` and `01713450` are the
+same mode-block words +8/+0C that the independently traced graphics provider
+can expose as its UI descriptor; a shared current-block relationship is
+conditional on the relevant update paths, target lifetime and no intervening
+mutation. It does not assert a particular viewport or runtime timing.
+Evidence is `target/source-cell/screen-target-source-audit-20261108-v1.json`,
+SHA-256 `cc9118e67c806f6f81286770fa79dba23945ab9d844f30627fbe465594d53988`;
+the prior UI-side trace is [here](cell-ui-graphics-descriptor-source-trace-v1.md).
+
 The conversion helper `4584E0` reads four floats and applies SSE max, multiply
 by the verified constant 255, min, then `CVTSS2SI` conversion to integers,
 and packs the resulting bytes at bit positions 16, 8, 0 and 24. The resulting

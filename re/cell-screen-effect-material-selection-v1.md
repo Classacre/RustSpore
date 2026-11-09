@@ -47,4 +47,67 @@ The initializer calls `932B30` with mode 1, whose `932B82..932BB3` path lowercas
 
 The same-package profile-matched shader packs contain a render-type-zero `ScreenEffectsTextureShader` record with those respective IDs and no recorded uniform entries. Pack keys have type `0469A3F7`, separate index group `0001FFFF`, and packed instance `4021200400000000` through `4021200400000003`. Numeric shader IDs cannot be treated globally: `7000008C` is `FilterDepthBlendShader` in PatchData, while `7000008C` is `ScreenEffectsTextureShader` in Graphics. Profile-specific original vertex and pixel bytecode extracted from the package payloads is under ignored `target/screen-material-evidence-v1/`; its `manifest.json` records source package, full pack key, shader record offset, profile, sizes, and SHA-256. The extraction script `target/screen_material_extract_tmp.py` checks source package payloads against the independently retained pack files and verifies shader ID and name before extraction. These files provide reproducible candidates, not a claim that any particular package or profile wins runtime lookup.
 
+Installed `Data/Config/Properties.txt` declares `ShaderPath` as
+`hash(ShaderPath)`, and the lowercased source FNV-1 operation produces
+`1A34E253`, the first property key read at `71211E`. The installed
+`ConfigManager.txt` initializes `shaderPathToSet` to 0; for pixel shader
+version at least 3 it selects 3 except on its Intel branch, which selects 0.
+For version 2 it selects 1 or 2 based on the cider branch and register count,
+with an Intel override to 0. It then applies `intProp shaderPath`. Those
+conditions are script inputs, not observed values for the game process.
+`712110` compares this first value with the separately read `E1408308`: when
+the latter is nonnegative and smaller it stores that second value at manager
++200; otherwise it stores ShaderPath. The second property's identity and both
+current values remain unresolved. Hash-bound instruction and file evidence is
+`target/source-cell/screen-material-profile-audit-20261108-v1.json`, SHA-256
+`fedb6b38e431ef4027c87146503e65da5b7b87f0b186fb06cf7593990db5f3af`.
+Neither script presence nor an RTX probe establishes which source material
+profile was selected in a game run.
+
+The saved `%APPDATA%\Spore\Preferences\Preferences.prop`
+inspected on 2026-11-08 (SHA-256
+`cc1bb5dc49d2bfa7c475abf5b5b08b213d59f04ea408ac76b887fabb4917fa6a`,
+last written 2026-10-22 12:31:36.599728 UTC) contains no ASCII identifier
+token hashing to either `1A34E253` or `E1408308`, and no literal
+`E1408308`. This bounded text search does not establish the active values:
+the first property may be computed from configuration and device inputs, the
+second can come from another provider or runtime mutation, and the saved file
+may be stale. The known conditional script alone cannot determine its branches
+without the source process's actual input state; the separate RTX sampling
+fixture does not supply that state.
+
+An independent scan of 23,228 indexed PROP payloads in PatchData, Game, and
+EP1 Data found `E1408308` as scalar INT32 in each package's option-lighting
+lists. Their low instance word `046170A6` is explicitly declared
+`OptionLighting` in installed `Properties.txt`. Upper instance words
+`40470101`, `40470102`, and `40470103` carry respectively 0, 2, and -1;
+each package also has a separate `08EA246B` row with -1. Index groups vary by
+package; identical option-list payload hashes and every exact key are in
+`target/source-cell/screen-profile-override-payload-scan-20261108-v1.json`,
+SHA-256 `f5cb55108152b569f50f98ccf9b85c78e5e0343175bbb4250d82273f6ea154d1`.
+Package hashes matched at scan endpoints; the reopen-based reader requires
+stable input. The saved Preferences.prop says `OptionLighting 2` on line 9;
+its selective audit is `target/source-cell/screen-persisted-lighting-audit-20261108-v1.json`,
+SHA-256 `520a61ca7994afe4d5436ff427a0246f45a54a69d34d47f948ce69f159cf2dde`.
+On the explicit admissions that this stale saved selection is applied and
+the corresponding list successfully merges without later replacement, the
+override is 2, so `712110` caps ShaderPath at 2 when ShaderPath exceeds 2.
+Neither the current option nor the effective source profile is observed.
+
+For controlled profile 2, the retained source pack records name
+`ScreenEffectsTextureShader` render type 0 with no listed uniforms. PatchData
+uses shader ID `70000091`, pack instance `4021200400000002`, VS SHA-256
+`0f40126b40bccc06be171da1d1f8c13ce67d03fea4f12f09ff3df4a8b23a152a` and PS
+SHA-256 `78302a33abe6597669b5d0c341521d3f46f80e5e0ad6366b17236e4e968fbbb1`;
+EP1's extracted pair is byte-identical. Spore_Graphics uses ID `7000008C`,
+VS SHA-256 `a51297e121c199343ea3c6f9bb0954fec2a6ac7bbaf89decc34e3e9e489889ab`
+and PS SHA-256 `3ff1484d1c45f9b120b15409faeae857e66eaeadfd4fe9ecc3ba77e6708c14dc`.
+All have `FFFE0200` vertex and `FFFF0201` pixel version words. A controlled
+GPU probe is feasible after extending the existing explicit-package probe to
+accept profile 2 and those verified token versions: it currently hardcodes
+profile 3 and rejects anything other than `FFFE0300`/`FFFF0300`. The probe
+would still require explicit package, raster, viewport, vertex color, offset,
+sampler and render-state choices and would not establish the live material or
+camera.
+
 The independently parsed state records have the same values across the twelve candidates: render-state pairs `(7,0), (14,0), (15,0), (24,127), (25,8), (27,0)`, and stage-zero sampler pairs `(1,3), (2,3), (5,2), (6,2)`. `11EE0D0` forwards state/value pairs via the created D3D9 device slot +E4 (`SetRenderState`), indicating disabled depth test, depth writes, alpha test and alpha blending, plus alpha reference 127 and function 8. `11EE160` forwards the stage sampler list through slot +114 (`SetSamplerState`), indicating U and V clamp and linear magnification/minification. Its conditional path at `11EE2A5..11EE30C` can replace filter value 2 with 3, so the stored values do not by themselves establish the effective runtime filter. The initial texture placeholder and other state may also be changed by intervening calls. No shader execution or visual acceptance follows from this inventory.

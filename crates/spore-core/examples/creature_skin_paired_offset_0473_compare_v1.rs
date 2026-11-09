@@ -1,0 +1,5 @@
+//! First supplied conditional pairing fixture; no actual atlas placement claim.
+use spore_core::{creature_skin_paired_offset_v1::compose,creature_skin_atlas_pair_scale_v1::Row,native_sse::Policy};
+use std::{env,fs,io::{self,Write}};
+fn main(){let a:Vec<_>=env::args().collect();assert_eq!(a.len(),2);let data=fs::read(&a[1]).unwrap();assert_eq!(data.len(),3*920);let w:Vec<u32>=data[..920].chunks_exact(4).map(|x|u32::from_le_bytes(x.try_into().unwrap())).collect();let ng=w[0] as usize;let nr=w[1] as usize;assert_eq!((ng,nr),(8,4));let groups:Vec<[u32;4]>=w[2..2+ng*4].chunks_exact(4).map(|p|[p[0],p[1],p[2],p[3]]).collect();let mut rows=Vec::new();for i in 0..nr{let b=50+i*15;let n=w[b] as usize;assert!((1..=12).contains(&n));rows.push(Row{groups:w[b+3..b+3+n].to_vec(),width:w[b+1],height:w[b+2],shift:0});}
+ let o=compose(&groups,&rows,Policy::Mxcsr1f80).unwrap();assert_eq!(o.placements.len(),8);let mut out=Vec::new();for v in o.placements{for x in [v.width,v.height,v.offset[0],v.offset[1],v.row_x_after,v.row_y_after]{out.extend(x.to_le_bytes());}}io::stdout().write_all(&out).unwrap();}

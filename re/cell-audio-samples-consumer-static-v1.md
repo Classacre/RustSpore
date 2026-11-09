@@ -1,0 +1,17 @@
+# Native `samples` consumer: conditional SNR key construction
+
+This is static analysis of base `D:\Games\SPORE Collection\SporeBin\SporeApp.exe`, SHA-256 `17cf32b3e3adbcc7ed9c4e593c83b5d3deb3c675059b7ad9cbfd19192df5f87a`. It follows [the collision audio lead](cell-audio-event-selection-lead-v1.md). It does not observe execution, resource selection or sound playback.
+
+At `A2D2C8`, one branch of the function seeded at `A2C520` gets an array using property ID `060C631D`. For each four-byte item it passes the item and scope `021407EE` to a virtual method at `+138h`. When that call succeeds, it asks the returned object through virtual method `+4Ch` for property ID `701ED91E` (`samples`). On success, `A2D370..A2D3B1` iterates the returned count in 12-byte steps. It loads all three 32-bit words of each in-memory entry into a temporary; immediately before a virtual call at `+194h`, it overwrites the temporary's second and third words with `01A527DB` and `021407EE`. The first word remains the entry's first word. Under the native key layout established in `archive-index-native.md`, this constructs an `(instance, type, scope)` argument with type `01A527DB` (SNR) and scope `021407EE`. The branch where the initial call fails instead passes the original four-byte item as instance with those same type and scope constants. The indirect call's implementation and side effects have not been resolved.
+
+Separately, `A2038E..A20406` asks an object's virtual method `+4Ch` for the same `samples` property; on success it passes the returned pointer and count through another indirect call (`+160h`). The recipient, later selection algorithm and any relationship to the collision event have not been established. This is a separate call site, not demonstrated to be on the first branch's runtime path.
+
+These instructions corroborate the first-word SNR-key hypothesis **for in-memory entries in this generic native path**. They do not prove that the event's 12 raw package bytes reach the property object unchanged, or establish the package representation's endianness. Nor do they establish that either named event variant reaches this branch, which provider wins, which entry is selected, actual resource loading, or playback. The 20-way data join remains conditional until the property loader, dispatch and runtime are independently traced.
+
+Reproduction (requires Python `pefile` and `capstone`):
+
+```powershell
+python tools/cell_audio_consumer_disasm_v1.py 'D:\Games\SPORE Collection\SporeBin\SporeApp.exe' target/ghidra-cell-audio-consumer-v1/instructions-fresh.txt
+```
+
+The output parent must already exist, and the output path must be new; choose another fresh filename for each run. The script rejects other executable hashes and incomplete range decodes, and records the executable hash, image base, library versions, exact bytes and disassembly. Ghidra 12.1.4 independently imported the same image with `-noanalysis`, manually disassembled and created a function at `A2C520`, and completed decompilation; the script, project and logs are in `target/ghidra-cell-audio-consumer-v1/`. Ghidra's recovered body is noncontiguous and its manually seeded types, signatures and control flow are inferred; library-link and loader warnings apply. The second attempted seed `A200A0` is an unrelated short function and is not offered as decompiler support for the second call site. REA session inspection did not return; this is not an REA Evidence record. No game, audio, GUI, or Cargo build was run.

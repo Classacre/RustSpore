@@ -1,0 +1,4 @@
+//! Compare receiver gate against five retained, independently reviewed rows.
+use spore_core::cell_timeline_receiver_v1::receiver;
+fn w(b:&[u8],i:usize)->u32{u32::from_le_bytes(b[i..i+4].try_into().unwrap())}
+fn main(){let path=std::env::args().nth(1).expect("native stdout");let b=std::fs::read(path).unwrap();assert_eq!(b.len(),160);for (i,after) in [5,4,5,4,6].into_iter().enumerate(){let x=receiver(after,true).unwrap();let got=[1,x.pending_player_call as u32,x.callback_return_after_pending_call_returns as u32,after];let want:Vec<_>=(0..4).map(|j|w(&b,i*32+j*4)).collect();assert_eq!(got.as_slice(),want,"case {i}");let fp=w(&b,i*32+16);assert_eq!(fp&0xffff,0x27f);assert_eq!((fp>>16)&0x3840,0);assert_eq!(w(&b,i*32+20)&!0x3f,0x1f80);}println!("matched 5 retained receiver cases; service delivery remains unobserved");}

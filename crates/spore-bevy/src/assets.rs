@@ -114,7 +114,7 @@ pub struct TextureMipChain {
     pub levels: Vec<TextureData>,
 }
 
-fn decode_standalone_raster_mips(data: &[u8]) -> Result<TextureMipChain, String> {
+pub(crate) fn decode_standalone_raster_mips(data: &[u8]) -> Result<TextureMipChain, String> {
     if data.len() > 128 * 1024 * 1024 { return Err("source raster payload exceeds limit".into()); }
     let raster = spore_core::raster::parse(data).map_err(|e| e.to_string())?;
     if raster.width == 0 || raster.height == 0 || raster.width > 4096 || raster.height > 4096 {
@@ -800,6 +800,22 @@ impl AssetSource {
         let data = self.read(GMDL, reference.model.scoped_instance())
             .ok_or_else(|| AssetError::Unresolved("authored GMDL is unreadable".into()))?;
         let model = spore_core::gmdl::parse(&data).map_err(|e| AssetError::Other(e.to_string()))?;
+        let (texture_key, texture_binding, texture) = self.gmdl_source_texture(&data, &model)?;
+        let mesh = spore_core::mesh::from_gmdl(&data, &model)?;
+        mesh.validate()?;
+        Ok(AuthoredCreatureAsset { reference, mesh, texture_key, texture_binding, texture })
+    }
+
+    /// Inspect the saved shared sampler-zero binding of an explicitly resolved GMDL.
+    pub fn prop_gmdl_source_texture(&self, prop: u64) -> Result<(NativeResourceKey, spore_core::shader_binding::TextureBinding, TextureData), AssetError> {
+        let resolved = self.resolve_prop(prop)?;
+        if resolved.model.0 != GMDL { return Err(AssetError::Other("PROP model is not GMDL".into())); }
+        let data = self.read(GMDL, resolved.model.1).ok_or_else(|| AssetError::Unresolved("PROP GMDL is unreadable".into()))?;
+        let model = spore_core::gmdl::parse(&data).map_err(|e| AssetError::Other(e.to_string()))?;
+        self.gmdl_source_texture(&data, &model)
+    }
+
+    fn gmdl_source_texture(&self, data: &[u8], model: &spore_core::gmdl::Gmdl) -> Result<(NativeResourceKey, spore_core::shader_binding::TextureBinding, TextureData), AssetError> {
         // The geometry parser's legacy skipped-tail flag only understands v8.
         // The strict companion below validates complete v8/v9 tail framing,
         // including expansion material-presence words and source shader data.
@@ -822,9 +838,7 @@ impl AssetSource {
                 rgba: spore_core::raster::decode_pixels(raster.format, raster.width, raster.height, raster.payload)
                     .map_err(|e| AssetError::Other(e.to_string()))? }
         };
-        let mesh = spore_core::mesh::from_gmdl(&data, &model)?;
-        mesh.validate()?;
-        Ok(AuthoredCreatureAsset { reference, mesh, texture_key, texture_binding, texture })
+        Ok((texture_key, texture_binding, texture))
     }
 
     /// A creature's diffuse map: the shipped skin when the install has one, otherwise
@@ -879,8 +893,35 @@ impl AssetSource {
         let data = self
             .read(CREATURE_DATA, instance)
             .ok_or_else(|| AssetError::Other(format!("no creature {instance:016X}")))?;
-        let parsed = spore_core::creature_data::parse(&data)
+        self.assemble_creature_payload(&data, instance, false)
+    }
+
+    /// Inspect a caller-supplied, hash-checked payload through the source-part path.
+    /// Every referenced part must resolve; this does not regenerate a creature model.
+    pub fn edited_creature_assembly(&self, data: &[u8], expected_sha256: &str)
+        -> Result<(CreatureAssembly, MeshData), AssetError>
+    {
+        use sha2::{Digest, Sha256};
+        if expected_sha256.len() != 64 || !expected_sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(AssetError::Other("payload SHA-256 must be 64 hex digits".into()));
+        }
+        if format!("{:x}", Sha256::digest(data)) != expected_sha256.to_ascii_lowercase() {
+            return Err(AssetError::Other("edited payload SHA-256 mismatch".into()));
+        }
+        self.assemble_creature_payload(data, 0, true)
+    }
+
+    fn assemble_creature_payload(&self, data: &[u8], instance: u64, strict: bool)
+        -> Result<(CreatureAssembly, MeshData), AssetError>
+    {
+        let parsed = spore_core::creature_data::parse(data)
             .map_err(|e| AssetError::Other(format!("creaturedata parse: {e}")))?;
+        if strict && !parsed.exact {
+            return Err(AssetError::Other("edited creaturedata has trailing bytes".into()));
+        }
+        if strict && parsed.parts.iter().any(|p| p.rotation.iter().flatten().chain(p.translation.iter()).any(|v| !v.is_finite())) {
+            return Err(AssetError::Other("edited creaturedata has non-finite transforms".into()));
+        }
         if parsed.parts.is_empty() {
             return Err(AssetError::Other(
                 "creature rig has no rows".to_string(),
@@ -896,6 +937,7 @@ impl AssetSource {
         for part in &parsed.parts {
             // A rig can repeat a part; drawing it twice would double the geometry.
             if !seen.insert((part.part_instance, part.index)) {
+                if strict { return Err(AssetError::Other("duplicate part identity in edited payload".into())); }
                 continue;
             }
             let part_mesh = match self.prop_mesh(part.part_instance) {
@@ -929,6 +971,12 @@ impl AssetSource {
                 part.translation,
             );
             drawn += 1;
+        }
+
+        if strict && (missing != 0 || failed != 0) {
+            return Err(AssetError::Other(format!(
+                "experimental assembly incomplete: {missing} missing, {failed} failed\n{}", errors.join("\n")
+            )));
         }
 
         if assembly.positions.is_empty() {
@@ -1030,6 +1078,45 @@ impl AssetSource {
 #[cfg(test)]
 mod authored_tests {
     use super::*;
+
+    // Explicitly selected local proprietary inputs; run only with the documented
+    // test variables. This verifies assembly geometry, not original editor output.
+    #[test]
+    #[ignore = "requires explicitly selected local package and two CreatureData payloads"]
+    fn edited_assembly_moves_only_the_selected_part() {
+        let package = std::env::var("RUSTSPORE_ASSEMBLY_TEST_PACKAGE").unwrap();
+        let original = std::fs::read(std::env::var("RUSTSPORE_ASSEMBLY_TEST_ORIGINAL").unwrap()).unwrap();
+        let edited = std::fs::read(std::env::var("RUSTSPORE_ASSEMBLY_TEST_EDITED").unwrap()).unwrap();
+        let before_hash = std::env::var("RUSTSPORE_ASSEMBLY_TEST_ORIGINAL_SHA256").unwrap();
+        let after_hash = std::env::var("RUSTSPORE_ASSEMBLY_TEST_EDITED_SHA256").unwrap();
+        let package_dir = std::env::var_os("RUSTSPORE_ASSEMBLY_TEST_PACKAGE_DIR").unwrap();
+        let set = PackageSet::discover(package_dir);
+        assert!(!set.is_empty(), "assembly test package directory is empty");
+        let source = AssetSource::open(&package).unwrap().with_set(set);
+        assert!(source.edited_creature_assembly(&edited, &"0".repeat(64)).is_err());
+        let before = spore_core::creature_data::parse(&original).unwrap();
+        let after = spore_core::creature_data::parse(&edited).unwrap();
+        let first = &before.parts[0];
+        assert_eq!(first.part_instance, after.parts[0].part_instance);
+        assert_eq!(first.rotation, after.parts[0].rotation);
+        let delta: Vec<_> = (0..3).map(|i| after.parts[0].translation[i] - first.translation[i]).collect();
+        assert!(delta.iter().any(|v| v.abs() > 0.01));
+        let (_, first_mesh) = source.prop_mesh(first.part_instance).unwrap();
+        let (a_summary, a) = source.edited_creature_assembly(&original, &before_hash).unwrap();
+        let (b_summary, b) = source.edited_creature_assembly(&edited, &after_hash).unwrap();
+        assert_eq!(a_summary.parts_drawn, b_summary.parts_drawn);
+        assert_eq!(a.positions.len(), b.positions.len());
+        assert_eq!(a.indices, b.indices);
+        let count = first_mesh.positions.len();
+        assert!(count > 0 && count < a.positions.len());
+        for (i, (old, new)) in a.positions.iter().zip(&b.positions).enumerate() {
+            let expected = if i < count { &delta[..] } else { &[0., 0., 0.][..] };
+            for (actual, wanted) in [new.x-old.x, new.y-old.y, new.z-old.z].iter().zip(expected) {
+                assert!((actual-wanted).abs() < 1e-4, "vertex {i}: {actual} != {wanted}");
+            }
+        }
+        println!("geometry check: {} parts, {} total vertices, {} edited vertices, delta {:?}", a_summary.parts_drawn, a.positions.len(), count, delta);
+    }
     #[test]
     fn standalone_raster_mips_decode_each_level_and_reject_bad_framing() {
         let mut data = Vec::new();

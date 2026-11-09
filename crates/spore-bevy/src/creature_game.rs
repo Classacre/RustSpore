@@ -2,6 +2,9 @@
 //! Default art is procedural; an optional source-art inspection path is available.
 //! Retail assembly, animation and gameplay fidelity remain separate gates.
 
+#[path = "creature_source_frame_v1.rs"]
+mod creature_source_frame_v1;
+
 use bevy::{
     asset::RenderAssetUsages,
     mesh::Indices,
@@ -84,6 +87,7 @@ struct AuthoredArt {
 #[derive(Resource)]
 struct SourceInspection {
     asset: crate::assets::AuthoredCreatureAsset,
+    mips: Option<crate::assets::TextureMipChain>,
     sampler: ImageSamplerDescriptor,
 }
 #[derive(Resource)]
@@ -139,6 +143,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let mut source_install: Option<PathBuf> = None;
     let mut source_id: Option<u64> = None;
     let mut offscreen = false;
+    let mut ui_layout=None; let mut ui_atlas=None; let mut ui_fixture=None;
     let mut save_path = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."))
@@ -170,6 +175,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 let text = text.strip_prefix("0x").or_else(|| text.strip_prefix("0X")).unwrap_or(text);
                 source_id = Some(u64::from_str_radix(text, 16).map_err(|_| "source Creature ID must be hexadecimal u64".to_string())?);
             }
+            "--source-ui-layout" => ui_layout=Some(PathBuf::from(value()?)),
+            "--source-ui-atlas" => ui_atlas=Some(PathBuf::from(value()?)),
+            "--source-ui-fixture" => ui_fixture=Some(PathBuf::from(value()?)),
             "--shot" => shot = Some(PathBuf::from(value()?)),
             "--save-file" => save_path = PathBuf::from(value()?),
             "--demo" => {
@@ -198,6 +206,13 @@ pub fn run(args: &[String]) -> Result<(), String> {
     {
         std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
+    let ui_count=usize::from(ui_layout.is_some())+usize::from(ui_atlas.is_some())+usize::from(ui_fixture.is_some());
+    if ui_count!=0 && ui_count!=3 { return Err("source UI frame requires layout, atlas and fixture".into()); }
+    if ui_count!=0 && !offscreen { return Err("source UI frame requires fixed 1280x800 offscreen target".into()); }
+    let ui_frame=match (&ui_layout,&ui_atlas,&ui_fixture) {
+        (Some(layout),Some(atlas),Some(fixture))=>Some(creature_source_frame_v1::load(layout,atlas,fixture)?),
+        _=>None,
+    };
     let source = if let (Some(install), Some(id)) = (&source_install, source_id) {
         Some(load_source_inspection(install, id)?)
     } else { None };
@@ -221,6 +236,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }));
     }
     if let Some(source) = source { app.insert_resource(source); }
+    if let Some(frame) = ui_frame { app.insert_resource(UiScale(1.0)); app.insert_resource(frame); }
     app.insert_resource(ClearColor(Color::srgb(0.38, 0.57, 0.67)))
         .insert_resource(game)
         .init_resource::<Objects>()
@@ -268,8 +284,18 @@ fn load_source_inspection(install: &Path, instance: u64) -> Result<SourceInspect
         Some(0 | 1) => ImageFilterMode::Nearest, Some(2) => ImageFilterMode::Linear,
         _ => return Err("source sampler mip filtering unsupported".into()),
     };
+    let mip_filter = texture.mip_filter().unwrap();
+    let mips = if creature_mips_required(asset.texture_key.type_id, mip_filter)? {
+        let chain = source.authored_creature_raster_mips(asset.texture_key)?;
+        let first = chain.levels.first().ok_or("source Creature mip chain empty")?;
+        if first.width != asset.texture.width || first.height != asset.texture.height || first.rgba != asset.texture.rgba {
+            return Err("source Creature base mip differs from texture".into());
+        }
+        Some(chain)
+    } else { None };
     let sampler = ImageSamplerDescriptor { address_mode_u: address, address_mode_v: address, address_mode_w: address,
-        min_filter: filter, mag_filter: filter, mipmap_filter: mip, lod_min_clamp: 0.0, lod_max_clamp: 0.0, ..default() };
+        min_filter: filter, mag_filter: filter, mipmap_filter: mip, lod_min_clamp: 0.0,
+        lod_max_clamp: if mip_filter == 0 { 0.0 } else { mips.as_ref().map_or(0, |chain| chain.levels.len().saturating_sub(1)) as f32 }, ..default() };
     let (min, max) = asset.mesh.bounds().ok_or("source Creature mesh is empty")?;
     let extent = (max.x-min.x).max(max.y-min.y).max(max.z-min.z);
     let center = [(min.x+max.x)*0.5, (min.y+max.y)*0.5, (min.z+max.z)*0.5];
@@ -284,8 +310,27 @@ fn load_source_inspection(install: &Path, instance: u64) -> Result<SourceInspect
         };
         println!("CREATURE_SOURCE_RESOURCE role={role} package={} key={key}", path.display());
     }
-    println!("CREATURE_SOURCE_INSPECTION instance={instance:016X} assignment=controlled_prototype_player renderer=pbr pose=static runtime_behavior=unverified overlay=inspection_order camera_scale=inspection basis=source_y_z_x_inference ground=source_z_min mip_chain=base_only saves=disabled");
-    Ok(SourceInspection { asset, sampler })
+    println!("CREATURE_SOURCE_INSPECTION instance={instance:016X} assignment=controlled_prototype_player renderer=pbr pose=static runtime_behavior=unverified overlay=inspection_order camera_scale=inspection basis=source_y_z_x_inference ground=source_z_min mip_chain={} levels={} saves=disabled", if mips.is_some() { "declared" } else { "base_only_filter_disabled" }, mips.as_ref().map_or(1, |chain| chain.levels.len()));
+    Ok(SourceInspection { asset, mips, sampler })
+}
+
+fn creature_mips_required(texture_type: u32, mip_filter: i32) -> Result<bool, String> {
+    match (texture_type, mip_filter) {
+        (crate::assets::RASTER, _) => Ok(true),
+        (crate::assets::RW4, 0) => Ok(false),
+        (crate::assets::RW4, _) => Err("source Creature RW4 mip chain unsupported when mip filtering is enabled".into()),
+        _ => Err("source Creature texture type unsupported".into()),
+    }
+}
+
+fn creature_inspection_image(texture: &crate::assets::TextureData, mips: Option<&crate::assets::TextureMipChain>, sampler: &ImageSamplerDescriptor) -> Image {
+    let mut image = Image::new(Extent3d { width: texture.width, height: texture.height, depth_or_array_layers: 1 }, TextureDimension::D2, texture.rgba.clone(), TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::default());
+    if let Some(mips) = mips {
+        image.texture_descriptor.mip_level_count = mips.levels.len() as u32;
+        image.data = Some(mips.levels.iter().flat_map(|level| level.rgba.iter().copied()).collect());
+    }
+    image.sampler = ImageSampler::Descriptor(sampler.clone());
+    image
 }
 
 /// Inspection inference: map source +Z up and +Y forward to Bevy +Y up and
@@ -386,6 +431,7 @@ fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
     adapter: Res<RenderAdapterInfo>,
     source: Option<Res<SourceInspection>>,
+    frame: Option<Res<creature_source_frame_v1::Frame>>,
     mut images: ResMut<Assets<Image>>,
     mut readiness: Option<ResMut<crate::offscreen::OffscreenReadiness>>,
 ) {
@@ -393,6 +439,18 @@ fn setup(
         "CREATURE_GPU name={:?} backend={:?} type={:?}",
         adapter.name, adapter.backend, adapter.device_type
     );
+    let source_frame_inspection=frame.is_some();
+    if let Some(frame)=frame {
+        let mut atlas=Image::new(Extent3d{width:512,height:1024,depth_or_array_layers:1},TextureDimension::D2,frame.rgba.clone(),TextureFormat::Rgba8UnormSrgb,RenderAssetUsages::default());
+        atlas.sampler=ImageSampler::linear();
+        let handle=images.add(atlas);
+        if let Some(readiness)=readiness.as_mut(){readiness.require_image(&handle);}
+        for quad in &frame.quads {
+            let mut node=ImageNode::new(handle.clone());
+            node.rect=Some(Rect::new(quad.uv[0]*512.,quad.uv[1]*1024.,quad.uv[2]*512.,quad.uv[3]*1024.));
+            commands.spawn((node,Node{position_type:PositionType::Absolute,left:px(quad.dest[0]),top:px(quad.dest[1]),width:px(quad.dest[2]-quad.dest[0]),height:px(quad.dest[3]-quad.dest[1]),..default()},GlobalZIndex(100)));
+        }
+    }
     let source_inspection = source.is_some();
     if let Some(source) = source {
         let data = &source.asset.mesh;
@@ -404,9 +462,7 @@ fn setup(
         mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, data.normals.iter().map(|p| source_to_bevy_basis([p.x,p.y,p.z])).collect::<Vec<_>>());
         mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, data.uvs.clone());
         mesh.insert_indices(Indices::U32(data.indices.clone()));
-        let texture = &source.asset.texture;
-        let mut image = Image::new(Extent3d { width: texture.width, height: texture.height, depth_or_array_layers: 1 }, TextureDimension::D2, texture.rgba.clone(), TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::default());
-        image.sampler = ImageSampler::Descriptor(source.sampler.clone());
+        let image = creature_inspection_image(&source.asset.texture, source.mips.as_ref(), &source.sampler);
         let image = images.add(image);
         if let Some(readiness) = readiness.as_mut() { readiness.require_image(&image); }
         let material = materials.add(StandardMaterial { base_color: Color::WHITE, base_color_texture: Some(image), perceptual_roughness: 0.85, cull_mode: None, double_sided: true, ..default() });
@@ -495,10 +551,19 @@ fn setup(
         focus: material(&mut materials, Color::srgb(0.97, 0.82, 0.24)),
         pack: material(&mut materials, Color::srgb(0.35, 0.92, 0.89)),
     });
-    ui(&mut commands, source_inspection);
+    ui(&mut commands, source_inspection, source_frame_inspection);
 }
 
-fn ui(commands: &mut Commands, source_inspection: bool) {
+fn inspection_notice(source_art: bool, source_frame: bool) -> &'static str {
+    match (source_art, source_frame) {
+        (true, true) => "Source art and controlled source frame inspection; placement and state are supplied. Save and load disabled; prototype rules, native HUD, animation and gameplay unverified.",
+        (true, false) => "Source art inspection with prototype rules. Save and load disabled; retail assembly, animation and gameplay fidelity remain unverified.",
+        (false, true) => "Controlled source frame overlay; placement and state are supplied. Prototype scene and rules; native HUD unverified.",
+        (false, false) => "Original functional baseline. Procedural art and rules; retail creature assembly, fidelity and full editors remain pending.",
+    }
+}
+
+fn ui(commands: &mut Commands, source_inspection: bool, source_frame_inspection: bool) {
     let panel = Color::srgba(0.035, 0.065, 0.075, 0.92);
     let muted = Color::srgb(0.67, 0.78, 0.76);
     commands
@@ -622,7 +687,7 @@ fn ui(commands: &mut Commands, source_inspection: bool) {
         column.spawn((Text::new("W/S walk   A/D turn   Shift sprint   E eat / collect / recruit   Space attack   1 sing / 2 dance / 3 charm   H rest at home"), TextFont { font_size: 13.0, ..default() }, TextColor(Color::srgb(0.88,0.91,0.83))));
         column.spawn((Text::new(if source_inspection { "Tab target   Arrows orbit / tilt   +/- zoom   P pause   R restart   Esc exit" } else { "Tab target   Arrows orbit / tilt   +/- zoom   P pause   R restart   F5 save   F9 load   Esc exit" }), TextFont { font_size: 13.0, ..default() }, TextColor(muted)));
         column.spawn((Text::new(""), TextFont { font_size: 12.0, ..default() }, TextColor(Color::srgb(0.68,0.85,0.79)), NoticeHud));
-        column.spawn((Text::new(if source_inspection { "Source art inspection with prototype rules. Save and load disabled; retail assembly, animation and gameplay fidelity remain unverified." } else { "Original functional baseline. Procedural art and rules; retail creature assembly, fidelity and full editors remain pending." }), TextFont { font_size: 11.0, ..default() }, TextColor(Color::srgb(0.57,0.67,0.65))));
+        column.spawn((Text::new(inspection_notice(source_inspection, source_frame_inspection)), TextFont { font_size: 11.0, ..default() }, TextColor(Color::srgb(0.57,0.67,0.65))));
     });
     commands
         .spawn((Node {
@@ -1434,6 +1499,43 @@ fn capture(mut commands: Commands, mut game: ResMut<Game>, target: Option<Res<cr
 mod tests {
     use super::*;
     #[test]
+    fn combined_inspection_notice_keeps_both_boundaries() {
+        let notice=inspection_notice(true,true);
+        assert!(notice.contains("Save and load disabled"));
+        assert!(notice.contains("placement and state are supplied"));
+        assert!(!inspection_notice(false,true).contains("Save and load disabled"));
+    }
+    #[test]
+    fn source_mip_policy_rejects_unhandled_chains() {
+        assert_eq!(creature_mips_required(crate::assets::RASTER, 2), Ok(true));
+        assert_eq!(creature_mips_required(crate::assets::RW4, 0), Ok(false));
+        assert!(creature_mips_required(crate::assets::RW4, 1).is_err());
+        assert!(creature_mips_required(0, 0).is_err());
+    }
+    #[test]
+    fn source_mips_are_uploaded_in_level_order() {
+        use crate::assets::{TextureData, TextureMipChain};
+        let base=TextureData { width:2, height:2, rgba:vec![7;16] };
+        let chain=TextureMipChain { levels: vec![TextureData { width:2,height:2,rgba:vec![7;16] },TextureData { width:1,height:1,rgba:vec![9;4] }] };
+        let image=creature_inspection_image(&base,Some(&chain),&ImageSamplerDescriptor::default());
+        assert_eq!(image.texture_descriptor.mip_level_count,2);
+        assert_eq!(image.data.unwrap(),[vec![7;16],vec![9;4]].concat());
+        let base_only=creature_inspection_image(&base,None,&ImageSamplerDescriptor::default());
+        assert_eq!(base_only.texture_descriptor.mip_level_count,1);
+        assert_eq!(base_only.data.unwrap(),vec![7;16]);
+    }
+    #[test]
+    #[ignore = "requires installed source packages; no renderer or gameplay"]
+    fn installed_source_creature_mip_chain_is_loaded() {
+        let install=std::env::var_os("RUSTSPORE_INSTALL").expect("set RUSTSPORE_INSTALL");
+        let item=load_source_inspection(Path::new(&install),0x40616200a1c46df2).unwrap();
+        let mips=item.mips.as_ref().expect("standalone source chain");
+        assert_eq!(mips.levels.len(),10);
+        assert_eq!((mips.levels[0].width,mips.levels[0].height),(512,512));
+        assert_eq!((mips.levels[9].width,mips.levels[9].height),(1,1));
+        assert_eq!(mips.levels[0].rgba,item.asset.texture.rgba);
+    }
+    #[test]
     fn source_inspection_basis_maps_positions_and_normals() {
         assert_eq!(source_to_bevy_basis([1.0, 0.0, 0.0]), [0.0, 0.0, 1.0]);
         assert_eq!(source_to_bevy_basis([0.0, 1.0, 0.0]), [1.0, 0.0, 0.0]);
@@ -1467,7 +1569,7 @@ mod tests {
                 mesh: MeshData::default(), texture_key: identity,
                 texture_binding: TextureBinding { sampler: 0, saved_pointer_word: 0, settings: [0; 8], raster_instance: 0 },
                 texture: TextureData { width: 1, height: 1, rgba: vec![1, 2, 3, 4] },
-            }, sampler: ImageSamplerDescriptor::default(),
+            }, mips: None, sampler: ImageSamplerDescriptor::default(),
         };
         let mut app = App::new();
         app.insert_resource(Time::<()>::default())

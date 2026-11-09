@@ -1,0 +1,2 @@
+use spore_core::{creature_skin_grid_geometry_v1::{derive,ArithmeticAdmission},native_sse::Policy};
+fn main(){let a:Vec<u32>=std::env::args().skip(1).map(|s|s.parse().unwrap()).collect();assert_eq!(a.len(),7);let lo=[f32::from_bits(a[0]),f32::from_bits(a[1]),f32::from_bits(a[2])];let hi=[f32::from_bits(a[3]),f32::from_bits(a[4]),f32::from_bits(a[5])];match derive(lo,hi,f32::from_bits(a[6]),Policy::Mxcsr1f80,ArithmeticAdmission){Ok(g)=>{print!("1");for v in g.origin.into_iter().chain(g.scale){print!(",{}",v.to_bits());}println!();},Err(_)=>println!("0")}}

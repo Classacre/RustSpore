@@ -1,0 +1,3 @@
+//! Six supplied 64-slot fixtures; retained native output is compared externally.
+use std::{env,fs,io::{self,Write}};use spore_core::creature_skin_sort64_v1::{sort,Entry};
+fn main(){let a:Vec<_>=env::args().collect();assert_eq!(a.len(),2);let b=fs::read(&a[1]).unwrap();assert_eq!(b.len(),3072);let mut out=Vec::new();for case in b.chunks_exact(512){let mut entries=std::array::from_fn(|i|Entry{key:u32::from_le_bytes(case[i*8..i*8+4].try_into().unwrap()),weight:f32::from_le_bytes(case[i*8+4..i*8+8].try_into().unwrap())});sort(&mut entries).unwrap();for e in entries{out.extend(e.key.to_le_bytes());out.extend(e.weight.to_bits().to_le_bytes())}}io::stdout().write_all(&out).unwrap()}

@@ -155,7 +155,7 @@ fn clamp_unit(value: f32) -> f32 {
 
 /// E51230/1041E40: inverse interpolation commits to f32 before its SSE clamp;
 /// the output interpolation stays retained in x87 until its caller commits it.
-fn retained_ramp(
+pub(crate) fn retained_ramp(
     x87: Context,
     start: f32,
     end: f32,

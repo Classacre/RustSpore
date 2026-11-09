@@ -1,0 +1,4 @@
+//! Compare the bounded read projection against ten retained original-helper rows.
+use spore_core::cell_stream_word_read_v1::project;
+fn w(b:&[u8],o:usize)->u32{u32::from_le_bytes(b[o..o+4].try_into().unwrap())}
+fn main(){let b=std::fs::read(std::env::args().nth(1).expect("native stdout")).unwrap();assert_eq!(b.len(),280);for i in 0..10{let k=i%5;let mode=u8::from(k==4);let status=k!=0;let read=match k{0=>None,1=>Some((0,0xaabbccdd)),2=>Some((2,0xaabb2211)),_=>Some((4,0x44332211))};let x=project(mode,0xaabbccdd,status,read,true).unwrap();let row=&b[i*28..(i+1)*28];assert_eq!((w(row,0),w(row,4),w(row,8),w(row,12),w(row,16)),(u32::from(x.returned),x.destination,x.sync_calls,x.status_calls,x.read_calls));let fp=w(row,20);assert_eq!(fp&0xffff,if i>=5{0x37f}else{0x27f});assert_eq!((fp>>16)&0x3840,0);assert_eq!(w(row,24)&!0x3f,0x1f80);}println!("matched ten scripted original-helper read rows; no live stream claim");}

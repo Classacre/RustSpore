@@ -87,6 +87,31 @@ Both were visually checked for missing geometry, paint and UI overlap; this is a
 asset-loading check, not a retail image-equivalence result. The focused source
 suite passes 5/5 including all 65 installed baked-model rows.
 
+## Controlled mixed rival roster
+
+The experimental Cell frontend accepts `--source-rival-cell-roster` with one
+to eight distinct, comma-separated, eight-hex-digit Cell IDs, together with
+the explicit source player and installation. It rejects repeated or conflicting
+roster options and loads every requested definition, model and its own source
+atlas before starting the app. Prototype rival ID modulo roster length chooses
+the displayed model; logs identify each assignment. This is a controlled
+inspection choice, not recovered Cell spawning or behavior. Rendering remains
+static PBR with inferred orientation, and the surrounding simulation, camera,
+water/background, particles and terrain remain prototype behavior.
+
+A hidden paired RTX 3060 Vulkan check used source player `7D00E384`, first a
+single `EFE530A1` rival, then the explicit `EFE530A1,4BC16582` roster. Each
+capture exited zero at tick 90. Both roster IDs were assigned to five actors;
+the images differed at 1,043 pixels in bounds x=345..977, y=328..498. A second
+invalid ID `FFFFFFFF` was rejected before graphics startup, with exit 2 and no
+image. The full commands, output hashes and result are in
+`target/source-cell/mixed-roster-app-20261109-v1/receipt.json`, SHA-256
+`88ab8062536432e6d5de767327d4e6b074a99dff16cb92fc936725b7dd533526`.
+The tested executable SHA-256 is
+`3321e829deac430a54ef2899841847c3599a47167b8d3defad5a151c6374d377`;
+both captures report that the Vulkan validation layer was unavailable.
+The visible source actors do not establish retail scene fidelity.
+
 ## Behavior data limits
 
 `0xDFAD9F51` is Cell definition data, not a string table. All observed developer

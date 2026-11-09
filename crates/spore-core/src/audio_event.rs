@@ -1,9 +1,13 @@
 //! Parser for the SPORE audio event format (type `0x02B9F662`).
 //!
-//! Status: **100% validated.** Every one of 16,841 audio event resources across
-//! `PatchData.package` and `Spore_Audio2.package` parses to exactly the last byte,
-//! with zero overruns. The Python reference that produced this number is
-//! `tools/audio_event_v4.py`; this module reproduces the same rules verbatim.
+//! Status: the framing walk reaches the end of 16,841 audio event resources
+//! across `PatchData.package` and `Spore_Audio2.package` without overruns. This
+//! does not validate every value's meaning or native loading. Dedicated native
+//! reader paths support big-endian bytes for types 0009/000A/000D with four-byte
+//! scalar elements, conditional on the selected loader and complete stream reads.
+//! Nonstandard typed-array strides stay raw; count*stride remains inspection
+//! framing and is not a native typed-stream parity claim. The framing reference
+//! is `tools/audio_event_v4.py`.
 //!
 //! ## Layout
 //!
@@ -83,7 +87,9 @@ impl fmt::Display for AudioError {
 
 impl std::error::Error for AudioError {}
 
-/// A decoded audio event value.
+/// An inspection value. Numeric byte order follows the dedicated reader's
+/// four-byte typed path, subject to loader and complete-stream admission; these
+/// values are not evidence of a selected gameplay property.
 #[derive(Debug, Clone, PartialEq)]
 pub enum AudioValue {
     Bool(bool),
@@ -92,7 +98,7 @@ pub enum AudioValue {
     Float(f32),
     String8(String),
     String16(String),
-    /// A contiguous span of bytes whose type was not recognised.
+    /// A contiguous span with unknown type or an unsupported typed-array stride.
     Raw(Vec<u8>),
     /// An array of values (string array, or fixed-stride scalar array).
     Array(Vec<AudioValue>),
@@ -183,32 +189,33 @@ fn decode_string16(d: &[u8], p: usize, len: usize) -> String {
 
 /// Decode a single scalar value of `val_type` whose meaningful bytes begin at `p`.
 /// `avail` is the total bytes available for the value (may exceed the meaningful
-/// size, e.g. padded array elements). Value bytes follow prop convention
-/// (little-endian), pending a dedicated endianness measurement.
+/// size. The dedicated reader's four-byte numeric path swaps big-endian bytes;
+/// provider selection and complete underlying reads remain separate admissions.
 fn parse_scalar(d: &[u8], val_type: u16, p: usize, avail: usize) -> AudioValue {
     let take = |n: usize| -> AudioValue {
         let end = (p + n.min(avail)).min(d.len());
         AudioValue::Raw(d[p..end].to_vec())
     };
     match val_type {
-        0x0001 => AudioValue::Bool(d[p] != 0),
+        0x0001 if avail > 0 && p < d.len() => AudioValue::Bool(d[p] != 0),
+        0x0001 => take(avail),
         0x000D => {
             if avail >= 4 && p + 4 <= d.len() {
-                AudioValue::Float(f32::from_le_bytes([d[p], d[p + 1], d[p + 2], d[p + 3]]))
+                AudioValue::Float(f32::from_be_bytes([d[p], d[p + 1], d[p + 2], d[p + 3]]))
             } else {
                 take(avail)
             }
         }
         0x0009 => {
             if avail >= 4 && p + 4 <= d.len() {
-                AudioValue::Int32(i32::from_le_bytes([d[p], d[p + 1], d[p + 2], d[p + 3]]))
+                AudioValue::Int32(i32::from_be_bytes([d[p], d[p + 1], d[p + 2], d[p + 3]]))
             } else {
                 take(avail)
             }
         }
         0x000A => {
             if avail >= 4 && p + 4 <= d.len() {
-                AudioValue::Uint32(u32::from_le_bytes([d[p], d[p + 1], d[p + 2], d[p + 3]]))
+                AudioValue::Uint32(u32::from_be_bytes([d[p], d[p + 1], d[p + 2], d[p + 3]]))
             } else {
                 take(avail)
             }
@@ -275,25 +282,30 @@ fn decode_entry(d: &[u8], p: usize) -> Option<(usize, AudioEntry)> {
                 },
             ));
         } else {
-            let need = 16 + count * stride;
-            if p + need > d.len() {
+            // This remains the inspection walk's framing, not proof that a
+            // native typed reader consumes count*stride for unusual strides.
+            let start = p.checked_add(16)?;
+            let end = start.checked_add(count.checked_mul(stride)?)?;
+            if end > d.len() {
                 return None;
             }
-            let mut arr = Vec::with_capacity(count.min(1024));
-            let mut pp = p + 16;
-            for _ in 0..count {
-                arr.push(parse_scalar(d, val_type, pp, stride));
-                pp += stride;
-            }
-            return Some((
-                p + need,
-                AudioEntry {
-                    hash,
-                    val_type,
-                    flags,
-                    value: AudioValue::Array(arr),
-                },
-            ));
+            let unsupported_stride = match val_type {
+                types::INT32 | types::UINT32 | types::FLOAT => stride != 4,
+                types::BOOL => stride != 1,
+                _ => stride == 0,
+            };
+            let value = if unsupported_stride {
+                AudioValue::Raw(d[start..end].to_vec())
+            } else {
+                let mut arr = Vec::with_capacity(count.min(1024));
+                let mut pp = start;
+                for _ in 0..count {
+                    arr.push(parse_scalar(d, val_type, pp, stride));
+                    pp += stride; // bounded by the checked end above
+                }
+                AudioValue::Array(arr)
+            };
+            return Some((end, AudioEntry { hash, val_type, flags, value }));
         }
     } else if is_string_type(val_type) {
         if p + 12 > d.len() {
@@ -338,8 +350,8 @@ fn decode_entry(d: &[u8], p: usize) -> Option<(usize, AudioEntry)> {
     }
 }
 
-/// Parse an audio event resource. The `exact` flag reports whether the scan
-/// consumed the whole blob; this is the authoritative 100% validation signal.
+/// Parse an audio event resource. `exact` reports only whether this inspection
+/// walk consumed the blob; it does not establish native loader parity.
 pub fn parse(data: &[u8]) -> Result<AudioEvent, AudioError> {
     let n = data.len();
     if n < 4 {
@@ -371,6 +383,91 @@ pub fn parse(data: &[u8]) -> Result<AudioEvent, AudioError> {
 mod tests {
     use super::*;
 
+    fn scalar_event(kind: u16, bytes: [u8; 4]) -> AudioEvent {
+        let mut data = Vec::new();
+        data.extend_from_slice(&1u32.to_be_bytes());
+        data.extend_from_slice(&0x1234_5678u32.to_be_bytes());
+        data.extend_from_slice(&kind.to_be_bytes());
+        data.extend_from_slice(&0u16.to_be_bytes());
+        data.extend_from_slice(&bytes);
+        parse(&data).unwrap()
+    }
+
+    fn array_event(kind: u16, count: u32, stride: u32, bytes: &[u8]) -> AudioEvent {
+        let mut data = Vec::new();
+        data.extend_from_slice(&1u32.to_be_bytes());
+        data.extend_from_slice(&0x1234_5678u32.to_be_bytes());
+        data.extend_from_slice(&kind.to_be_bytes());
+        data.extend_from_slice(&ARRAY_MARKER_1.to_be_bytes());
+        data.extend_from_slice(&count.to_be_bytes());
+        data.extend_from_slice(&stride.to_be_bytes());
+        data.extend_from_slice(bytes);
+        parse(&data).unwrap()
+    }
+
+    #[test]
+    fn numeric_scalars_use_dedicated_reader_big_endian_words() {
+        let signed = scalar_event(types::INT32, (-0x102_0304i32).to_be_bytes());
+        assert!(signed.exact);
+        assert_eq!(signed.entries[0].value, AudioValue::Int32(-0x102_0304));
+        let unsigned = scalar_event(types::UINT32, 0x89ab_cdefu32.to_be_bytes());
+        assert_eq!(unsigned.entries[0].value, AudioValue::Uint32(0x89ab_cdef));
+        let float = scalar_event(types::FLOAT, 1.25f32.to_be_bytes());
+        assert_eq!(float.entries[0].value, AudioValue::Float(1.25));
+        let negative_zero = scalar_event(types::FLOAT, (-0.0f32).to_be_bytes());
+        match negative_zero.entries[0].value {
+            AudioValue::Float(value) => assert_eq!(value.to_bits(), (-0.0f32).to_bits()),
+            _ => panic!("expected float"),
+        }
+    }
+
+    #[test]
+    fn numeric_arrays_decode_only_four_byte_stride() {
+        let signed = array_event(types::INT32, 2, 4, &[0xff,0xff,0xff,0xfe, 0x01,0x02,0x03,0x04]);
+        assert!(signed.exact);
+        assert_eq!(signed.entries[0].value, AudioValue::Array(vec![AudioValue::Int32(-2), AudioValue::Int32(0x0102_0304)]));
+        let unsigned = array_event(types::UINT32, 2, 4, &[0x89,0xab,0xcd,0xef, 0x00,0x00,0x00,0x01]);
+        assert_eq!(unsigned.entries[0].value, AudioValue::Array(vec![AudioValue::Uint32(0x89ab_cdef), AudioValue::Uint32(1)]));
+        let floats = array_event(types::FLOAT, 2, 4, &[0x80,0,0,0, 0x3f,0xa0,0,0]);
+        match &floats.entries[0].value {
+            AudioValue::Array(values) => {
+                match values[0] { AudioValue::Float(v) => assert_eq!(v.to_bits(), (-0.0f32).to_bits()), _ => panic!("float") }
+                assert_eq!(values[1], AudioValue::Float(1.25));
+            }
+            _ => panic!("expected array"),
+        }
+    }
+
+    #[test]
+    fn unusual_typed_array_strides_are_retained_as_raw_bytes() {
+        for kind in [types::INT32, types::UINT32, types::FLOAT] {
+            for (stride, bytes) in [(2, &[1, 2][..]), (8, &[1,2,3,4,5,6,7,8][..])] {
+                let event = array_event(kind, 1, stride, bytes);
+                assert!(event.exact);
+                assert_eq!(event.entries[0].value, AudioValue::Raw(bytes.to_vec()));
+            }
+        }
+        let bools = array_event(types::BOOL, 1, 2, &[1, 7]);
+        assert_eq!(bools.entries[0].value, AudioValue::Raw(vec![1, 7]));
+    }
+
+    #[test]
+    fn zero_stride_bool_does_not_read_a_missing_element() {
+        let event = array_event(types::BOOL, 2, 0, &[]);
+        assert!(event.exact);
+        assert_eq!(event.entries[0].value, AudioValue::Raw(vec![]));
+        let ordinary = array_event(types::BOOL, 2, 1, &[0, 1]);
+        assert_eq!(ordinary.entries[0].value, AudioValue::Array(vec![AudioValue::Bool(false), AudioValue::Bool(true)]));
+    }
+
+    #[test]
+    fn oversized_fixed_array_is_not_exact_and_does_not_overflow() {
+        let event = array_event(types::UINT32, 1_000_000, 1_000_000, &[]);
+        assert!(!event.exact);
+        assert_eq!(event.consumed, 4);
+        assert!(event.entries.is_empty());
+    }
+
     #[test]
     fn single_bool_entry_is_1_byte_value() {
         let mut data = Vec::new();
@@ -394,7 +491,7 @@ mod tests {
         data.extend_from_slice(&0x25DF0108u32.to_be_bytes()); // gain hash
         data.extend_from_slice(&types::INT32.to_be_bytes());
         data.extend_from_slice(&0u16.to_be_bytes());
-        data.extend_from_slice(&7i32.to_le_bytes());
+        data.extend_from_slice(&7i32.to_be_bytes());
 
         let ev = parse(&data).unwrap();
         assert!(ev.exact);
@@ -426,8 +523,8 @@ mod tests {
         data.extend_from_slice(&ARRAY_MARKER_1.to_be_bytes()); // 0x009C
         data.extend_from_slice(&2u32.to_be_bytes()); // count
         data.extend_from_slice(&4u32.to_be_bytes()); // stride
-        data.extend_from_slice(&1i32.to_le_bytes());
-        data.extend_from_slice(&2i32.to_le_bytes());
+        data.extend_from_slice(&1i32.to_be_bytes());
+        data.extend_from_slice(&2i32.to_be_bytes());
 
         let ev = parse(&data).unwrap();
         assert!(ev.exact);
@@ -477,7 +574,7 @@ mod tests {
         data.extend_from_slice(&0x25DF0108u32.to_be_bytes());
         data.extend_from_slice(&types::INT32.to_be_bytes());
         data.extend_from_slice(&0u16.to_be_bytes());
-        data.extend_from_slice(&3i32.to_le_bytes());
+        data.extend_from_slice(&3i32.to_be_bytes());
         // separator (low word 12 00)
         data.extend_from_slice(&[0x3c, 0xc4, 0x12, 0x00]);
         // entry 2: bool
@@ -499,7 +596,7 @@ mod tests {
         data.extend_from_slice(&0x25DF0108u32.to_be_bytes());
         data.extend_from_slice(&types::INT32.to_be_bytes());
         data.extend_from_slice(&0u16.to_be_bytes());
-        data.extend_from_slice(&3i32.to_le_bytes());
+        data.extend_from_slice(&3i32.to_be_bytes());
         data.push(0xAB); // trailing byte, not a separator or entry
 
         let ev = parse(&data).unwrap();
@@ -522,7 +619,7 @@ mod tests {
         data.extend_from_slice(&ARRAY_MARKER_2.to_be_bytes()); // 0x001C
         data.extend_from_slice(&1u32.to_be_bytes());
         data.extend_from_slice(&4u32.to_be_bytes());
-        data.extend_from_slice(&99u32.to_le_bytes());
+        data.extend_from_slice(&99u32.to_be_bytes());
 
         let ev = parse(&data).unwrap();
         assert!(ev.exact);

@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Measure the container layer of type 0x01A527DB (.snr, audio).
+"""Historical boundary survey of type 0x01A527DB (.snr, audio).
 
-This type is deliberately out of the project's decode scope (the project reads
-geometry and UI, not sound), so this tool measures the *container* only and does
-not attempt codec decoding.
+WARNING: Its header interpretations and "exact" claims are superseded; this
+script does not validate codec framing. See the correction in re/payload-formats.md.
+
+
+Historically this survey was limited to the container and did not attempt codec
+decoding; its interpretation has since been corrected and a bounded XAS1
+decoder added. This script is retained for historical reproduction only.
 
 Measured header (the magic bytes are read as a 4-byte tag, not a u32):
 

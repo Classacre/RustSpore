@@ -1,0 +1,18 @@
+# Cell contact producer E673A0: side-effect boundary
+
+This is a bounded static decode of `D:\Games\SPORE Collection\SporeBin\SporeApp.exe`, SHA-256 `17cf32b3e3adbcc7ed9c4e593c83b5d3deb3c675059b7ad9cbfd19192df5f87a` (REA target verification in the preceding E6A2B0 pass). PE bytes at `E673A0..E6757A` were decoded with Capstone x86; no original code ran. The call from E6A450's ordered prefix is identified in [the producer trace](cell-feeding-candidate-producer-v1.md). This inspection does not establish a complete function census, data-structure semantics, or live reachability.
+
+The routine uses a supplied three-word point and compares its components with six globals at `016B4C68..7C` (`E673A4..E6740A`). Each bound uses `COMISS` and `JB`: below-bound or unordered takes the early return, assuming exceptions are masked. Equality proceeds. If it passes, the routine constructs a temporary holder, resolves through `E4CCA0`, and compares the returned object's float `+6C` with a supplied stack float. When the former is strictly greater, it destroys the holder via `E82160` and returns (`E67410..E67443`). The identity, lifetime and complete behavior of that resource and both calls are not established here.
+
+The remaining path unsigned-orders two supplied 32-bit ID words and constructs a 32-bit lookup key from their low 16-bit halves (`E67444..E67477`); the packed key therefore is not a full pair of 32-bit identities. A call to `E616C0` uses global `016B4BE8` storage and a global byte at `+1619C`; subsequent lookup and calls to `E65810` choose two different mutation paths. `E658AD..B2` returns the vector-entry address plus four. Relative to its returned pointer, the found path updates `+0C` and a second call writes the supplied point at `+10/+14/+18` (`E674CF..E6750A`). On the new path, it receives ordered IDs, two copies of a further supplied word, a comparison-derived byte at returned `+1C`, the point words, and zeroes at returned `+20/+24` (`E6751A..E6756B`). Consequently the comparison-derived byte is **entry +20**, while the zeroes are entry +24/+28. Both paths release the temporary holder. The vector can move during insertion and intervening calls may mutate state; do not assume that the two returned pointers match without the required container and alias admissions. See [the contact dispatch trace](cell-contact-event-dispatch-static-v1.md) for the comparison and lifecycle boundary.
+
+The key is `((min_unsigned_id & 0xffff) << 16) | (max_unsigned_id & 0xffff)`.
+On the found path, the first `E65810` and the `+0C` write precede the point
+reads, which precede the second call; intervening mutation and aliasing can
+therefore change what is written. On the other path the comparison-derived
+byte is one only when the supplied float compares strictly greater than the
+resolved object's `+70`; equality, lower and unordered produce zero if the
+comparison completes. Unmasked exceptions can interrupt these comparisons,
+and MXCSR denormal handling can change their results.
+
+This is material to any E6A450-to-tail integration: `E673A0` is not a pure candidate calculation, and it occurs before `E59CD0` and later selector decisions. Supplying only a final selector or freezing all actor/global state at entry cannot reproduce this sequence. A controlled model must expose an ordered stop/resume boundary around E673A0, admit its resulting world and actor snapshots before the subsequent call, and preserve the current shared output independently. The full producer remains unimplemented; its later calls, re-reads, x87 stack/control environment and geometry acquisition still need admission or source-bound tests. This observation does not imply that any real contact reaches the routine or that either write is feeding.

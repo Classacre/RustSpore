@@ -4518,6 +4518,8 @@ dependencies = [
  "bevy",
  "dbpf",
  "image",
+ "libloading",
+ "serde_json",
  "sha2",
  "spore-core",
  "windows 0.61.3",
@@ -4526,6 +4528,9 @@ dependencies = [
 [[package]]
 name = "spore-core"
 version = "0.1.0"
+dependencies = [
+ "sha2",
+]
 
 [[package]]
 name = "stable_deref_trait"
