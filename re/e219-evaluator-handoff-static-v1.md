@@ -81,3 +81,24 @@ The `0x10008` child path does not by itself establish the `0x70003` callback: it
 The original caller `764350` clarifies the context lifetime and per-section order: after `11E3A60` returns, it repeatedly calls `11E37D0` with the same stack-resident context before cleanup. `11E37D0` advances through the 24-byte section entries, sets context `+7C` from each entry's saved original `+04`, selects the registered type via entry `+10`, and calls its `+0C` handler with the relocated section pointer and context. In the explicit external-1 snapshot, section 5 is `[28F60,0,1D0,10,7,70003]`, and the metadata type array at index 7 is `70003`; its first section word is `28F70`. Assuming the source registration is active, the preserved entry offset and `1200E20` arithmetic therefore yield relocated section 5 `+10`, the start of its seven stored 64-byte rows. This is a source-derived conditional loader join, not observed live registration, controller activation, evaluator output, or object lifetime after the loader returns.
 
 The independently reviewed original `11E37D0` → `1200E20` fixture v2 then matched using the complete source section 5 bytes and a supplied bounded registry, relocated table, and context. Its stdout SHA-256 is `9a67b7af23e90125dd03dd2471b7f7b6ce7fb2f2e6ffbe3c9b907366bf13a562` in `target/animation/e219-section-fixup-result-v2`; the private child was reaped and desktop closed. V1 was not executed: it omitted the source fixup's final `RET`; v2 includes and audits that byte. This validates the bounded fixup, with the registry and section ownership supplied, not native live registration or lifetime.
+
+The opt-in `e219_source_basis_check_v1` diagnostic pins the external-1 RW4 and
+its seven section-5 basis rows, checks binding 7's references and verifies that
+`rw4_animation` preserves every row word. The retained source snapshot passes:
+six of the seven rows differ from identity. Thus the prior fixed evaluator's
+synthetic identity basis cannot stand in for these source rows. The diagnostic
+does not evaluate them or establish live association; the conditional fixup and
+controller/lifetime limitations above still apply. Run with
+`tools\build.bat run -p spore-core --example e219_source_basis_check_v1 -- target/e219-source-groups-result-v2/external-1.rw4`.
+Its focused unpinned-input rejection test passed 1/1.
+
+A subsequent conditional basis projection is available in
+`crates/spore-core/examples/e219_source_basis_projection_v1.rs`. It joins the
+pinned source rows to the pinned instrumented parent-matrix capture and applies
+the earlier fixed source-order packed arithmetic. An identity-basis control
+matches all 84 captured output words; the focused rejection test passed 1/1.
+Its nonidentity source-basis words are **predictions only**: neither a separate
+instruction review of this new join nor an original source-basis evaluator
+comparison has established them. The retained parent capture uses the earlier
+synthetic callback, fixed sample rows and conditional layout, with no live
+selection. No original code ran in this projection.

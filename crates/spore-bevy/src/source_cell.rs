@@ -628,7 +628,10 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
         return Err("Original shader capture requires Windows native rendering. Use --pbr-inspection for the separate diagnostic view.".to_string());
     }
     let camera = source.thumbnail_camera()?;
-    let skin_sampler = source_skin_sampler(&asset)?;
+    let mut skin_sampler = source_skin_sampler(&asset)?;
+    let skin_mips = source.skin_mips(&asset)?;
+    skin_sampler.lod_max_clamp = skin_mips.levels.len().saturating_sub(1) as f32;
+    println!("SOURCE_CELL_PREVIEW_MIPS levels={} source=declared_atlas", skin_mips.levels.len());
     // Retain and validate source lighting without passing these raw coefficients
     // to PBR as an approximation of the native SH shader.
     for paint_mode in [false, true] {
@@ -658,7 +661,7 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
     let mut app = App::new();
     crate::offscreen::configure(&mut app, 1280, 800);
     app.insert_resource(ClearColor(Color::BLACK))
-        .insert_resource(SourcePreview { asset, camera, skin_sampler, path: path.clone(), frames: 0, requested_at: None })
+        .insert_resource(SourcePreview { asset, camera, skin_sampler, skin_mips, path: path.clone(), frames: 0, requested_at: None })
         .add_systems(Startup, preview_setup)
         .add_systems(Update, preview_capture)
         .run();
@@ -726,6 +729,7 @@ struct SourcePreview {
     asset: SourceCellAsset,
     camera: SourceOrbitCamera,
     skin_sampler: ImageSamplerDescriptor,
+    skin_mips: crate::assets::TextureMipChain,
     path: PathBuf,
     frames: u32,
     requested_at: Option<u32>,
@@ -749,6 +753,15 @@ fn preview_image(texture: &TextureData, repeat: bool) -> Image {
     image
 }
 
+fn preview_skin_image(mips: &crate::assets::TextureMipChain, sampler: &ImageSamplerDescriptor) -> Image {
+    // skin_mips validates the source chain and verifies its base against the asset.
+    let mut image = preview_image(&mips.levels[0], false);
+    image.texture_descriptor.mip_level_count = mips.levels.len() as u32;
+    image.data = Some(mips.levels.iter().flat_map(|level| level.rgba.iter().copied()).collect());
+    image.sampler = ImageSampler::Descriptor(sampler.clone());
+    image
+}
+
 fn preview_setup(
     mut commands: Commands, preview: Res<SourcePreview>,
     mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>,
@@ -763,8 +776,7 @@ fn preview_setup(
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, data.normals.iter().map(|p| [p.x, p.y, p.z]).collect::<Vec<_>>());
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, data.uvs.clone());
     mesh.insert_indices(Indices::U32(data.indices.clone()));
-    let mut skin_image = preview_image(&asset.skin, false);
-    skin_image.sampler = ImageSampler::Descriptor(preview.skin_sampler.clone());
+    let skin_image = preview_skin_image(&preview.skin_mips, &preview.skin_sampler);
     let skin = images.add(skin_image);
     readiness.require_image(&skin);
     let material = materials.add(StandardMaterial {
@@ -847,6 +859,22 @@ fn preview_capture(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn preview_skin_upload_preserves_declared_mip_order_and_sampler() {
+        use super::*;
+        let chain = crate::assets::TextureMipChain { levels: vec![
+            TextureData { width: 2, height: 2, rgba: vec![7; 16] },
+            TextureData { width: 1, height: 1, rgba: vec![9; 4] },
+        ] };
+        let sampler = ImageSamplerDescriptor { lod_max_clamp: 1.0, ..default() };
+        let image = preview_skin_image(&chain, &sampler);
+        assert_eq!(image.texture_descriptor.mip_level_count, 2);
+        assert_eq!(image.data.unwrap(), [vec![7; 16], vec![9; 4]].concat());
+        match image.sampler {
+            ImageSampler::Descriptor(actual) => assert_eq!(actual.lod_max_clamp, 1.0),
+            _ => panic!("expected source sampler"),
+        }
+    }
     use super::*;
 
     fn test_camera() -> SourceOrbitCamera {
